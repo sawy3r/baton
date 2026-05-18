@@ -1,11 +1,28 @@
 ---
-title: Baton Changelog
-description: Version history for the rule-set
+title: Rules history
+description: Evolution of the seven rules from their first draft through public release
 ---
 
-# Changelog
+# Rules history
 
-This package follows semver against the *content* (rules, role prompts, templates, patterns), not the source repo. Major bumps: breaking rewordings, removed rules, renamed role contracts. Minor bumps: new rules or new roles. Patch bumps: new templates, new brainstorm patterns, clarifications, and examples — anything that augments existing rules or roles without changing their contract.
+> **What this is:** the historical evolution of baton's seven rules as
+> they were drafted and refined inside a source project, before this
+> repo was extracted for public release. Public package versioning lives
+> on the [Releases page](https://github.com/sawy3r/baton/releases) — this
+> file is a *narrative provenance* doc, not the package changelog.
+>
+> Body text below references `CHANGELOG.md` in places because that's
+> what this file was called at the time the entries were written.
+> Treat those as historical self-references; the file has since been
+> renamed to `RULES-HISTORY.md` to disambiguate from the package
+> changelog.
+
+This document follows semver against the *rules content* (rule docs,
+role prompts, templates, patterns). Major bumps: breaking rewordings,
+removed rules, renamed role contracts. Minor bumps: new rules or new
+roles. Patch bumps: new templates, new brainstorm patterns,
+clarifications, and examples — anything that augments existing rules or
+roles without changing their contract.
 
 ## 0.3.4 — 2026-05-16
 

@@ -132,7 +132,7 @@ Adoption can be partial. The Reachability Gate alone catches the largest single 
 
 ## Versioning
 
-This package follows semver against the *content* — rules, role prompts, templates, and patterns — not the source repo. Breaking changes (rewordings that change adoption behaviour, removed rules, renamed role contracts) bump major. New rules or new roles bump minor. New templates, new brainstorm patterns, clarifications, and examples — anything that augments existing rules or roles without changing their contract — bump patch. Current version: see `CHANGELOG.md`.
+This rule-set follows semver against the *content* — rules, role prompts, templates, and patterns. Breaking changes (rewordings that change adoption behaviour, removed rules, renamed role contracts) bump major. New rules or new roles bump minor. New templates, new brainstorm patterns, clarifications, and examples — anything that augments existing rules or roles without changing their contract — bump patch. The current package version lives on the [Releases page](https://github.com/sawy3r/baton/releases); the historical evolution of the rules themselves is in `RULES-HISTORY.md`.
 
 ## License & contribution
 

@@ -141,7 +141,7 @@ These rules are deliberately minimal. Common adaptations:
 - **Different test framework** — swap "Playwright" / "Vitest" for your team's choice. The rule is about *integration-level testing*, not about a specific tool.
 - **Non-GitHub tracker** — replace "GitHub Issues" with Linear, Jira, etc. throughout. The rule is about *anchoring sessions to a durable tracker*, not about GitHub specifically.
 - **Monorepo vs polyrepo** — examples assume monorepo; rules apply equally to polyrepos with minor path adjustments.
-- **Adding rules** — add new files to `baton/` with the same shape (rule + why + how to apply + provenance) and update the README's rule table. Bump the package's CHANGELOG.
+- **Adding rules** — add new files to `baton/` with the same shape (rule + why + how to apply + provenance) and update the README's rule table. Cut a new GitHub release (the changelog is generated from commits).
 
 ## What to AVOID adapting
 
