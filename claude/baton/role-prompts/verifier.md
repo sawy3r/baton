@@ -94,7 +94,7 @@ turned out to be stale-binary misreads; the rule is "verifier owns the dev stack
 lifecycle".)
 
 **Pin Playwright to the worktree's recorded port; do not assume :3000.** When more than one
-release worktree is active on the host, each one's `pnpm --filter @firedau/apps-web dev` binds
+release worktree is active on the host, each one's `pnpm --filter @your-org/apps-web dev` binds
 to a different port (commonly `:3000`, `:3001`, `:3002`, ...). A verifier who runs Playwright
 with the default `PLAYWRIGHT_WEB_PORT=3000` may land on a sibling worktree's next-server,
 which is rendering a different branch's UI — every user-path assertion can then fail for

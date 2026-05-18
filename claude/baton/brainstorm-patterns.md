@@ -191,4 +191,4 @@ The patterns work the same way; only the tool affordance differs.
 
 ## Provenance
 
-Inspired by the brainstorming UI rhythm in the Claude superpowers plugin. The plugin's broader workflow proved a poor fit for one solo founder on a high-stakes release (May 2026, GetFired), but its decision-card surfacing was a genuinely good idea independent of the plugin scaffolding. The patterns here extract that idea as portable markdown and bind it to `AskUserQuestion` as the Claude Code-native implementation, without taking on any of the plugin's broader behaviour assumptions.
+Inspired by the brainstorming UI rhythm in the Claude superpowers plugin. The plugin's broader workflow proved a poor fit for one solo founder on a high-stakes release (May 2026, the source project), but its decision-card surfacing was a genuinely good idea independent of the plugin scaffolding. The patterns here extract that idea as portable markdown and bind it to `AskUserQuestion` as the Claude Code-native implementation, without taking on any of the plugin's broader behaviour assumptions.

@@ -96,5 +96,5 @@ REASON: Data plumbing prerequisite missing from spec — hecsBalance not present
 
 ## Reusability note
 
-This protocol is independent of the GetFired project. Any project using the `agent-watcher` script (or any orchestrator that watches for the same block format) can adopt it by including this file and patching their role prompts to emit the block. The block format is intentionally minimal — four fields, plain ASCII, HTML comment syntax so it renders invisibly in markdown. No external schema, no JSON, no YAML — just greppable text.
+This protocol is independent of the source project. Any project using the `agent-watcher` script (or any orchestrator that watches for the same block format) can adopt it by including this file and patching their role prompts to emit the block. The block format is intentionally minimal — four fields, plain ASCII, HTML comment syntax so it renders invisibly in markdown. No external schema, no JSON, no YAML — just greppable text.
 

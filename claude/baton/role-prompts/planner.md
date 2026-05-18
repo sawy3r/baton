@@ -82,8 +82,8 @@ Ask about:
 - **What user-reachable behaviour changes?** (not "we'll refactor the API" — "the user will see Y when they do X")
 - **What's currently broken or missing?** (the human's screenshots and "this isn't working" gestures live here)
 - **What's adjacent but explicitly out of scope?** (Rule 2 prevention — surface deferrals now, not later)
-- **Are there constraints from billing, auth, compliance, data sovereignty?** (especially the GetFired-specific ones: APP 3 minimisation, AU-region data, no AFSL advice language)
-- **Are there existing routes, components, or APIs this touches?** (look in `apps/web/`, `go/cmd/api/`, etc. — verify the user's mental model against the code)
+- **Are there constraints from billing, auth, compliance, data sovereignty?** (project-specific examples vary widely — privacy regulations, data-residency requirements, advisory-language restrictions, payment-processor source-of-truth rules, encrypted-at-rest mandates, etc.)
+- **Are there existing routes, components, or APIs this touches?** (verify the user's mental model against the actual code in their repo's relevant directories)
 
 Capture every meaningful statement to `intake.md` as you go. Do not wait until the end of the conversation; the human may step away, and conversation context will not survive.
 
@@ -145,7 +145,7 @@ A single message with:
 - List of slice ids with their one-sentence user outcomes.
 - Explicit handoff: "Open a fresh session and paste `role-prompts/implementer.md` to start with `<first-slice-id>`."
 
-## Working style notes for GetFired
+## Working style notes for the source project
 
 (These are project-specific and live here rather than in the rule docs because the rule-set is portable; project flavour goes in the role prompt.)
 
@@ -153,4 +153,4 @@ A single message with:
 - Plain English + jargon in parens (e.g. "Your Home (PPOR)"). No emojis. No em dashes. Australian English.
 - Multi-currency, advisor parity, and HECS handling are likely deferral candidates per the v0.5.0 captures — check existing project memory before scoping them in.
 - Workspace UX must be self-evident. If a slice requires the user to read documentation to operate, the slice is wrong.
-- Memory entries under `~/.claude/projects/-home-brad-projects-fired/memory/` carry historical decisions. Read the index before scoping anything that touches existing surfaces.
+- Memory entries under `~/.claude/projects/-<encoded-cwd>/memory/` carry historical decisions. Read the index before scoping anything that touches existing surfaces.

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://getfired.au/schemas/baton/slice-status-v1.json",
+  "$schema": "https://example.com/schemas/baton/slice-status-v1.json",
   "slice_id": "<slice-id>",
   "release": "<release-name>",
   "state": "planned",

@@ -57,4 +57,4 @@ For each hit, ask: is this tracked, why, and was the user told?
 
 ## Provenance
 
-GetFired v0.5.0 audit (May 2026) found 6 silent deferrals in `packages/fire-validation/src/schemas/` header comments. User's reaction when surfaced: "I'm not sure why these were deferred, I don't remember making that call." The pattern was rationalisation, not decision. The fix (this rule) makes the rationalisation impossible by demanding the three conditions up front.
+the source project v0.5.0 audit (May 2026) found 6 silent deferrals in `packages/fire-validation/src/schemas/` header comments. User's reaction when surfaced: "I'm not sure why these were deferred, I don't remember making that call." The pattern was rationalisation, not decision. The fix (this rule) makes the rationalisation impossible by demanding the three conditions up front.

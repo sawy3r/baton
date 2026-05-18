@@ -91,7 +91,7 @@ The harness is intentionally minimal: four artefact files per slice (plus the re
 
 ## Provenance
 
-These rules emerged from a v0.5.0 release audit on the GetFired financial planning monorepo (May 2026). The audit traced ~45 punch-list items across multiple "completed" plans where primitives shipped as dark code, schemas were silently deferred, and substantial analysis lived only in conversation. The rules are deliberately drafted as the **minimal intervention** that would have prevented those specific failures — not as a complete engineering methodology.
+These rules emerged from a v0.5.0 release audit on the a single-developer SaaS monorepo (May 2026). The audit traced ~45 punch-list items across multiple "completed" plans where primitives shipped as dark code, schemas were silently deferred, and substantial analysis lived only in conversation. The rules are deliberately drafted as the **minimal intervention** that would have prevented those specific failures — not as a complete engineering methodology.
 
 The full provenance and case study lives in `docs/superpowers/captures/2026-05-13-v0.5.0-audit-handoff.md` in the source monorepo. That capture is itself an artefact of Rule 3 (Capture Discipline) — written specifically because the analysis was about to be lost to a `/clear`.
 
@@ -100,13 +100,13 @@ The full provenance and case study lives in `docs/superpowers/captures/2026-05-1
 - **No plugin dependencies.** This package is plain markdown plus one optional shell script. It does not require Claude superpowers plugin, any specific Claude Code plugin, or any external tool beyond what your team already uses (git, GitHub or equivalent issue tracker, your test framework). The role prompts and brainstorm patterns bind to Claude Code's native `AskUserQuestion` as an implementation note; adopters on other tools render the same patterns inline.
 - **Tool-agnostic.** Rules apply equally to Claude Code, Cursor, Copilot CLI, Aider, Gemini CLI, and human-only teams.
 - **Path conventions are illustrative.** Examples use `docs/captures/`, `docs/plans/`, `docs/baton/` because those are concise and conventional. Adapt to your project's existing structure — the rules apply whether you keep captures in `docs/captures/`, `docs/decisions/`, `notes/sessions/`, or any other durable location. What matters is that the location is durable, version-controlled, and discoverable; the name is not load-bearing.
-- **Provenance citations are historical.** When rule docs cite a specific GetFired path like `docs/superpowers/captures/2026-05-13-...`, that is a citation to the source monorepo's case study, not a prescriptive path for adopters.
+- **Provenance citations are historical.** When rule docs cite a specific the source project path like `docs/superpowers/captures/2026-05-13-...`, that is a citation to the source monorepo's case study, not a prescriptive path for adopters.
 
 ## Complementary, not a replacement
 
 These rules are **baseline engineering rigour**, not a full methodology. They are designed to coexist with richer frameworks (Claude superpowers plugin, your team's existing process, formal SDLC) — not replace them.
 
-A specific lesson learned at GetFired (the source case study): introducing a sophisticated agent methodology (in this case the Claude superpowers plugin) added valuable capabilities — brainstorming, plan-writing, code-review skills — but loosened baseline rigour around reachability, capture, and decision-tracking. The audit that produced these rules found that the loosening was the larger contributor to project churn than any individual rule violation.
+A specific lesson learned at the source project (the source case study): introducing a sophisticated agent methodology (in this case the Claude superpowers plugin) added valuable capabilities — brainstorming, plan-writing, code-review skills — but loosened baseline rigour around reachability, capture, and decision-tracking. The audit that produced these rules found that the loosening was the larger contributor to project churn than any individual rule violation.
 
 The intent of Baton is to restore that baseline rigour as a **floor that survives plugin churn, methodology evolution, and team rotation**. If your team uses a sophisticated agent methodology, run this package underneath it. If your team prefers minimal tooling, this is enough on its own.
 

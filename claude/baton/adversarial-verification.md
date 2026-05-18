@@ -127,6 +127,6 @@ Rule 6 and Rule 7 are intentionally a pair. Rule 6 alone is self-attestation in 
 
 ## Provenance
 
-This rule was drafted in response to a Perplexity-assisted analysis of the GetFired v0.5.0 release cycle (May 2026), where Rule 6 (Proof Bundle) had been introduced two days earlier and was still insufficient on its own. The analysis identified that the proof bundle was being written by the same reasoning thread that did the implementation, preserving the failure mode in a more structured shape.
+This rule was drafted in response to a Perplexity-assisted analysis of the source v0.5.0 release cycle (May 2026), where Rule 6 (Proof Bundle) had been introduced two days earlier and was still insufficient on its own. The analysis identified that the proof bundle was being written by the same reasoning thread that did the implementation, preserving the failure mode in a more structured shape.
 
 The fix — fresh-context verification with artefact-only inputs — was the single recommendation that survived multiple framings of the problem. It is the cheapest intervention with the largest effect: no new tools, no new infrastructure, just a discipline that the certifier must not share a context window with the implementer.

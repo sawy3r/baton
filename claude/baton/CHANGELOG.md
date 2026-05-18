@@ -189,7 +189,7 @@ The pair is designed as a producer-consumer loop. Rule 6 produces the artefact; 
 
 ### Provenance
 
-Rule 7 was drafted in response to a Perplexity-assisted analysis of the GetFired v0.5.0 release cycle, conducted two days after Rule 6 shipped in 0.2.0. The analysis identified that proof bundles were being written by the same reasoning thread that did the implementation — preserving the overclaiming failure mode in a more structured shape. The fix that survived multiple framings of the problem was always the same: the certifier must not share a context window with the implementer. Rule 7 codifies that constraint as a hard gate.
+Rule 7 was drafted in response to a Perplexity-assisted analysis of the source v0.5.0 release cycle, conducted two days after Rule 6 shipped in 0.2.0. The analysis identified that proof bundles were being written by the same reasoning thread that did the implementation — preserving the overclaiming failure mode in a more structured shape. The fix that survived multiple framings of the problem was always the same: the certifier must not share a context window with the implementer. Rule 7 codifies that constraint as a hard gate.
 
 ---
 
@@ -203,7 +203,7 @@ The five rules in 0.1.0 are backward-looking capture rules: they ensure knowledg
 
 Rule 6 closes this gap by requiring machine-verifiable evidence — drawn from live repo state, not from context — to be written to a structured file on disk before any task can be marked complete. It also introduces a mandatory continuation handshake at session start that regenerates proof state from repo reality rather than prior context.
 
-Motivated by the v0.5.0 release cycle at GetFired (May 2026), where multiple sessions ended with orchestrator completion claims followed by stocktakes revealing thin delivery — consistently, across both Claude Code and Codex.
+Motivated by the v0.5.0 release cycle at the source project (May 2026), where multiple sessions ended with orchestrator completion claims followed by stocktakes revealing thin delivery — consistently, across both Claude Code and Codex.
 
 ### Changes
 
@@ -221,7 +221,7 @@ Motivated by the v0.5.0 release cycle at GetFired (May 2026), where multiple ses
 
 ## 0.1.0 — 2026-05-13
 
-Initial release. Five rules, drafted in response to the GetFired v0.5.0 release audit.
+Initial release. Five rules, drafted in response to the source v0.5.0 release audit.
 
 ### Rules included
 
@@ -239,4 +239,4 @@ Initial release. Five rules, drafted in response to the GetFired v0.5.0 release 
 
 ### Provenance
 
-All five rules are derived from specific failure modes observed during the GetFired v0.5.0 audit. Full case study: `docs/superpowers/captures/2026-05-13-v0.5.0-audit-handoff.md` in the source monorepo. Each rule's `## Provenance` section cites the specific incident that motivated it.
+All five rules are derived from specific failure modes observed during the source v0.5.0 audit. Full case study: `docs/superpowers/captures/2026-05-13-v0.5.0-audit-handoff.md` in the source monorepo. Each rule's `## Provenance` section cites the specific incident that motivated it.

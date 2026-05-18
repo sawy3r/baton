@@ -44,7 +44,7 @@ description: The discovery output document. Captures what the human described, w
 
 ## Constraints and non-negotiables
 
-<Domain constraints surfaced during the conversation. Examples for GetFired: APP 3 minimisation, AU-region data residency, no AFSL advice language, encrypted-at-rest persistence per ADR-0006/0012, Stripe pricing as source of truth.>
+<Domain constraints surfaced during the conversation. Examples (replace with your project's): privacy-law data minimisation, regional data residency, regulatory advice-language restrictions, encrypted-at-rest persistence per architecture decision records, third-party billing source-of-truth rules.>
 
 - ...
 

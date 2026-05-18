@@ -127,6 +127,6 @@ If a phase is too large to cover in a single proof bundle, decompose it into sli
 
 ## Provenance
 
-This rule emerged directly from the v0.5.0 release cycle at GetFired (May 2026), where multiple consecutive sessions across Claude Code and Codex ended with orchestrator claims of high completion followed by stocktakes revealing thin delivery. The pattern was consistent: the orchestrator was a reliable narrator of plan state and intent, and an unreliable narrator of repo state. The five existing rules — all backward-looking capture rules — were followed correctly and still did not prevent the overclaiming, because the failure mode is verification, not capture.
+This rule emerged directly from the v0.5.0 release cycle at the source project (May 2026), where multiple consecutive sessions across Claude Code and Codex ended with orchestrator claims of high completion followed by stocktakes revealing thin delivery. The pattern was consistent: the orchestrator was a reliable narrator of plan state and intent, and an unreliable narrator of repo state. The five existing rules — all backward-looking capture rules — were followed correctly and still did not prevent the overclaiming, because the failure mode is verification, not capture.
 
 The rule is the minimal intervention: require the agent to read repo state and write the output to disk before making a completion claim. No new tooling, no new infrastructure — just a structured file that cannot be written without running the commands.

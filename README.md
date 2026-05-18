@@ -12,30 +12,38 @@
 
 ## What this is
 
-This is a portable, project-agnostic snapshot of the baton harness
-extracted from a source monorepo. It installs the four release-mode slash
+A portable, project-agnostic harness. Installs the four release-mode slash
 commands, the rule docs, the role prompts, the release-mode templates, and
-the deterministic `release-verify.sh` first-pass script into `~/.claude/` on
-the target machine, so the harness is available across every project on that
-machine without per-repo vendoring.
+the deterministic `release-verify.sh` first-pass script into `~/.claude/`
+on the target machine, so the harness is available across every project on
+that machine without per-repo vendoring.
 
 ## Quick install
 
 ```bash
-tar xzf baton-bundle.tar.gz
-cd baton-bundle
+git clone https://github.com/sawy3r/baton.git ~/projects/baton
+cd ~/projects/baton
 ./install.sh
 ```
 
-Set `CLAUDE_HOME=/custom/path` before running `install.sh` to install under
-a non-default location.
+Or, if you'd prefer to preview first:
+
+```bash
+./install.sh --dry-run   # show what would be installed without copying
+./install.sh --help      # full options
+```
+
+Set `CLAUDE_HOME=/custom/path` before running `install.sh` to install
+under a non-default location (default: `$HOME/.claude`).
+
+Updating later is a `git pull && ./install.sh` from the same directory.
 
 ## What lands where
 
-| Source in bundle                       | Installed to                                  | Purpose                                              |
+| Source in repo                         | Installed to                                  | Purpose                                              |
 | -------------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
 | `claude/commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
-| `claude/baton/`             | `~/.claude/baton/`                 | Rule docs, role prompts, release-mode templates     |
+| `claude/baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, release-mode templates     |
 | `bin/release-verify.sh`                | `~/.claude/bin/release-verify.sh`             | Deterministic first-pass verifier, invoked by abs path |
 
 Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment
@@ -71,57 +79,30 @@ Each repo on this machine that wants to use Release Mode needs:
 That's it. `/plan-release <YYYY-MM-DD-theme>` from a fresh session
 bootstraps the release folder from the templates.
 
-## Genericisation pass — what was changed from the monorepo source
+## Caveats and known limitations
 
-This bundle is a sanitised export. Compared to the original commands and
-role prompts in the source monorepo, the following project-specific
-references have been rewritten:
+- **Per-project memory** (optional): if your tool maintains per-project
+  persistent memory (Claude Code stores it under
+  `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md`), the planner reads
+  the index at session start. On a clean install on a new machine no such
+  store exists; the step skips silently.
+- **Claude-Code-shaped only in v0.1.0**: the four slash commands and the
+  install layout target Claude Code's directives ecosystem
+  (`~/.claude/commands/`, `~/.claude/baton/`). Codex, Gemini CLI, OpenCode,
+  Cursor, and Aider are out of scope for v0.1.0 but in scope for v0.2.0 —
+  see Roadmap below.
+- **No Claude Code plugin install yet**: this is an `install.sh`
+  distribution, not a plugin. The eventual plugin layout (with
+  `.claude-plugin/plugin.json` and `/plugin marketplace add sawy3r/baton`)
+  is sketched in `claude/baton/INSTALL.md`'s Appendix and is targeted for
+  v0.3.0.
 
-- `apps/docs/content/docs/baton/...` → `$HOME/.claude/baton/...`
-- `apps/docs/content/docs/release/...` → `docs/release/...`
-- `$HOME/projects/fired` → `<REPO_ROOT>`
-- `$HOME/projects/fired-worktrees/` → `$HOME/projects/<REPO_BASENAME>-worktrees/`
-- `scripts/release-verify.sh` → `$HOME/.claude/bin/release-verify.sh`
-- `pnpm run start:dev` / port `8081` / port `3000` references in the verifier
-  dev-stack hint → generic "whatever invocation the project documents,
-  confirm health endpoints".
-- Per-project memory references in the planner (`~/.claude/projects/-home-brad-projects-fired/memory/MEMORY.md`)
-  → generic "if a per-project memory store exists at the encoded-cwd path".
+## Roadmap — cross-tool adapters (v0.2.0)
 
-Historical-incident anchors that mentioned specific slice ids (e.g.
-"capital-allocation S03 verifier rounds 2 and 4") have been rephrased as
-generic "historical pattern" callouts to keep the lesson without leaking
-context that doesn't exist on the target machine.
-
-The rule docs themselves (`reachability-gate.md`, `no-silent-deferrals.md`,
-etc.) were left as-is — they're tool- and project-agnostic by design.
-
-## Open caveats on the target machine
-
-- **`release-verify.sh` dark-code filter**: the script's hardcoded skip list
-  filters `scripts/release-verify.sh` from its own dark-code scan. After
-  install, the script lives at `~/.claude/bin/release-verify.sh`, which can
-  never appear in a project's `git diff`. The filter is therefore harmless
-  but inert.
-- **Per-project memory**: the planner's Step 3 reads from
-  `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` only if it exists.
-  On a clean install on a new machine it will not exist; the step skips.
-- **No GitHub-marketplace install yet**: this is a tarball, not a Claude Code
-  plugin. The eventual plugin layout (with `.claude-plugin/plugin.json`) is
-  documented in the source monorepo's
-  `~/.claude/baton/INSTALL.md` Appendix.
-- **Claude-Code-shaped only**: the four slash commands and the install layout
-  target Claude Code's directives ecosystem (`~/.claude/commands/`,
-  `~/.claude/baton/`). Codex, Gemini CLI, OpenCode, Cursor, and
-  Aider are explicitly out of scope for *this* bundle but in scope for the
-  standalone repo's v0.2.0 — see "Roadmap" below.
-
-## Roadmap — cross-tool adapters (planned for standalone repo v0.2.0)
-
-The current bundle is Claude-Code-shaped throughout. The standalone repo
-will refactor into a two-layer architecture so the same content drives
-slash-commands across Claude Code, OpenAI Codex CLI, Gemini CLI, and
-OpenCode (SST). Target tool table:
+v0.1.0 is Claude-Code-shaped throughout. v0.2.0 refactors into a
+two-layer architecture so the same content drives slash-commands across
+Claude Code, OpenAI Codex CLI, Gemini CLI, and OpenCode (SST). Target
+tool table:
 
 | Tool                | Rules file              | User-level commands dir       | Format          |
 |---------------------|-------------------------|-------------------------------|-----------------|
@@ -142,10 +123,9 @@ OpenCode (SST). Target tool table:
 └── AGENTS-fragment.md                                 # Rule 1-5 fragment to splice
 ```
 
-The role prompts and rule docs are already tool-agnostic prose — the
-genericisation pass for this bundle did that work. Layer 1 is essentially
-the current `claude/baton/` directory plus `bin/`, moved to a
-tool-neutral home.
+The role prompts and rule docs are already tool-agnostic prose. Layer 1
+is essentially the current `claude/baton/` directory plus `bin/`, moved
+to a tool-neutral home.
 
 **Layer 2 — per-tool adapters (thin shims):**
 
@@ -184,8 +164,8 @@ Detection probes:
 
 ### Migration from v0.1.0 (this bundle) to v0.2.0
 
-Anyone who installed v0.1.0 (this Claude-Code-only bundle) onto a machine
-will need to either:
+Anyone who installed v0.1.0 (Claude-Code-only) onto a machine will need
+to either:
 (a) `rm -rf ~/.claude/baton ~/.claude/bin ~/.claude/commands/{plan,implement,verify,merge}-*` then re-run v0.2.0's `install.sh`, OR
 (b) Just re-run v0.2.0's `install.sh` — it should be idempotent enough to
 overwrite the Claude-Code shims in place and additionally drop Layer 1 at
@@ -197,7 +177,7 @@ v0.2.0 — only the file layout, install location, and per-tool adapter
 formats change. v0.1.0 users keep working; they just don't get the cross-
 tool support until they re-install.
 
-### Out of scope for the standalone repo's v0.2.0
+### Out of scope for v0.2.0
 
 - Claude Code *plugin* packaging (`.claude-plugin/plugin.json` + `/plugin install`). That's a third layer — a plugin manifest that wraps Layer 1 + the Claude Code adapter for the marketplace install path. Treat as v0.3.0.
 - IDE-only integrations (VS Code Copilot, JetBrains AI Assistant) that don't expose a user-level slash-command directory.

@@ -24,7 +24,7 @@ In order of permanence (most permanent → most ephemeral):
 
 ## Why
 
-The single biggest source of project churn in AI-assisted work is excellent analysis that lives only in conversation and gets lost at session boundaries. Examples observed at GetFired:
+The single biggest source of project churn in AI-assisted work is excellent analysis that lives only in conversation and gets lost at session boundaries. Examples observed at the source project:
 
 - A 2000-line subagent audit returns its findings to chat. User reads, makes decisions. `/clear` happens. Audit is gone. Future session re-runs the same audit.
 - Design decisions captured in chat but not in any commit, issue, or doc. Three weeks later, someone re-litigates the decision.
@@ -75,4 +75,4 @@ Any subagent dispatch that produces a substantial findings doc must save its out
 
 ## Provenance
 
-The v0.5.0 GetFired audit produced two substantial subagent findings docs (workspace IA dark-code audit + validation field-coverage parity audit) that initially lived only in conversation context. Recognition of this risk drove the creation of `docs/superpowers/captures/2026-05-13-v0.5.0-audit-handoff.md` with the full audit reports preserved as appendices. The user's framing of the problem: "stuff only living within [conversation context]... ephemeral data... we lose too much, too often, and this is ultimately one of the causes of the churn I have been facing and re-work." This rule is the structural fix.
+The v0.5.0 the source project audit produced two substantial subagent findings docs (workspace IA dark-code audit + validation field-coverage parity audit) that initially lived only in conversation context. Recognition of this risk drove the creation of `docs/superpowers/captures/2026-05-13-v0.5.0-audit-handoff.md` with the full audit reports preserved as appendices. The user's framing of the problem: "stuff only living within [conversation context]... ephemeral data... we lose too much, too often, and this is ultimately one of the causes of the churn I have been facing and re-work." This rule is the structural fix.

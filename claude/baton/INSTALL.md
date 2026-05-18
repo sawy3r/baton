@@ -10,7 +10,7 @@ Adopting Baton in a new project is mostly a copy-paste exercise. The rules thems
 ## Quickest path (5 minutes)
 
 1. **Copy `AGENTS-fragment.md` into your project's agent-instructions file.** This is `AGENTS.md` at the repo root for most projects, or `CLAUDE.md` / `GEMINI.md` / `.cursorrules` depending on your stack.
-2. **Customise the project-specific examples in the fragment** — replace GetFired-specific paths and team names with your own.
+2. **Customise the project-specific examples in the fragment** — replace project-specific paths and team names with your own.
 3. **Commit.**
 
 That's it for Rules 1–5. The rules are now in scope for every agent session in that repo. Reference rule details by linking to this package or copying it whole into your `/docs`.
@@ -253,13 +253,13 @@ Changes to `skills/`, `bin/`, or `docs/` are picked up on next session start.
 
 1. `mkdir ~/projects/baton && cd ~/projects/baton && git init`.
 2. Create `.claude-plugin/plugin.json` with `name: "baton"`, `version: "0.1.0"`.
-3. Move `.claude/commands/*.md` (from the fired repo) → `skills/*/SKILL.md` (rename + restructure).
+3. Move `.claude/commands/*.md` (from the source repo) → `skills/*/SKILL.md` (rename + restructure).
 4. Move `apps/docs/content/docs/baton/{role-prompts,release-mode-template}/*` → `docs/{role-prompts,templates}/`.
 5. Rewrite path references in skills: `apps/docs/content/docs/baton/role-prompts/X.md` → `${CLAUDE_SKILL_DIR}/../../docs/role-prompts/X.md`.
 6. Move `scripts/release-verify.sh` → `bin/release-verify.sh`.
 7. Drop the Install + Lifecycle + Develop sections above into `README.md`.
 8. Push to `github.com/sawy3r/baton`.
-9. In the fired repo: delete the carved-out paths and `/plugin install` from the new repo. Update memory entries that reference old paths.
+9. In the source repo: delete the carved-out paths and `/plugin install` from the new repo. Update memory entries that reference old paths.
 
 ### Naming trade-off to decide at extraction time
 
