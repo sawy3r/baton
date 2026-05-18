@@ -41,8 +41,39 @@ Silent deferrals show up most often where types or contracts publish a promise t
 - An engine input type comment says "computed via X" but no calc-X function exists.
 - A type union enumerates cases the matching switch doesn't handle.
 - A public function signature accepts a parameter that's silently ignored.
+- **A type signature claims a field is non-optional, but the runtime returns `undefined` during normal lifecycle states** (initial render, loading window, error path). Every consumer that trusts the type is a landmine waiting for the wrong render-order to fire.
 
 The reachability gate (Rule 1) catches the UI version of this; this rule catches the *contract-published* version. Both are forms of dark code.
+
+## Rule of three — escalating from band-aids to contract fixes
+
+When the schema-cousin pattern fires at runtime (page 500s, test 500s, `Cannot read properties of undefined`), it is tempting to fix the immediate consumer with an optional-chain or a guard and ship. That fix is a band-aid — the *next* consumer of the same lying contract is the next bug.
+
+**Decision discipline**: count the band-aids on the same root contract.
+
+- **One band-aid**: legitimate fix. The other consumers may genuinely tolerate the absence; case-specific guard is appropriate.
+- **Two band-aids**: coincidence. Keep your eye on it; the pattern may be real or may not.
+- **Three band-aids on the same root contract**: stop. The contract itself is the bug. Tighten the type (or split into a discriminated union), let the type-checker surface every consumer in one pass, and fix them as a batch with a single consistent pattern.
+
+The cost of whack-a-mole is open-ended — you only find the consumers your tests happen to traverse. The cost of the type-tightening pass is bounded by the typecheck's output count. Above ~20 consumer sites, the contract fix deserves its own slice; below that, fold into the slice that surfaced the third instance.
+
+### Why this lives under Rule 2
+
+Each band-aid leaves the underlying contract lie in place. The remaining consumer sites are *future bugs nobody has tracked*. That is the silent-deferral pattern in a slightly different shape: a known incorrectness, not surfaced, not tracked, not acknowledged. The fix isn't another band-aid; it's writing the why + tracking + acknowledgement (via the typecheck pass) or doing the contract fix that obviates the question.
+
+### Concrete case
+
+During the source project's v0.5.0 push, a Playwright spec slice (S06-cashflow-view-playwright) failed premium walks with `Cannot read properties of undefined (reading 'years')`. The contract: `VectorProjectionResult.projection: ProjectionVectors` (non-optional). The runtime: `projection` was `undefined` during initial render before the engine settled.
+
+Three consumer fixes landed in sequence — `CashflowDeficitAlerts.tsx`, `ResultsDisplay.tsx:176`, `ResultsDisplay.tsx:983` — each catching the same root cause from a different angle. After the third, the implementer surfaced: *"each fix exposes the next one in a cascade. The previous non-optional contract was the lie that hid the crash."* That was the rule-of-three signal. The decision: stop whacking, flip the type to `projection?: ProjectionVectors`, let TypeScript surface every consumer, fix them in one pass.
+
+The band-aid tests written during the whack-a-mole phase stayed — they became real regression assertions against the new tightened contract.
+
+### Guardrail on the escalation
+
+The type-tightening pass can cascade further than expected. **Halt at >20 consumer sites surfaced by the typecheck.** That's a sign the contract change has wider blast radius than the surfacing slice should carry alone. Either carve a sibling slice for the contract fix and resume the original slice once it lands, or split the consumer fixes into batched commits with explicit acknowledgement of the broader scope.
+
+Do not introduce default-value fallbacks (`x ?? defaultX`) at consumer sites to silence the symptom. That re-introduces the silent-failure mode in different clothing. Honest patterns: early return for the absent state, optional chaining for fields that gracefully render absence, or a narrowing guard hoisted to the integration point so leaf components stay strict.
 
 ## The UI-label cousin
 
