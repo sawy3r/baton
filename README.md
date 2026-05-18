@@ -5,18 +5,21 @@
 **The baton is the proof bundle.** Three roles, three sealed sessions, one file on disk that crosses between them.
 
 ```
-                       artefacts on disk
-                              │
-   ┌──────────┐    spec.md    ▼   ┌────────────┐    proof.md    │   ┌──────────┐
-   │ planner  │ ─────────────────►│ implementer│ ──────────────►│──►│ verifier │
-   └──────────┘                   └────────────┘                │   └──────────┘
-        ▲                                                       │         │
-        │              status.json (state machine)              │         │
-        └───────────────────────────────────────────────────────┴─────────┘
-                       PASS / FAIL / BLOCKED
+                                  fresh-context boundary
+                                        (Rule 7)
+                                             ║
+   ┌──────────┐   spec.md   ┌────────────┐   ║   proof.md   ┌──────────┐
+   │ planner  │ ───────────►│ implementer│ ──╫─────────────►│ verifier │
+   └──────────┘             └────────────┘   ║              └──────────┘
+        ▲                                    ║                    │
+        │             status.json            ║                    │
+        └────────────────────────────────────╨────────────────────┘
+                            PASS / FAIL / BLOCKED
 ```
 
-Each role runs in its own context window. The planner never implements; the implementer never self-certifies; the verifier never sees the implementer's transcript. Adversarial verification is the load-bearing piece — the verifier session has no prior context from the implementer, only the artefacts on disk, and can return `PASS` / `FAIL` / `BLOCKED`.
+The double bar between implementer and verifier is the load-bearing piece: when the verifier session starts, it is a **brand-new context window** with no inherited transcript, framing, or reasoning from the implementer. It reads only `spec.md`, `proof.md`, and `status.json` from disk, then returns `PASS` / `FAIL` / `BLOCKED`. Without that separation, baton's Rule 7 collapses into "the same LLM marking its own homework" — which is precisely the failure mode it exists to prevent.
+
+The other arrows are read/write traffic through artefacts on disk (`spec.md`, `proof.md`, `status.json`). The status.json loop back to planner is the state machine that tracks each slice's lifecycle (`planned` → `in_progress` → `implemented` → `verified` → `shipped`).
 
 **License:** [MIT](LICENSE) — permissive, attribution-only. Use it in any project, commercial or otherwise.
 
