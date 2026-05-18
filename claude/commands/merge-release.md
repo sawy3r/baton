@@ -22,13 +22,16 @@ This command runs in the **primary worktree** (`<REPO_ROOT>`), not the release w
 ## Step 1 — Read release state
 
 1. Read `docs/release/$1/index.md`. Capture `worktree_path` and `worktree_branch` from frontmatter. If missing, BLOCK with: "Release `$1` has no recorded worktree. Nothing to merge — either no implementation happened, or this release was abandoned."
-2. Enumerate every slice folder under `docs/release/$1/`. For each, read `status.json` and capture `state`.
-3. Build a state table. Every slice must be in one of these terminal-or-acceptable states:
+2. **Read `status.json` for every slice from the worktree branch, not from the primary checkout.** Per-slice `state` transitions (`verified`, `implemented`, `failed_verification`) are committed by `/verify-slice` and `/implement-slice` onto `release-wt/$1`. Until this merge happens, the integration-branch copies of `status.json` are stale and will false-BLOCK an otherwise-mergeable release. Authoritative source = head of `<worktree_branch>`. Either:
+   - `cd <worktree_path>` and read each `docs/release/$1/<slice>/status.json` from there, **or**
+   - From the primary worktree, `git show <worktree_branch>:docs/release/$1/<slice>/status.json` for each slice.
+3. Enumerate every slice folder under `docs/release/$1/` (folder list itself can come from either branch — the folder set is generally stable). For each, capture `state` from the worktree-branch copy.
+4. Build a state table. Every slice must be in one of these terminal-or-acceptable states:
    - `verified` — OK to merge
    - `deferred` — explicitly excluded from this release; OK
    - `shipped` — already merged + deployed via a prior pathway; OK (rare)
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
-4. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed.
+5. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed. **Before returning BLOCKED, double-check you read from the worktree branch — the most common false-block is reading stale integration-branch status files.**
 
 ## Step 2 — Confirm scope with the human
 
