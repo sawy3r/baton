@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Editor swap / backup files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Test-install artifacts
+/tmp-install/
