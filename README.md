@@ -6,7 +6,7 @@
 
 **Status:** v0.1.0 — Claude Code only. Cross-tool adapters for OpenAI Codex CLI, Gemini CLI, and OpenCode are planned for v0.2.0 (see Roadmap section below).
 
-**License:** TBD — not yet licensed. Treat as "all rights reserved by default" until a `LICENSE` file is added. Issues / PRs / discussion welcome in the meantime.
+**License:** [MIT](LICENSE) — permissive, attribution-only. Use it in any project, commercial or otherwise.
 
 ---
 
