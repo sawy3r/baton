@@ -44,6 +44,33 @@ Silent deferrals show up most often where types or contracts publish a promise t
 
 The reachability gate (Rule 1) catches the UI version of this; this rule catches the *contract-published* version. Both are forms of dark code.
 
+## The UI-label cousin
+
+The rule originated against `// deferred` code comments. The same three-component requirement applies to **user-visible labels** that announce future work:
+
+- Dropdown rows labelled `(coming soon)` or `(deferred)` shipping behind a disabled state.
+- "Available in a future release" empty-state messages.
+- Tooltip hints saying "Feature X — not yet supported."
+- Inline footer text on form sections: "Note — Y will be added later."
+
+Each of these is a public promise that something specific is *not* shipped. Each one requires the same three components — why + tracking + acknowledgement — or it falls back to the same failure mode: a rationalisation dressed as a decision, surfaced only on audit.
+
+### Concrete case
+
+A surplus-allocation editor shipped four rule-kind rows in a target dropdown labelled `(coming soon)` / `(deferred - future portfolio release)`. The reachability-gate verifier failed the slice because the rows existed in the UI without slice-local tracking — no `proof.md § "Not delivered"` entry, no cross-reference to the canonical Rule 2 surfacing elsewhere in the project.
+
+Remediation: `proof.md` was extended with a section enumerating each disabled row, cross-referenced to the existing canonical deferral docs. The labels were honest; the slice's own surfacing of them was missing.
+
+### How to apply to UI labels
+
+Same triple, same discipline:
+
+1. **Why** — concrete reason the row / message / tooltip ships in its disabled / future-promise form.
+2. **Tracking** — link to the slice, issue, or audit doc that owns the deferred work.
+3. **Acknowledgement** — surfaced in the slice's `proof.md § "Not delivered"` for the slice that ships the label.
+
+If the user-facing label promises work that isn't tracked, the label is dishonest in the same way a `// deferred` comment with no tracking is dishonest. Same remediation: track it or remove the promise.
+
 ## Symptoms to grep for
 
 After any sprint that touches schemas, contracts, or public APIs:
