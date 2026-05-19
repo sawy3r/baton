@@ -14,21 +14,53 @@ You are now operating in the **Release Integrator role** for release `$1`. This 
 
 This command runs in the **primary worktree** (`<REPO_ROOT>`), not the release worktree. Reasoning: the merge target is the integration branch, which the primary worktree owns; the release worktree owns the source branch.
 
-1. Confirm cwd is the primary worktree (`git rev-parse --show-toplevel` returns `<REPO_ROOT>` or equivalent).
-2. Confirm current branch is the release's integration branch (parsed from `docs/release/$1/index.md` "Release summary" → `Target version / integration branch`). If on a different branch, BLOCK with: "/merge-release must run on the integration branch `<integration>`. Switch to it and re-run."
-3. Confirm working tree is clean (`git status --short` returns nothing). If not, BLOCK with: "Working tree has uncommitted changes. Commit, stash, or revert before merging — see memory `feedback_parallel_agent_commit_sweep` and `feedback_git_add_sweeps_prestaged` for why a clean tree matters on shared release branches."
-4. `git fetch origin` and confirm the integration branch is at or ahead of `origin/<integration>`. If behind, BLOCK with: "Local `<integration>` is behind origin. Run `git pull --ff-only origin <integration>` and re-run."
+1. Confirm cwd is the primary worktree (`git rev-parse --show-toplevel` returns `<REPO_ROOT>` or equivalent — i.e. the path matches `git worktree list --porcelain | awk '/^worktree/ {print $2; exit}'`, which is git's authoritative primary).
+2. Confirm working tree is clean (`git status --short` returns nothing). If not, BLOCK with: "Working tree has uncommitted changes. Commit, stash, or revert before merging — see memory `feedback_parallel_agent_commit_sweep` and `feedback_git_add_sweeps_prestaged` for why a clean tree matters on shared release branches."
+
+## Step 0.5 — Discover the release worktree from git, not docs
+
+Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktree_branch>` and `<worktree_path>` by pattern-matching the release name against git's worktree registry. The defined format is **`release-wt/$1`** for the branch and a sibling worktree path checked out on that branch.
+
+1. Run `git worktree list --porcelain` and scan for a stanza whose `branch` line ends in `refs/heads/release-wt/$1`. Capture its `worktree <path>` line as `<worktree_path>` and `release-wt/$1` as `<worktree_branch>`.
+2. If no matching stanza, fall back to `docs/release/$1/index.md` frontmatter (`worktree_path` + `worktree_branch`). Treat any mismatch between the two sources as docs drift — git wins; record the divergence in your Step 4 board update.
+3. If neither source produces a result, BLOCK with: "Release `$1` has no `release-wt/$1` worktree registered with git and no recorded worktree in `docs/release/$1/index.md`. Nothing to merge — either no implementation happened, or this release was abandoned."
+4. Confirm current branch is the release's integration branch. The integration branch is parsed from `docs/release/$1/index.md` "Release summary" → `Target version / integration branch`. If on a different branch, BLOCK with: "/merge-release must run on the integration branch `<integration>`. Switch to it and re-run."
+5. `git fetch origin` and confirm the integration branch is at or ahead of `origin/<integration>`. If behind, BLOCK with: "Local `<integration>` is behind origin. Run `git pull --ff-only origin <integration>` and re-run."
 
 ## Step 1 — Read release state
 
-1. Read `docs/release/$1/index.md`. Capture `worktree_path` and `worktree_branch` from frontmatter. If missing, BLOCK with: "Release `$1` has no recorded worktree. Nothing to merge — either no implementation happened, or this release was abandoned."
-2. Enumerate every slice folder under `docs/release/$1/`. For each, read `status.json` and capture `state`.
+1. **Read `status.json` for every slice from the worktree branch, not from the primary checkout.** Per-slice `state` transitions (`verified`, `implemented`, `failed_verification`) are committed by `/verify-slice` and `/implement-slice` onto `release-wt/$1`. Until this merge happens, the integration-branch copies of `status.json` are stale and will false-BLOCK an otherwise-mergeable release. Authoritative source = head of `<worktree_branch>`. Either:
+   - `cd <worktree_path>` and read each `docs/release/$1/<slice>/status.json` from there, **or**
+   - From the primary worktree, `git show <worktree_branch>:docs/release/$1/<slice>/status.json` for each slice.
+2. Enumerate every slice folder by listing `<worktree_branch>`'s tree (`git ls-tree -d --name-only <worktree_branch>:docs/release/$1/`). Folder set on the integration branch can lag (newly-split slices, e.g. an S06 → S06a/b/c split, exist only on the worktree branch until merge). For each folder, capture `state` from the worktree-branch copy.
 3. Build a state table. Every slice must be in one of these terminal-or-acceptable states:
    - `verified` — OK to merge
    - `deferred` — explicitly excluded from this release; OK
+   - `superseded` — slice replaced by a re-spec; OK (folder retained for journal continuity)
    - `shipped` — already merged + deployed via a prior pathway; OK (rare)
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
-4. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed.
+4. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed. **Before returning BLOCKED, double-check you read from the worktree branch — the most common false-block is reading stale integration-branch status files.**
+
+## Step 1.5 — Integration drift gate
+
+Long-lived release worktrees diverge from their integration branch every time a sibling release merges first. A `git merge` that has to resolve sibling-release conflicts at integration time has no context for them — those conflicts belong in the release worktree, owned by the release author.
+
+1. Run `git rev-list --count <worktree_branch>..<integration>`. If the count is `0`, proceed to Step 2.
+2. If the count is non-zero, BLOCK with:
+
+   > Integration branch `<integration>` has advanced N commits since `<worktree_branch>` was last synced. The merge will conflict on shared files (typical: validation/projection code that sibling releases also touch).
+   >
+   > Forward-merge integration into the release worktree first, so conflicts are resolved with full release context:
+   >
+   > ```
+   > cd <worktree_path>
+   > git fetch origin && git merge <integration>
+   > # resolve any conflicts, run the release's test commands, commit
+   > ```
+   >
+   > Then re-run `/merge-release $1` from the primary worktree.
+
+   List the first 5 commits driving the drift (`git log --oneline <worktree_branch>..<integration> | head -5`) so the human can scan what's being absorbed.
 
 ## Step 2 — Confirm scope with the human
 
