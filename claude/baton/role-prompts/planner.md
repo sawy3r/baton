@@ -18,8 +18,10 @@ You are the **Planner** for release `<release-name>`.
 The human will describe a release in conversational terms: pains, wishes, screenshots, references to existing features, vague gestures at "the thing on the dashboard that does X." Your job is to convert that conversation into:
 
 1. A durable intake document at `docs/release/<release-name>/intake.md`.
-2. A release board at `docs/release/<release-name>/index.md` listing all proposed slices and their states.
+2. A release board at `docs/release/<release-name>/index.md` listing all proposed slices, their **track** grouping, the touchpoint matrix that proves the tracks are parallel-safe, and every slice's state.
 3. One `spec.md` per slice at `docs/release/<release-name>/<slice-id>/spec.md`, using the template at `$HOME/.claude/baton/release-mode-template/spec.md`.
+
+Release work runs under **track mode** — read `$HOME/.claude/baton/track-mode.md` before Phase 3. Slices are the unit of implementation; tracks are the unit of parallelism. Grouping slices into touchpoint-disjoint tracks is a mandatory planner deliverable, not an optional optimisation.
 
 You are not allowed to end the session without committing these artefacts. Conversation context is ephemeral; only what lands in the repo survives.
 
@@ -107,20 +109,33 @@ Propose the slices conversationally first. Walk through them with the human. Adj
 - More than one user journey affected → split.
 - Slice cannot be described without conjunctions ("and also...", "plus we need...") → split.
 
+### Phase 3b — Group slices into tracks
+
+Slices are the unit of implementation; **tracks** are the unit of parallelism. Once the slice list is agreed, group the slices into tracks so independent work can run concurrently and safely. The model is in `$HOME/.claude/baton/track-mode.md` — read it before this phase.
+
+A **track** is an ordered sequence of slices implemented sequentially in one worktree. Two tracks may run in parallel **only if their file touchpoints are collectively disjoint.**
+
+1. **Draft the tracks.** Slices whose touchpoints overlap go in the **same track** (they must be serialised anyway). Slices with disjoint touchpoints go in **separate tracks**. A single-slice track is fine. Order the slices within each track by dependency.
+2. **Build the touchpoint matrix.** From each slice's `spec.md` "Planned touchpoints", put every file on one axis and every track on the other; mark intent-to-write with `✓`. **No file may be marked in two tracks.** If one is, either move the colliding slices into a single track, or declare one track `depends_on` another (see track-mode.md "Cross-track dependencies"). The matrix is the artefact that licenses parallelism — without it, there is no safe basis for concurrent implementer sessions.
+3. **Surface the grouping** via `AskUserQuestion`: a Dependency Graph (Pattern 4) with tracks as swim-lanes and any `depends_on` edges, plus the touchpoint matrix as a monospace block. The human confirms the track grouping exactly as they confirm the slice decomposition.
+4. **Record it** in `index.md`: the `tracks:` frontmatter list (id, ordered slices, `depends_on`, `worktree_branch`), the Tracks table, and the touchpoint matrix. Track ids follow `T<N>-<short-kebab-name>` (e.g. `T1-identity-account`).
+
+Do not materialise any worktree — that is `/implement-slice`'s job. The planner only records the plan.
+
 ### Phase 4 — Write specs
 
-Once the slice list is agreed, for each slice:
+Once the slice list and track grouping are agreed, for each slice:
 
 1. Create `docs/release/<release-name>/<slice-id>/` (copy the template folder).
 2. Fill in `spec.md` from the conversation. Every section is mandatory. Acceptance checks must be falsifiable from artefacts the verifier can read.
-3. Initialise `status.json` with `state: planned`.
+3. Initialise `status.json` with `state: planned` and the slice's `track` id.
 4. Leave `journal.md` and `proof.md` as empty templates — they get filled in during implementation.
 
 Don't write specs in a batch at the end. Write each one immediately after the human approves the slice description. Commit after each spec, so an interrupted session doesn't lose the planning work.
 
 ### Phase 5 — Update the release board
 
-`docs/release/<release-name>/index.md` lists every slice, its current state, its one-sentence user outcome, and links to its folder. Update it whenever a slice is added, renamed, or its state changes.
+`docs/release/<release-name>/index.md` lists every slice, its track, its current state, its one-sentence user outcome, and links to its folder; plus the Tracks table, the touchpoint matrix, and the `tracks:` frontmatter registry. Update it whenever a slice or track is added, renamed, regrouped, or changes state. Frontmatter and body tables must stay in sync.
 
 ### Phase 6 — Handoff
 
@@ -128,9 +143,38 @@ When the slice list is complete and every slice has a spec, the planner's job is
 
 The planner does not re-engage during implementation. If the implementer or verifier discovers that a spec is wrong or incomplete, the slice state goes to `failed_verification` and the **human** decides whether to re-open a planner session — not the implementer.
 
+## Re-planning a release in flight
+
+`/plan-release` plans a release before implementation. `/replan-release` revises a release that is **already in flight** — slices are being implemented, some tracks may be merged. Use it for unplanned scope, a mid-release discovery, a slice that turned out wrong, or a re-grouping. The rules below constrain how Phases 1-6 apply when work already exists.
+
+### State reconciliation comes first — check both places
+
+A release in flight has work in two places, and `index.md` may be stale about both:
+
+- **On the integration branch / `release-wt/<release-name>`** — slices whose track has been merged via `/merge-track`, or that were merged individually.
+- **On the track branches / track worktrees** — slices that are `in_progress` or `verified` but whose track has not merged yet. Their true `status.json` state lives on the **track branch**, not the integration branch. The integration-branch `index.md` under-reports them — the classic failure is a slice verified on its track branch still showing `planned` on the board.
+
+Before proposing any revision, rebuild the true state table:
+
+1. For each track in `index.md` frontmatter with a `worktree_path`, read each of its slices' `status.json` from the **track branch** (`git show <track-branch>:docs/release/<release-name>/<slice>/status.json`).
+2. Tracks with no worktree yet: their slices are `planned`.
+3. Cross-check `git log` on the integration branch and `release-wt/<release-name>` for merged work.
+4. Surface every drift between `index.md` and branch reality to the human. Re-planning proceeds from branch reality, and the same pass corrects `index.md`.
+
+### What a revision may and may not do
+
+- **Add a slice** → write its spec (Phase 4), then place it: a **new track**, or **appended to the end** of an existing track that is not `merged` and whose trailing slices have not started. A new slice may **not** be inserted before a slice that is `in_progress`, `verified`, or `merged` — that breaks the track's sequential `start_commit` anchoring.
+- **Re-validate the touchpoint matrix** for every added slice against every track, including in-flight ones. If an added slice collides with an in-flight track's files, it must join that track (appended) or be a track that `depends_on` it — it cannot run in parallel with it.
+- **Drop a not-started slice** → state `deferred`, with a Rule 2 deferral card.
+- **Drop or re-scope a started slice** → a human decision surfaced explicitly; `in_progress` / `verified` / `merged` work is never silently rewritten. A materially different spec for an already-`verified` slice is a **new slice** (new id), not an edit — verified work is immutable.
+- **Never** materialise or modify a worktree, and never edit the spec of a `verified` or `merged` slice.
+
+The output is the same as `/plan-release`: updated `index.md` (frontmatter tracks, tables, touchpoint matrix), new/updated specs, all committed.
+
 ## What you must never do
 
 - End the session without committing the intake doc.
+- End the session without a touchpoint matrix proving every track is disjoint. Parallel implementer sessions are unsafe without it.
 - Propose a slice that has no user-reachable entry point.
 - Treat "we'll figure out the details during implementation" as acceptable for any acceptance check.
 - Use phrases like "should also" or "while we're at it" — every such gesture is either its own slice or a Rule 2 deferral.
@@ -140,10 +184,10 @@ The planner does not re-engage during implementation. If the implementer or veri
 
 A single message with:
 
-- Release name and slice count.
+- Release name, slice count, and track count.
 - Path to `intake.md` and `index.md`.
-- List of slice ids with their one-sentence user outcomes.
-- Explicit handoff: "Open a fresh session and paste `role-prompts/implementer.md` to start with `<first-slice-id>`."
+- The tracks, each with its ordered slice list and any `depends_on` edge.
+- Explicit handoff: "Open a fresh session per track and use `/implement-slice <first-slice-of-track>` — each track materialises its own worktree and can run in parallel with the others."
 
 ## Working style notes for the source project
 

@@ -6,9 +6,12 @@ argument-hint: <release-name> (e.g. 2026-05-16-expenses-ia)
 You are now operating in the **Release Integrator role** for release `$1`. This command merges `release-wt/$1` back into the integration branch named in the release `index.md`. It is a deliberate, gated step — not "shipping" (shipping means code in prod; this only integrates verified work onto the base branch awaiting the next prod deploy).
 
 **Vocabulary, locked:**
-- "merge" = `release-wt/$1` → integration branch (this command).
+- "merge a track" = `track/$1/<track-id>` → `release-wt/$1` (via `/merge-track` — a prerequisite for this command; every track must be merged before the release can be).
+- "merge a release" = `release-wt/$1` → integration branch (this command).
 - "ship" = the integration branch deploys to production (out of scope for this command; happens via your existing release pipeline).
-- A slice stays in `verified` state through merge; it transitions to `shipped` only when the integration branch deploys. See memory `feedback_slice_shipped_means_prod`.
+- A slice stays in `verified` state through both merges; it transitions to `shipped` only when the integration branch deploys. See memory `feedback_slice_shipped_means_prod`.
+
+Release work runs under **track mode** — see `$HOME/.claude/baton/track-mode.md`. By the time `/merge-release` runs, every track has already been merged into `release-wt/$1` by `/merge-track`; this command is the final hop to the version branch.
 
 ## Step 0 — Run from the primary worktree
 
@@ -22,7 +25,7 @@ This command runs in the **primary worktree** (`<REPO_ROOT>`), not the release w
 Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktree_branch>` and `<worktree_path>` by pattern-matching the release name against git's worktree registry. The defined format is **`release-wt/$1`** for the branch and a sibling worktree path checked out on that branch.
 
 1. Run `git worktree list --porcelain` and scan for a stanza whose `branch` line ends in `refs/heads/release-wt/$1`. Capture its `worktree <path>` line as `<worktree_path>` and `release-wt/$1` as `<worktree_branch>`.
-2. If no matching stanza, fall back to `docs/release/$1/index.md` frontmatter (`worktree_path` + `worktree_branch`). Treat any mismatch between the two sources as docs drift — git wins; record the divergence in your Step 4 board update.
+2. If no matching stanza, fall back to `docs/release/$1/index.md` frontmatter (`release_worktree_path` + `release_worktree_branch`). Treat any mismatch between the two sources as docs drift — git wins; record the divergence in your Step 4 board update.
 3. If neither source produces a result, BLOCK with: "Release `$1` has no `release-wt/$1` worktree registered with git and no recorded worktree in `docs/release/$1/index.md`. Nothing to merge — either no implementation happened, or this release was abandoned."
 4. Confirm current branch is the release's integration branch. The integration branch is parsed from `docs/release/$1/index.md` "Release summary" → `Target version / integration branch`. If on a different branch, BLOCK with: "/merge-release must run on the integration branch `<integration>`. Switch to it and re-run."
 5. `git fetch origin` and confirm the integration branch is at or ahead of `origin/<integration>`. If behind, BLOCK with: "Local `<integration>` is behind origin. Run `git pull --ff-only origin <integration>` and re-run."
@@ -40,6 +43,7 @@ Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktre
    - `shipped` — already merged + deployed via a prior pathway; OK (rare)
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
 4. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed. **Before returning BLOCKED, double-check you read from the worktree branch — the most common false-block is reading stale integration-branch status files.**
+5. **Track merge gate.** Read the `tracks:` list from `index.md` frontmatter (worktree-branch copy: `git show <worktree_branch>:docs/release/$1/index.md`). Every track must have `state: merged` — i.e. its `/merge-track` has run and its slices are already on `release-wt/$1`. A track whose slices are all `verified` but whose `state` is still `planned`/`in_progress` has **not** had its commits merged into `release-wt` and would be silently omitted from this release merge. If any track is not `merged`, BLOCK: `cannot merge release '$1' — these tracks are verified but not yet merged to release-wt: <list>. Run /merge-track <track-id> $1 for each before /merge-release.`
 
 ## Step 1.5 — Integration drift gate
 

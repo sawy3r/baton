@@ -6,8 +6,11 @@ shipped.
 
 ## Now (shipped)
 
-- Slash commands for Claude Code: `/plan-release`, `/implement-slice`,
-  `/verify-slice`, `/merge-release`.
+- Slash commands for Claude Code: `/plan-release`, `/replan-release`,
+  `/implement-slice`, `/verify-slice`, `/merge-track`, `/merge-release`.
+- Track mode — slices grouped into touchpoint-disjoint tracks for safe
+  parallelism, each track in its own worktree. See
+  `claude/baton/track-mode.md`.
 - Seven rules + role prompts + release-mode templates installed at
   `~/.claude/baton/` via `./install.sh`.
 - Deterministic first-pass verifier (`release-verify.sh`) at
@@ -83,7 +86,7 @@ Detection probes:
 
 Anyone who installed the Claude-Code-only release will need to either:
 
-- (a) `rm -rf ~/.claude/baton ~/.claude/bin ~/.claude/commands/{plan,implement,verify,merge}-*` then re-run the new `install.sh`, OR
+- (a) `rm -rf ~/.claude/baton ~/.claude/bin ~/.claude/commands/{plan,replan,implement,verify,merge}-*` then re-run the new `install.sh`, OR
 - (b) Just re-run the new `install.sh` — it should be idempotent enough to overwrite the Claude-Code shims in place and additionally drop Layer 1 at its new `~/.baton/` home. Adapters update their reads from `$HOME/.claude/baton/...` to `$HOME/.baton/...`.
 
 Rule content does not change across this transition — only the file
