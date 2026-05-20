@@ -167,7 +167,7 @@ If a rule misfires in your context, or you find a failure mode the rules don't c
 
 ## Appendix: future Claude Code plugin packaging (not yet extracted)
 
-This folder + the four slash commands at `.claude/commands/{plan-release,implement-slice,verify-slice,merge-release}.md` + `scripts/release-verify.sh` are intended to be extracted into a standalone Claude Code plugin repo (`baton`) so other projects can install them via `/plugin`. This appendix captures the install / lifecycle / develop instructions now so they don't need re-research at extraction time. See memory `feedback_release_worktree_not_slice_worktree` for context.
+This folder + the six slash commands at `.claude/commands/{plan-release,replan-release,implement-slice,verify-slice,merge-track,merge-release}.md` + `scripts/release-verify.sh` are intended to be extracted into a standalone Claude Code plugin repo (`baton`) so other projects can install them via `/plugin`. This appendix captures the install / lifecycle / develop instructions now so they don't need re-research at extraction time. The parallelism model the commands operate is `track-mode.md`.
 
 ### Target plugin layout
 
@@ -176,8 +176,10 @@ baton/
 ├── .claude-plugin/plugin.json          # name: "baton", version: "0.1.0"
 ├── skills/
 │   ├── plan-release/SKILL.md           # → /baton:plan-release
+│   ├── replan-release/SKILL.md         # → /baton:replan-release
 │   ├── implement-slice/SKILL.md        # → /baton:implement-slice
 │   ├── verify-slice/SKILL.md           # → /baton:verify-slice
+│   ├── merge-track/SKILL.md            # → /baton:merge-track
 │   └── merge-release/SKILL.md          # → /baton:merge-release
 ├── bin/release-verify.sh               # Auto-PATH when plugin loads
 ├── docs/
@@ -202,12 +204,14 @@ Or directly from git URL (handy for forks):
 /plugin install baton@baton
 ```
 
-After install, four namespaced slash commands appear:
+After install, six namespaced slash commands appear:
 
-- `/baton:plan-release <name>` — planner role
+- `/baton:plan-release <name>` — planner role (decomposes into slices + tracks)
+- `/baton:replan-release <name>` — planner revision mode (revise a release already in flight)
 - `/baton:implement-slice <slice-id> [<release-name>]` — implementer role
 - `/baton:verify-slice <slice-id> [<release-name>]` — verifier role (run in a fresh session)
-- `/baton:merge-release <release-name>` — release integrator
+- `/baton:merge-track <track-id> [<release-name>]` — track integrator (track → release-wt)
+- `/baton:merge-release <release-name>` — release integrator (release-wt → integration branch)
 
 Update: `/plugin marketplace update sawy3r-baton`. Auto-update is off by default for third-party marketplaces.
 Uninstall: `/plugin uninstall baton@sawy3r-baton`.
@@ -218,26 +222,32 @@ Plugins live at `~/.claude/plugins/` for local inspection.
 ```
 ~/projects/<repo>
     ↓ /baton:plan-release <YYYY-MM-DD-theme>
-    (planner runs in primary worktree on integration branch;
-     writes docs/release/<name>/{intake,index,SNN-*/spec}.md)
-    ↓ /new
+    (planner runs in primary worktree on integration branch; writes
+     docs/release/<name>/{intake,index,SNN-*/spec}.md. index.md groups
+     slices into touchpoint-disjoint TRACKS — see track-mode.md.)
+    ↓ /new — one session per track; tracks run in parallel
     ↓ /baton:implement-slice <slice-id> <release-name>
-    (first run auto-creates ~/projects/<repo>-worktrees/release-<name>/
-     on branch release-wt/<name>; records path in index.md frontmatter.
-     Subsequent runs auto-discover.)
+    (first slice of the release auto-creates the release worktree on
+     release-wt/<name>; first slice of each track auto-creates that
+     track's worktree on track/<name>/<track-id>. Slices in a track run
+     sequentially in that one worktree.)
     ↓ /new (fresh terminal — Rule 7 requires no inherited context)
     ↓ /baton:verify-slice <slice-id> <release-name>
-    (BLOCKED / FAIL / PASS — PASS flips state to 'verified')
-    ↓ repeat for every slice
+    (BLOCKED / FAIL / PASS — PASS flips the slice to 'verified')
+    ↓ repeat implement→verify for every slice in the track
+    ↓ /baton:merge-track <track-id> <release-name>
+    (asserts every slice in the track verified; merges
+     track/<name>/<track-id> → release-wt/<name> with --no-ff)
+    ↓ repeat for every track
     ↓ /baton:merge-release <release-name>
-    (asserts every slice verified; merges release-wt/<name> → integration
-     branch with --no-ff. Does NOT push, NOT delete worktree, NOT flip
+    (asserts every track merged; merges release-wt/<name> → integration
+     branch with --no-ff. Does NOT push, NOT delete worktrees, NOT flip
      state to 'shipped'.)
     ↓ deploy integration branch to prod via existing pipeline
     ↓ slice states flip to 'shipped'
 ```
 
-Terminology is locked: **verified** = verifier PASSed, **merged** = release branch joined integration, **shipped** = code in prod. Three distinct events, three distinct verbs.
+Terminology is locked: **verified** = verifier PASSed a slice, **track-merged** = a track branch joined `release-wt`, **release-merged** = `release-wt` joined the integration branch, **shipped** = code in prod. Four distinct events, four distinct verbs.
 
 ### Develop locally (during plugin extraction or maintenance)
 

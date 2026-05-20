@@ -35,7 +35,7 @@ If you've shipped non-trivial work with an LLM coding agent, you may have hit on
 - **Context loss.** Substantial analysis lives only in chat transcript. `/clear` happens. The reasoning is gone. The next session starts from scratch.
 - **Plan / proof drift.** Planning docs say one thing, implementation does another, the divergence is never surfaced.
 
-baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Seven rules, three roles, four slash commands. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
+baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Seven rules, three roles, six slash commands. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
 
 ## The seven rules
 
@@ -141,12 +141,13 @@ That's it. `/plan-release <YYYY-MM-DD-theme>` from a fresh session bootstraps th
 
 For each release:
 
-1. **Planner session** — fresh window. Human pastes `/plan-release <name>`. Conversational discovery; planner writes `intake.md`, decomposes into slices, writes `spec.md` per slice. No code written here.
+1. **Planner session** — fresh window. Human pastes `/plan-release <name>`. Conversational discovery; planner writes `intake.md`, decomposes into slices, groups the slices into touchpoint-disjoint **tracks**, writes `spec.md` per slice. No code written here. (Revising a release already in flight is `/replan-release <name>`.)
 2. **Implementer session, per slice** — fresh window. Human runs `/implement-slice <slice-id>`. Implementer reads `spec.md`, makes changes, writes `proof.md` from live repo state, runs `release-verify.sh`, stops at state `implemented`. **Never marks `verified`.**
 3. **Verifier session, per slice** — *another* fresh window with no inherited context. Human runs `/verify-slice <slice-id>`. Verifier reads only `spec.md`, `proof.md`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`.
-4. **Merge** — when every slice is verified, `/merge-release <name>` integrates the release branch back to the integration base.
+4. **Merge a track** — when every slice in a track is verified, `/merge-track <track-id>` lands the track branch on the release assembly branch `release-wt/<name>`.
+5. **Merge the release** — when every track is merged, `/merge-release <name>` integrates `release-wt/<name>` back to the integration base.
 
-The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
+Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`claude/baton/track-mode.md`](claude/baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
 
 ## Path tokens
 
