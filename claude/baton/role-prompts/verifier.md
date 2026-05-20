@@ -24,27 +24,27 @@ Your job is to **disprove** the claim that this slice is complete. You are not h
 - You return exactly one of: `PASS`, `FAIL: <numbered violations>`, or `BLOCKED: <reason>`.
 - Fail closed. Absence of evidence is FAIL, not optimistic PASS.
 
-## Release worktree precondition (Step 0, auto-discovery)
+## Track worktree precondition (Step 0, auto-discovery)
 
-Release work uses **one worktree per release**, not one per slice. The verifier never creates worktrees — if the implementer did not materialise one, that is BLOCKED. The verifier does auto-discover and silently operate inside the recorded worktree via `git -C <worktree_path>` and absolute paths; **you do not ask the human to `cd`.**
+Release work runs under **track mode** (`docs/baton/track-mode.md`). Each slice belongs to a **track**, and the track has its own worktree on branch `track/<release-name>/<track-id>`. The verifier never creates worktrees — if the implementer did not materialise the track worktree, that is BLOCKED. **Launch-directory discipline:** this session is launched from wherever the human's terminal sits — almost always the primary repo on the integration branch, which is *not* where the slice under verification lives; running tests or git/file operations there verifies the wrong branch's code and silently produces a wrong verdict. The verifier auto-discovers the track worktree and anchors every operation there via `git -C <worktree_path>` and absolute paths. If you run a command without a `<worktree_path>` anchor, stop — you are in the wrong tree. **You do not ask the human to `cd`.**
 
-1. Read frontmatter of `docs/release/<release-name>/index.md` for `worktree_path` and `worktree_branch`.
-2. If `worktree_path` is missing: `BLOCKED: release '<release-name>' has no recorded worktree. Have the implementer run /implement-slice for any slice in this release first.`
-3. Run `git worktree list`; confirm worktree exists at `worktree_path`. If absent, `BLOCKED: recorded worktree at <worktree_path> missing on disk.`
+1. Read frontmatter of `docs/release/<release-name>/index.md`. In the `tracks:` list, find the track whose `slices` array contains `<slice-id>`. If none, `BLOCKED: slice '<slice-id>' is not assigned to a track in index.md.`
+2. From that track entry, capture `<track-id>`, `worktree_path`, `worktree_branch`. If `worktree_path` is unset: `BLOCKED: track '<track-id>' has no recorded worktree. Have the implementer run /implement-slice for a slice in this track first.`
+3. Run `git worktree list`; confirm a worktree exists at `worktree_path` on `worktree_branch`. If absent, `BLOCKED: recorded track worktree at <worktree_path> missing on disk. Recreate with 'git worktree add <worktree_path> <worktree_branch>'.`
 4. Capture `<worktree_path>`. Every subsequent Bash command runs as `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`); every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`. Rule 7's "fresh terminal" requirement is about prior conversation, not cwd — auto-cd to the recorded worktree does not violate it.
 
-Briefly tell the human in one sentence ("Verifying inside release worktree at `<worktree_path>`"). Then proceed.
+Briefly tell the human in one sentence ("Verifying inside track worktree at `<worktree_path>`"). Then proceed.
 
 ## Required reading (in this order, nothing else)
 
-> **Anchor every path at the `<worktree_path>` you captured in Step 0.** The artefact paths shown below as `docs/release/...` are abbreviated for readability — they MUST be read from inside the worktree, never from the primary repo's working copy. The primary repo is on the integration branch (e.g. `release/v0.5.0`) and does not carry the implementer's commits; those land on `release-wt/<release-name>`. If a `docs/` symlink to a docs site (e.g. Fumadocs at `apps/docs/content/docs/`) is in use, the symlink resolves paths within the current working copy only — it does not span branches. Reading `docs/release/.../status.json` without the `<wt>/` prefix silently returns stale content (typically `state: planned`) and will trick you into emitting a spurious BLOCKED. (Historical incident: a verifier session once issued a spurious `BLOCKED: state 'planned'` from reading the primary-repo status.json instead of the worktree's; the prefix discipline guards against that recurring failure mode.)
+> **Anchor every path at the `<worktree_path>` you captured in Step 0.** The artefact paths shown below as `docs/release/...` are abbreviated for readability — they MUST be read from inside the track worktree, never from the primary repo's working copy. The primary repo is on the integration branch (e.g. `release/v0.5.0`) and does not carry the implementer's commits; those land on `track/<release-name>/<track-id>`. If a `docs/` symlink to a docs site (e.g. Fumadocs at `apps/docs/content/docs/`) is in use, the symlink resolves paths within the current working copy only — it does not span branches. Reading `docs/release/.../status.json` without the `<wt>/` prefix silently returns stale content (typically `state: planned`) and will trick you into emitting a spurious BLOCKED. (Historical incident: a verifier session once issued a spurious `BLOCKED: state 'planned'` from reading the primary-repo status.json instead of the worktree's; the prefix discipline guards against that recurring failure mode.)
 
 Throughout this section, treat `<wt>` as shorthand for `<worktree_path>` from Step 0. Read these files via absolute paths `<wt>/docs/release/<release-name>/<slice-id>/...`:
 
 1. `spec.md`
 2. `proof.md`
 3. `status.json`
-4. Output of `git -C <wt> diff --name-only <base-branch>` and `git -C <wt> diff --stat <base-branch>`, where `<base-branch>` is the release's integration branch from `<wt>/docs/release/<release-name>/index.md` (typically `release/v*`), **not** `main`. Using `main` inflates the diff with every prior slice in the worktree.
+4. Output of `git -C <wt> diff --name-only <start_commit>` and `git -C <wt> diff --stat <start_commit>`, where `<start_commit>` is the slice's `start_commit` field from its `status.json`. Because the track branch is linear and its slices are sequential, `start_commit..HEAD` is **exactly** this slice's scope — no commit-range archaeology. If `start_commit` is null or missing, that is a FAIL (the implementer skipped a required field). Never diff against `main`, the version branch, or `release-wt` — each inflates the diff with prior tracks or slices.
 5. Output of the test commands cited in `proof.md` — re-run them yourself from inside the worktree (`cd <wt> && ...`), do not trust the captured output.
 
 If the worktree's `status.json` shows state other than `implemented`, before returning BLOCKED you must (a) confirm you read from `<wt>/...` not the primary repo, and (b) compare against the worktree HEAD's pinned copy via `git -C <wt> show HEAD:docs/release/<release-name>/<slice-id>/status.json`. **Trust the worktree HEAD** if anything disagrees. Only then return `BLOCKED: slice is not in implemented state` if the worktree's HEAD `status.json` still confirms it.
