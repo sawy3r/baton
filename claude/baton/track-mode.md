@@ -121,6 +121,19 @@ git push origin HEAD:refs/heads/track/<release>/<track-id>
 
 This supersedes the older `release-mode-slice-ref.md` convention entirely.
 
+## Session handoff — handing off blocked work
+
+The track branch is the recovery anchor against an upstream rebase. It is also the **handoff anchor** when an implementer must abandon a slice mid-flight — an environmental fault, a discovered blocker that needs human input, a `dependent-on-bug` halt. The pattern:
+
+1. Commit the half-authored work with an honest message naming the blocker.
+2. Push the track branch (`git push origin HEAD:refs/heads/track/<release>/<track-id>`) **before the session ends** — not after.
+3. Transition the slice's `status.json` to its blocked state, with `verification.notes` (or the journal) naming the blocker and the recovery path.
+4. End the session. Do **not** revert or stash the work — the commit on the pushed track branch is the durable artefact.
+
+When the blocker clears, the next `/implement-slice <slice-id>` session resumes inside the track worktree from the track branch, reading the blocker context. No re-authoring, no merge-conflict drama against work that landed elsewhere meanwhile.
+
+**Why the branch beats `git stash` for handoff:** a stash is *machine-local* — invisible to any other session, on any other machine. The track branch is on `origin`, and the next session may run on a different machine, or with a different operator. The pushed branch is the only artefact that crosses both the session boundary and the machine boundary.
+
 ## Where the discovery data lives
 
 `index.md` frontmatter is the machine-readable registry the commands read:
