@@ -13,25 +13,25 @@ You are now operating in the **Implementer role** for slice `$1` in release `$2`
 
 Read `$HOME/.claude/baton/role-prompts/implementer.md` and follow it as your governing instructions for this session. Substitute `$1` and `$2` wherever the prompt says `<slice-id>` / `<release-name>`.
 
-## Step 0 — Release worktree auto-discovery (no human handoff)
+## Step 0 — Track worktree auto-discovery (no human handoff)
 
-Release work uses **one worktree per release**, not one per slice. All slices for `$2` land on a shared `release-wt/$2` branch in a dedicated worktree; the whole branch merges back to the integration base once every slice is verified.
+Release work runs under **track mode** — read `$HOME/.claude/baton/track-mode.md`. Each track has its own worktree on branch `track/$2/<track-id>`, cut from the release assembly branch `release-wt/$2`. Slices in a track are implemented sequentially in that worktree; `/merge-track` lands the track branch on `release-wt/$2` once every slice in it is verified.
 
-This session may start in the primary repo (`<REPO_ROOT>`) — that's fine. You discover (or materialise) the release worktree, then silently perform all subsequent file and git operations against it via `git -C <worktree_path>` and absolute paths. You do not ask the human to `cd` anywhere.
+**Launch-directory discipline — read this first.** This session is launched from whatever directory the human's terminal happens to be in — almost always the primary repo (`<REPO_ROOT>`), checked out on the integration branch. **That is not where this slice's work belongs.** Do not build, test, edit files, or run `git` writes in the launch directory. Step 0 discovers the correct **track worktree**; from that point on every Bash command is `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`) and every Read/Write/Edit uses an absolute path under `<worktree_path>`. If you ever run a mutating command without a `<worktree_path>` anchor, stop — you are in the wrong tree. You never ask the human to `cd`; discovery is silent and automatic.
 
-1. Read frontmatter of `docs/release/$2/index.md`. Look for `worktree_path` and `worktree_branch` fields.
-2. **If both fields are present** (release worktree already materialised):
-   - Run `git worktree list` and confirm a worktree exists at `worktree_path` on branch `worktree_branch`.
-   - If absent, BLOCK and tell the human: "Release worktree recorded as `<worktree_path>` but missing from `git worktree list`. Either recreate with `git worktree add <worktree_path> <worktree_branch>` or clear the fields from `index.md` and re-run."
-   - If present, capture `<worktree_path>` and proceed. **For the rest of this session, every Bash command runs as `cd <worktree_path> && <cmd>` (or uses `git -C <worktree_path>` for git ops). Every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`.**
-3. **If neither field is present** (first `/implement-slice` for this release): materialise the worktree.
-   - Parse the integration branch from `index.md` "Release summary" block — the bullet `Target version / integration branch` (e.g. `release/v0.5.0`).
-   - Canonical paths: worktree path `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2`, worktree branch `release-wt/$2`.
-   - From wherever cwd is (worktrees share a git directory so `git worktree add` works from any cwd inside the repo), run: `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2 -b release-wt/$2 <integration-branch>`.
-   - In the **primary worktree** (cwd `<REPO_ROOT>`, integration branch), update `docs/release/$2/index.md` frontmatter to add the two fields. Commit + push on the integration branch: `chore(release/$2): record release worktree path`.
-   - From now on, treat the new worktree as `<worktree_path>` exactly as step 2 — all subsequent work uses `cd <worktree_path>` / absolute paths. Continue silently to the session start handshake. No human handoff.
+1. **Find the slice's track.** Read frontmatter of `docs/release/$2/index.md`. In the `tracks:` list, find the entry whose `slices` array contains `$1`. If none, BLOCK: "Slice `$1` is not assigned to a track in `index.md` — re-run `/plan-release $2` (or `/replan-release $2`) to group it." Capture `<track-id>`, `worktree_path`, `worktree_branch`, `depends_on`, and the ordered `slices`.
+2. **Enforce sequential order within the track.** For every slice listed *before* `$1` in this track's `slices`, read its `status.json` `state`. If any is not `verified`, BLOCK: "Slice `<earlier>` precedes `$1` in track `<track-id>` (state `<state>`). Slices in a track are implemented in order — finish and verify `<earlier>` first."
+3. **If the track's `worktree_path` is set** (track worktree already materialised):
+   - Run `git worktree list`; confirm a worktree exists at `worktree_path` on `worktree_branch`. If absent, BLOCK: "Track worktree recorded as `<worktree_path>` but missing — recreate with `git worktree add <worktree_path> <worktree_branch>`, or clear the field and re-run."
+   - Capture `<worktree_path>`. **For the rest of this session, every Bash command runs `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`); every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`.** Skip to the session start handshake.
+4. **If the track's `worktree_path` is NOT set** (first `/implement-slice` for this track): materialise it.
+   - **Release worktree first.** If `release_worktree_path` is unset in frontmatter, this is also the first `/implement-slice` in the release: parse the integration branch from `index.md` "Release summary" → `Target version / integration branch` (e.g. `release/v0.5.0`), then `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2 -b release-wt/$2 <integration-branch>`. Record `release_worktree_path` + `release_worktree_branch` in frontmatter.
+   - **Dependency gate.** If the track's `depends_on` names another track whose `state` is not `merged`, BLOCK: "Track `<track-id>` depends on `<other>` (state `<state>`) — a dependent track may only start once its predecessor has merged to `release-wt`."
+   - **Materialise the track worktree** from the release branch: `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2-<track-id> -b track/$2/<track-id> release-wt/$2`.
+   - In the **primary worktree** (cwd `<REPO_ROOT>`, integration branch), update `docs/release/$2/index.md` frontmatter — set this track's `worktree_path` and `state: in_progress`. Commit + push on the integration branch: `chore(release/$2): materialise worktree for track <track-id>`.
+   - Treat the new worktree as `<worktree_path>` per step 3. Continue silently — no human handoff.
 
-Briefly tell the human in one sentence what you did ("Using release worktree at `<worktree_path>`" or "Materialised release worktree at `<worktree_path>` and recorded it in `index.md`"). Then continue.
+Briefly tell the human in one sentence what you did ("Using track worktree at `<worktree_path>`" or "Materialised track worktree at `<worktree_path>` for track `<track-id>`"). Then continue.
 
 ## Session start handshake
 
@@ -43,13 +43,13 @@ Briefly tell the human in one sentence what you did ("Using release worktree at 
    - `<wt>/docs/release/$2/$1/journal.md` (if previous sessions exist)
    - `<wt>/docs/release/$2/$1/status.json`
    - `<wt>/docs/release/$2/$1/proof.md` (may be empty template)
-   - `git -C <wt> status` and `git -C <wt> diff <base-branch> --stat`, where `<base-branch>` is the release's integration branch from `index.md` "Target version / integration branch" (e.g. `release/v0.5.0`), **not** `main`. Using `main` inflates the diff with every prior commit on the integration branch.
+   - `git -C <wt> status` and `git -C <wt> diff <base> --stat`, where `<base>` is this slice's `start_commit` from `status.json` if already set, else `release-wt/$2` (the point the track branch was cut from). Never diff against `main` or the version branch — that inflates the diff with every prior track and slice.
 3. Confirm the slice's `User outcome` from spec.md back to the human in one sentence: "Implementing **$1**: <outcome>. Acceptance checks: N. Out of scope: <summary>."
-4. Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. **Then push to a slice-scoped remote ref so the work survives any upstream rebase of the integration branch:**
+4. Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. Capture that commit's SHA (`git -C <wt> rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and is the verifier's exact diff base. **Then push the track branch so the work is durable:**
    ```
-   git push origin HEAD:refs/heads/release/slice/$1
+   git -C <wt> push origin HEAD:refs/heads/track/$2/<track-id>
    ```
-   This creates `origin/release/slice/$1` pointing at the start commit. Re-run this push after each subsequent commit on the slice (cheap; it's a fast-forward). Recovery from a force-rebase of the integration branch is then a single `git fetch && git reset --hard origin/release/slice/$1`.
+   Re-run this push after every commit (cheap; fast-forward). `origin/track/$2/<track-id>` is the durable home of the track and the branch `/merge-track` lands. Recovery from an accidental local reset is `git fetch && git reset --hard origin/track/$2/<track-id>`.
 5. Begin work.
 
 ## Strict role boundaries (do not violate)

@@ -6,9 +6,12 @@ argument-hint: <release-name> (e.g. 2026-05-16-expenses-ia)
 You are now operating in the **Release Integrator role** for release `$1`. This command merges `release-wt/$1` back into the integration branch named in the release `index.md`. It is a deliberate, gated step — not "shipping" (shipping means code in prod; this only integrates verified work onto the base branch awaiting the next prod deploy).
 
 **Vocabulary, locked:**
-- "merge" = `release-wt/$1` → integration branch (this command).
+- "merge a track" = `track/$1/<track-id>` → `release-wt/$1` (via `/merge-track` — a prerequisite for this command; every track must be merged before the release can be).
+- "merge a release" = `release-wt/$1` → integration branch (this command).
 - "ship" = the integration branch deploys to production (out of scope for this command; happens via your existing release pipeline).
-- A slice stays in `verified` state through merge; it transitions to `shipped` only when the integration branch deploys. See memory `feedback_slice_shipped_means_prod`.
+- A slice stays in `verified` state through both merges; it transitions to `shipped` only when the integration branch deploys. See memory `feedback_slice_shipped_means_prod`.
+
+Release work runs under **track mode** — see `$HOME/.claude/baton/track-mode.md`. By the time `/merge-release` runs, every track has already been merged into `release-wt/$1` by `/merge-track`; this command is the final hop to the version branch.
 
 ## Step 0 — Run from the primary worktree
 
@@ -21,14 +24,16 @@ This command runs in the **primary worktree** (`<REPO_ROOT>`), not the release w
 
 ## Step 1 — Read release state
 
-1. Read `docs/release/$1/index.md`. Capture `worktree_path` and `worktree_branch` from frontmatter. If missing, BLOCK with: "Release `$1` has no recorded worktree. Nothing to merge — either no implementation happened, or this release was abandoned."
-2. Enumerate every slice folder under `docs/release/$1/`. For each, read `status.json` and capture `state`.
+1. Read `docs/release/$1/index.md`. Capture `release_worktree_path` and `release_worktree_branch` (= `release-wt/$1`) from frontmatter. If missing, BLOCK with: "Release `$1` has no recorded release worktree. Nothing to merge — either no implementation happened, or this release was abandoned." (Treat `<worktree_branch>` / `<worktree_path>` below as `release_worktree_branch` / `release_worktree_path`.)
+2. Enumerate every slice folder by listing the worktree branch's tree (`git ls-tree -d --name-only <worktree_branch>:docs/release/$1/`) — the integration-branch folder set can lag newly-split slices. For each, read `status.json` from the **worktree branch** (`git show <worktree_branch>:docs/release/$1/<slice>/status.json`) and capture `state`. The integration-branch copies are stale until this merge runs and will false-BLOCK an otherwise-mergeable release.
 3. Build a state table. Every slice must be in one of these terminal-or-acceptable states:
    - `verified` — OK to merge
    - `deferred` — explicitly excluded from this release; OK
+   - `superseded` — slice replaced by a re-spec; OK (folder retained for journal continuity)
    - `shipped` — already merged + deployed via a prior pathway; OK (rare)
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
-4. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed.
+4. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed. **Before returning BLOCKED, double-check you read from the worktree branch — the most common false-block is reading stale integration-branch status files.**
+5. **Track merge gate.** Read the `tracks:` list from `index.md` frontmatter (worktree-branch copy: `git show <worktree_branch>:docs/release/$1/index.md`). Every track must have `state: merged` — i.e. its `/merge-track` has run and its slices are already on `release-wt/$1`. A track whose slices are all `verified` but whose `state` is still `planned`/`in_progress` has **not** had its commits merged into `release-wt` and would be silently omitted from this release merge. If any track is not `merged`, BLOCK: `cannot merge release '$1' — these tracks are verified but not yet merged to release-wt: <list>. Run /merge-track <track-id> $1 for each before /merge-release.`
 
 ## Step 2 — Confirm scope with the human
 
