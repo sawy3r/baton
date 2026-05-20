@@ -64,10 +64,11 @@ Slices merged (all verified):
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 
-**Conflict handling — the touchpoint matrix is the contract.** By invariant 2 of track-mode.md, code and test files cannot conflict between disjoint tracks. Therefore:
+**Conflict handling — the touchpoint matrix is the contract.** By invariant 2 of track-mode.md, code and test files cannot conflict between disjoint tracks. The only legitimate conflicts are `index.md` and **documented shared files** (rows the matrix marks `DOCUMENTED SHARED`). On `git diff --name-only --diff-filter=U`:
 
-- If `git diff --name-only --diff-filter=U` shows **only** the release `index.md`: this is the expected board reconciliation. The per-slice rows and per-track rows are disjoint and auto-merge; only the **Aggregate state** block and the **Recent activity** log collide. Resolve by keeping both sides' rows, unioning the Recent activity entries chronologically, and recomputing the Aggregate state counts. `git add` `index.md` and complete the merge.
-- If **any other file** conflicts: `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on <files>. These are not `index.md`, so the touchpoint matrix was wrong — track `$1` and a sibling track both wrote <file>. Return to `/plan-release $2` (or `/replan-release $2`) to re-group the tracks before merging. (track-mode.md invariant 4.)"
+- **Release `index.md`** — expected board reconciliation. Per-slice and per-track rows are disjoint and auto-merge; only the **Aggregate state** block and the **Recent activity** log collide. Resolve: keep both sides' rows, union the Recent activity entries chronologically, recompute the Aggregate state counts. `git add` and continue.
+- **A documented shared file** (the touchpoint matrix marks it `DOCUMENTED SHARED` with each track's declared region) — the tracks were declared to edit well-separated regions. Inspect the conflict hunks: if they sit in the declared-separate regions, resolve by keeping both tracks' regions and `git add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git merge --abort` and BLOCK as a planner error.
+- **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on <files>, which are neither `index.md` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a sibling track both wrote <file>. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 
 ## Step 5 — Update the board
 

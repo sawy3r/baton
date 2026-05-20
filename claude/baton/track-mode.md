@@ -57,9 +57,9 @@ Both worktree levels are materialised **lazily** — the planner creates no work
 Parallelism is safe **only** while all four hold. Every command enforces one or more of them.
 
 1. **One worktree per track; one implementer at a time; slices sequential.** A track worktree has its own working tree and its own git index, so concurrent implementers in *different* tracks cannot race. Within a track, slices are done one after another — never two implementers in one track worktree.
-2. **Tracks are touchpoint-disjoint.** No file is written by two tracks. The planner proves this with the **touchpoint matrix** (below). This is what licenses running tracks at the same time.
+2. **Tracks are touchpoint-disjoint.** No file is written by two tracks — with one narrow, documented exception. The planner proves disjointness with the **touchpoint matrix** (below). **Documented region-split exception:** a large, append-mostly module (a shared types file, a registry, a barrel export) MAY appear in two tracks IF the touchpoint matrix row records the specific, well-separated region/symbol each track edits and they do not overlap. Such a row is a *documented shared file*. This exception is for genuinely additive, region-separable modules only — never a component, a hook, or a logic file.
 3. **A track branch is linear and contiguous.** Because a track's slices are sequential, the track branch carries only that track's commits, in order. A slice's diff is therefore exactly `start_commit..HEAD` — no commit-range archaeology.
-4. **A conflict at `/merge-track` is a planner error, not a merge to hand-resolve.** Invariant 2 means track branches never touch the same file, so `track → release-wt` merges are conflict-free by construction. If one conflicts, the touchpoint matrix was wrong: `/merge-track` BLOCKs and the release returns to `/plan-release` to re-group.
+4. **A conflict at `/merge-track` is a planner error — except on a documented shared file.** Invariant 2 means track branches never touch the same file *except documented shared files*, so `track → release-wt` merges are conflict-free on every other file. A conflict on `index.md` or a **documented shared file** is expected reconciliation, and `/merge-track` resolves it. A conflict on **any other file** means the touchpoint matrix was wrong: `/merge-track` BLOCKs and the release returns to `/plan-release` (or `/replan-release`) to re-group.
 
 ## The touchpoint matrix — the planner's load-bearing artefact
 
@@ -73,7 +73,9 @@ After decomposing a release into slices, the planner groups slices into tracks a
 | apps/web/.../WhatsNewSync.tsx                    |    |    | ✓  |
 ```
 
-**No row may have a `✓` in more than one column.** If decomposition cannot achieve that, the colliding slices belong in the **same track** (serialised), or one track is declared **dependent** on another (see below). The matrix is a contract: the implementer surfaces any touch outside its track's rows as a collision (not a silent addition), and `/merge-track`'s conflict check is the mechanical backstop.
+**No row may have a `✓` in more than one column** — except a *documented shared file* (invariant 2). If decomposition cannot achieve single-column rows, the colliding slices belong in the **same track** (serialised), or one track is declared **dependent** on another (see below). The matrix is a contract: the implementer surfaces any touch outside its track's rows as a collision (not a silent addition), and `/merge-track`'s conflict check is the mechanical backstop.
+
+**Documented shared files.** A large, append-mostly module may carry a `✓` in two columns *if the row names the distinct region/symbol each track edits* and they are well-separated and non-overlapping. Write the row as, e.g. `| lib/types.ts (DOCUMENTED SHARED) | ✓ PropertyFormState | ✓ YourPlan |`. `/merge-track` reconciles a conflict on such a row instead of BLOCKing. Use it only for genuinely additive, region-separable modules (a types file, a registry) — never a component, hook, or logic file. If the regions turn out to overlap at merge time, that is still a planner error and `/merge-track` BLOCKs.
 
 ## Cross-track dependencies
 
