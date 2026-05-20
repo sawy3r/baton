@@ -171,6 +171,12 @@ Before proposing any revision, rebuild the true state table:
 
 The output is the same as `/plan-release`: updated `index.md` (frontmatter tracks, tables, touchpoint matrix), new/updated specs, all committed.
 
+### Where re-plan artefacts are committed
+
+A re-plan runs on an in-flight release, so the release worktree already exists. Commit every planning artefact — new `spec.md` / `status.json`, `index.md`, `intake.md` — to the **release assembly branch `release-wt/<release-name>`**, working in the release worktree (`release_worktree_path` in `index.md` frontmatter). Never commit re-plan work to the version integration branch (`release/v*` or `main`): that branch sits *above* `release-wt` in the track-mode hierarchy, and the release reaches it only via `/merge-release`, gated on every track verified. Committing to the integration branch directly jumps that gate and forces a backwards `integration → release-wt` sync to undo.
+
+This is the one place `/replan-release` differs from `/plan-release` on commit target. `/plan-release` runs *before* any worktree exists, so it commits on whatever branch the session starts on; `/replan-release` always has a `release-wt` worktree and must use it. A new slice's `spec.md` reaches its track branch when that track worktree next syncs from `release-wt`; name every such track in the handoff.
+
 ## What you must never do
 
 - End the session without committing the intake doc.

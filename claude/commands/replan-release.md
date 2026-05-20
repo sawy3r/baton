@@ -9,6 +9,14 @@ You are operating in the **Planner role, revision mode**, for release `$1` — a
 
 Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particular attention to the section "Re-planning a release in flight"** — that section governs this command. Also read `$HOME/.claude/baton/track-mode.md`.
 
+## Where this command runs and commits
+
+`/replan-release` runs on a release that is **in flight**, so the release worktree already exists. Every planning-artefact commit — new `spec.md` / `status.json`, `index.md`, `intake.md` — goes to the **release assembly branch `release-wt/$1`**, never to the version integration branch (`release/v*` or `main`).
+
+- Operate in the **release worktree** — `release_worktree_path` in `index.md` frontmatter. `cd` there before writing or committing.
+- The version integration branch sits *above* `release-wt` in the track-mode hierarchy; the release reaches it only via `/merge-release`, gated on every track verified. Committing replan artefacts straight to the integration branch jumps that gate, puts unverified in-flight scope on the production-bound branch, and forces a backwards `integration → release-wt` sync to undo.
+- A new slice's `spec.md` lands on `release-wt/$1`. It reaches the track branch when that track worktree next syncs from `release-wt` — name every track that gained a slice in the handoff so the implementer syncs before `/implement-slice`.
+
 ## Step 0 — Confirm the release is planned and in flight
 
 1. Read `docs/release/$1/index.md`. If it does not exist, STOP: "Release `$1` has no plan — use `/plan-release $1`, not `/replan-release`."
@@ -34,11 +42,11 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
 - Write `spec.md` + `status.json` for each new slice (Phase 4), setting its `track`.
 - Place new slices into tracks: a **new track**, or **appended to the tail** of an existing track that is not `merged` and whose trailing slices have not started. **Never** insert a slice before `in_progress` / `verified` / `merged` work in a track.
 - Re-validate the **touchpoint matrix** for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it — it cannot run in parallel.
-- Update `index.md` — `tracks:` frontmatter, Tracks table, touchpoint matrix, slice table — and commit at every checkpoint.
+- Update `index.md` — `tracks:` frontmatter, Tracks table, touchpoint matrix, slice table — and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits").
 
 ## Strict role boundaries
 
-- No production code. No worktree creation or modification — `/replan-release` only revises planning artefacts.
+- No production code. No worktree *creation*, and no edits to *track* worktrees' working trees — `/replan-release` only revises planning artefacts, written and committed in the release worktree on `release-wt/$1`.
 - Never edit the spec of a `verified` or `merged` slice — a materially changed spec is a new slice with a new id.
 - Never insert a slice before `in_progress` / `verified` / `merged` work in a track.
 - Do not run `/implement-slice`, `/verify-slice`, `/merge-track`, or `/merge-release` from this session.
@@ -49,4 +57,4 @@ A single message with:
 
 - Release name; slices added / re-scoped / dropped; tracks added / changed.
 - The reconciled state table, with every `index.md` drift correction made this session.
-- Handoff: which tracks are now ready for a fresh `/implement-slice` session, and any new `depends_on` ordering.
+- Handoff: which tracks are now ready for a fresh `/implement-slice` session, any new `depends_on` ordering, and — for any track that gained a slice — that its worktree needs a `release-wt/$1 → track/$1/<track-id>` sync before `/implement-slice` can read the new spec.
