@@ -51,6 +51,21 @@ const REPO_ROOT = resolveRepoRoot();
 const RELEASE_DIR_REL = process.env.BATON_RELEASE_DIR || 'docs/release';
 const RELEASE_DIR = path.join(REPO_ROOT, RELEASE_DIR_REL);
 
+// git ls-tree / git show do NOT traverse symlinks. A project that points
+// `docs/` at its docs-site subtree (baton's Fumadocs symlink convention)
+// therefore needs the *canonical* repo-relative path for every git-ref read —
+// otherwise those reads silently return nothing and the board falls back to
+// stale working-tree data. Resolve the real path once, here; the filesystem
+// reads keep using RELEASE_DIR, where symlinks resolve fine on their own.
+function canonicalGitPath() {
+  try {
+    const rel = path.relative(REPO_ROOT, fs.realpathSync(RELEASE_DIR));
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return rel;
+  } catch { /* release dir not created yet — the literal path is the best guess */ }
+  return RELEASE_DIR_REL;
+}
+const RELEASE_DIR_GIT = canonicalGitPath();
+
 // Slices in these states don't block go-live.
 export const TERMINAL_STATES = new Set(['verified', 'shipped', 'deferred']);
 
@@ -179,7 +194,7 @@ function readWorktreeTree(rel) {
 function indexText(rel, releaseWtBranches) {
   const rwt = `release-wt/${rel}`;
   const fromBranch = releaseWtBranches.has(rwt)
-    ? git(['show', `${rwt}:${RELEASE_DIR_REL}/${rel}/index.md`])
+    ? git(['show', `${rwt}:${RELEASE_DIR_GIT}/${rel}/index.md`])
     : null;
   if (fromBranch != null) return fromBranch;
   const wt = path.join(RELEASE_DIR, rel, 'index.md');
@@ -257,17 +272,17 @@ function indexSliceRows(text, trackIds) {
 // Resolve every slice in one release to its authoritative state, and gather
 // the raw material the planning-record check needs.
 function readRelease(rel, releaseWtBranches) {
-  const releaseDirRel = `${RELEASE_DIR_REL}/${rel}`;
+  const releaseDirGit = `${RELEASE_DIR_GIT}/${rel}`;
   const idxText = indexText(rel, releaseWtBranches);
   const { sliceTrack, trackIds, tracks } = parseTracks(idxText);
 
   const trackTrees = {}; // track branch name -> { statuses, specSlices }
   for (const tb of listBranches(`track/${rel}/`)) {
-    trackTrees[tb] = readBranchTree(tb, releaseDirRel);
+    trackTrees[tb] = readBranchTree(tb, releaseDirGit);
   }
   const rwt = `release-wt/${rel}`;
   const rwtTree = releaseWtBranches.has(rwt)
-    ? readBranchTree(rwt, releaseDirRel)
+    ? readBranchTree(rwt, releaseDirGit)
     : { statuses: {}, specSlices: new Set() };
   const wtTree = readWorktreeTree(rel);
 
