@@ -125,6 +125,9 @@ Update later with `git pull && ./install.sh` from the same directory.
 | `claude/commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
 | `claude/baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, release-mode templates     |
 | `bin/release-verify.sh`                | `~/.claude/bin/release-verify.sh`             | Deterministic first-pass verifier, invoked by abs path |
+| `bin/release-board-status.sh`          | `~/.claude/bin/release-board-status.sh`       | Release board — terminal go/no-go verdict (exit 0/1)   |
+| `bin/release-board-ui.mjs`             | `~/.claude/bin/release-board-ui.mjs`          | Release board — auto-refreshing HTML dashboard         |
+| `bin/lib/release-board.mjs`            | `~/.claude/bin/lib/release-board.mjs`         | Shared branch-aware board reader (used by both above)  |
 
 Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment rules into your global instructions is a deliberate manual step — see the post-install message printed by `install.sh`.
 
@@ -148,6 +151,15 @@ For each release:
 5. **Merge the release** — when every track is merged, `/merge-release <name>` integrates `release-wt/<name>` back to the integration base.
 
 Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`claude/baton/track-mode.md`](claude/baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
+
+## Tracking the board
+
+Two read-only tools report release progress straight from git — no database, no state file. Both resolve every slice's authoritative `status.json` from the `track/*` and `release-wt/*` branches, so the terminal verdict and the dashboard agree by construction:
+
+- `release-board-status.sh [--verbose]` — terminal go/no-go verdict. Exits `0` when every slice is in a terminal state (`verified` / `shipped` / `deferred`), `1` otherwise — scriptable as a ship gate.
+- `release-board-ui.mjs [--port N]` — a local auto-refreshing HTML dashboard at `http://localhost:3333`, incomplete releases sorted to the top.
+
+Run either from inside the repo. The release-docs root defaults to `docs/release/`; set `BATON_RELEASE_DIR` to override (e.g. `apps/docs/content/docs/release` for a Fumadocs layout).
 
 ## Path tokens
 

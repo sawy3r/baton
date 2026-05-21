@@ -15,6 +15,10 @@ shipped.
   `~/.claude/baton/` via `./install.sh`.
 - Deterministic first-pass verifier (`release-verify.sh`) at
   `~/.claude/bin/`.
+- Release-board tooling at `~/.claude/bin/` — `release-board-status.sh`
+  (terminal go/no-go verdict) and `release-board-ui.mjs` (auto-refreshing
+  HTML dashboard), both resolving slice state straight from `track/*` +
+  `release-wt/*` git branches via the shared `lib/release-board.mjs`.
 
 ## Next — cross-tool adapters
 
