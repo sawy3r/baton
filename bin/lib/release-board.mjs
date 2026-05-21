@@ -186,28 +186,49 @@ function indexText(rel, releaseWtBranches) {
   return fs.existsSync(wt) ? fs.readFileSync(wt, 'utf8') : '';
 }
 
-// Parsed view of a release's index.md frontmatter `tracks:` block.
-// Returns { sliceTrack: { sliceId: trackId }, trackIds: Set<trackId> }.
+// Parsed view of a release's index.md frontmatter `tracks:` block. Returns:
+//   sliceTrack — { sliceId: trackId }   ownership map (resolution)
+//   trackIds   — Set<trackId>            for the ghost-slice row filter
+//   tracks     — [{ id, state, dependsOn:[trackId], slices:[sliceId] }]
+//                in frontmatter order, for track-grouped rendering
 // The per-slice `track` field in status.json was not backfilled for slices
 // planned before track mode, so index.md is the authoritative mapping.
 function parseTracks(text) {
   const sliceTrack = {};
   const trackIds = new Set();
+  const tracks = [];
   const fm = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!fm) return { sliceTrack, trackIds };
-  let currentTrack = null;
+  if (!fm) return { sliceTrack, trackIds, tracks };
+  let cur = null;
   for (const line of fm[1].split('\n')) {
     const idM = line.match(/^\s*-\s+id:\s*(\S+)/);
-    if (idM) { currentTrack = idM[1]; trackIds.add(currentTrack); continue; }
+    if (idM) {
+      cur = { id: idM[1], state: null, dependsOn: [], slices: [] };
+      trackIds.add(cur.id);
+      tracks.push(cur);
+      continue;
+    }
+    if (!cur) continue;
     const slM = line.match(/^\s*slices:\s*\[(.*)\]/);
-    if (slM && currentTrack) {
+    if (slM) {
       for (const s of slM[1].split(',')) {
         const id = s.trim();
-        if (id) sliceTrack[id] = currentTrack;
+        if (id) { cur.slices.push(id); sliceTrack[id] = cur.id; }
+      }
+      continue;
+    }
+    const stM = line.match(/^\s*state:\s*(\S+)/);
+    if (stM) { cur.state = stM[1]; continue; }
+    const dgM = line.match(/^\s*depends_on:\s*(.+)$/);
+    if (dgM) {
+      const v = dgM[1].trim();
+      if (v && v !== 'null') {
+        cur.dependsOn = v.replace(/^\[|\]$/g, '').split(',')
+          .map(x => x.trim()).filter(Boolean);
       }
     }
   }
-  return { sliceTrack, trackIds };
+  return { sliceTrack, trackIds, tracks };
 }
 
 // Slice rows from a release's index.md `## Slices` table. Returns
@@ -238,7 +259,7 @@ function indexSliceRows(text, trackIds) {
 function readRelease(rel, releaseWtBranches) {
   const releaseDirRel = `${RELEASE_DIR_REL}/${rel}`;
   const idxText = indexText(rel, releaseWtBranches);
-  const { sliceTrack, trackIds } = parseTracks(idxText);
+  const { sliceTrack, trackIds, tracks } = parseTracks(idxText);
 
   const trackTrees = {}; // track branch name -> { statuses, specSlices }
   for (const tb of listBranches(`track/${rel}/`)) {
@@ -284,6 +305,7 @@ function readRelease(rel, releaseWtBranches) {
       state,
       owner: status.owner ?? '',
       lastUpdated: status.last_updated_at ?? null,
+      track: trackId ?? null,
     });
     // Index rows may name the slice by directory name or by slice_id field;
     // key both so the planning-record check matches either spelling.
@@ -293,16 +315,17 @@ function readRelease(rel, releaseWtBranches) {
     stateById[sliceId] = state;
   }
 
-  return { rel, slices, specSlices, knownIds, stateById, idxText, trackIds };
+  return { rel, slices, specSlices, knownIds, stateById, idxText, trackIds, tracks };
 }
 
 // ---------------------------------------------------------------------------
 // public API
 // ---------------------------------------------------------------------------
 
-// The whole release board: every release's resolved slices, plus
-// planning-record integrity warnings (index.md rows that diverge from
-// committed branch reality).
+// The whole release board: every release's resolved slices (each tagged with
+// its `track`) and ordered `tracks` metadata, plus planning-record integrity
+// warnings (index.md rows that diverge from committed branch reality).
+// Shape: { releases: { <rel>: { slices, tracks } }, ghostSlices, pendingSpecs }.
 export function readBoard() {
   const releaseWtBranches = new Set(listBranches('release-wt/'));
 
@@ -322,7 +345,7 @@ export function readBoard() {
 
   for (const rel of [...names].sort()) {
     const r = readRelease(rel, releaseWtBranches);
-    if (r.slices.length) releases[rel] = { slices: r.slices };
+    if (r.slices.length) releases[rel] = { slices: r.slices, tracks: r.tracks };
 
     // Planning-record integrity: walk the index.md `## Slices` table and flag
     // rows that committed branch state can't back.

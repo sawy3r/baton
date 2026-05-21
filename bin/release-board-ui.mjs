@@ -51,54 +51,166 @@ function stateChip(state) {
   return `<span class="chip" style="background:${col}22;color:${col};border:1px solid ${col}44">${lbl}</span>`;
 }
 
+// --- track-state presentation -------------------------------------------
+
+const TRACK_STATE_COLOUR = { merged: '#22c55e', in_progress: '#fb923c', planned: '#64748b' };
+const TRACK_STATE_LABEL  = { merged: 'merged', in_progress: 'in progress', planned: 'planned' };
+
+function trackStateChip(state) {
+  const col = TRACK_STATE_COLOUR[state] ?? '#64748b';
+  const lbl = TRACK_STATE_LABEL[state] ?? (state || 'unknown');
+  return `<span class="chip" style="background:${col}22;color:${col};border:1px solid ${col}44">${lbl}</span>`;
+}
+
+// --- "what's next" command derivation -----------------------------------
+
+// The slash command that advances a slice in a given state. null = terminal.
+function sliceCommand(state, sliceId, release) {
+  switch (state) {
+    case 'planned':
+    case 'in_progress':
+    case 'failed_verification':
+      return `/implement-slice ${sliceId} ${release}`;
+    case 'implemented':
+      return `/verify-slice ${sliceId} ${release}`;
+    default:
+      return null; // verified / shipped / deferred
+  }
+}
+
+// A click-to-copy chip: shows the command verb, copies the full command.
+function copyChip(cmd, kind) {
+  const verb = cmd.split(' ')[0];
+  return `<button class="copy-cmd ${kind}" data-cmd="${cmd}" title="copy: ${cmd}"`
+       + ` onclick="copyCmd(event, this)">⧉ ${verb}</button>`;
+}
+
+// One slice table. `actionableIds` is the set of slice IDs whose "next"
+// command is live right now; every other non-terminal slice shows "blocked".
+function sliceTable(arr, release, actionableIds) {
+  const rows = arr.map(s => {
+    const cmd = sliceCommand(s.state, s.id, release);
+    let next = '';
+    if (cmd && actionableIds.has(s.id)) next = copyChip(cmd, 'cmd-go');
+    else if (!TERMINAL_STATES.has(s.state)) next = '<span class="blocked-mark">blocked</span>';
+    return `
+        <tr>
+          <td class="slice-id">${s.id}</td>
+          <td>${stateChip(s.state)}</td>
+          <td class="muted">${s.owner}</td>
+          <td class="muted">${s.lastUpdated ? s.lastUpdated.slice(0, 10) : ''}</td>
+          <td class="next-cell">${next}</td>
+        </tr>`;
+  }).join('');
+  return `<table class="slice-table">
+          <thead><tr><th>Slice</th><th>State</th><th>Owner</th><th>Updated</th><th>Next</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+}
+
 function renderPage(releases) {
   let total = 0, terminal = 0;
 
   // Incomplete releases first so blocked work is visible without scrolling;
   // cleared releases sink to the bottom. Array.sort is stable, so each group
   // keeps readBoard()'s alphabetical order.
-  const releaseList = Object.entries(releases).map(([name, { slices }]) => {
+  const releaseList = Object.entries(releases).map(([name, { slices, tracks }]) => {
     const t = slices.filter(s => TERMINAL_STATES.has(s.state)).length;
     const n = slices.length;
     total += n;
     terminal += t;
-    return { name, slices, t, n, clear: t === n };
+    return { name, slices, tracks: tracks || [], t, n, clear: t === n };
   });
   releaseList.sort((a, b) => Number(a.clear) - Number(b.clear));
 
-  const releaseBlocks = releaseList.map(({ name, slices, t, n, clear }) => {
+  const releaseBlocks = releaseList.map(({ name, slices, tracks, t, n, clear }) => {
     const pct = n === 0 ? 100 : Math.round((t / n) * 100);
     const barCol = clear ? '#22c55e' : pct > 50 ? '#f59e0b' : '#ef4444';
     const short = name.replace(/^\d{4}-\d{2}-\d{2}-/, '');
 
-    const sliceRows = [...slices]
-      .sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state))
-      .map(s => `
-        <tr>
-          <td class="slice-id">${s.id}</td>
-          <td>${stateChip(s.state)}</td>
-          <td class="muted">${s.owner}</td>
-          <td class="muted">${s.lastUpdated ? s.lastUpdated.slice(0, 10) : ''}</td>
-        </tr>`).join('');
+    const hasTracks = tracks.length > 0;
+    const mergedIds = new Set(tracks.filter(tr => tr.state === 'merged').map(tr => tr.id));
+    const allMerged = hasTracks && tracks.every(tr => tr.state === 'merged');
+    // A release "needs attention" — and so renders expanded — if any slice is
+    // non-terminal or any track is still unmerged.
+    const needsAttention = !clear || (hasTracks && !allMerged);
+
+    let detail;
+    if (hasTracks) {
+      const byId = Object.fromEntries(slices.map(s => [s.id, s]));
+      const groups = tracks.map(tr => {
+        const trSlices = tr.slices.map(id => byId[id]).filter(Boolean);
+        if (!trSlices.length) return '';
+        const tt = trSlices.filter(s => TERMINAL_STATES.has(s.state)).length;
+        const allTerminal = tt === trSlices.length;
+        // A track is dependency-blocked while any depends_on track is unmerged.
+        const unmet = tr.dependsOn.filter(d => !mergedIds.has(d));
+        const depBlocked = unmet.length > 0;
+        // Sequential gate: only the first non-terminal slice is actionable —
+        // and none are, if the whole track is dependency-blocked.
+        const nextSlice = depBlocked ? null : trSlices.find(s => !TERMINAL_STATES.has(s.state));
+        const actionableIds = new Set(nextSlice ? [nextSlice.id] : []);
+        // A fully-verified, not-yet-merged, unblocked track is ready to merge.
+        const trackCmd = (!depBlocked && allTerminal && tr.state !== 'merged')
+          ? copyChip(`/merge-track ${tr.id} ${name}`, 'cmd-merge') : '';
+        const dep = depBlocked
+          ? `<span class="track-dep">needs ${unmet.join(', ')}</span>` : '';
+        return `
+        <div class="track-group">
+          <div class="track-header">
+            <span class="track-id">${tr.id}</span>
+            ${trackStateChip(tr.state)}
+            ${dep}
+            <span class="track-count">${tt} / ${trSlices.length}</span>
+            ${trackCmd}
+          </div>
+          ${sliceTable(trSlices, name, actionableIds)}
+        </div>`;
+      }).filter(Boolean);
+
+      // Slices belonging to no track (e.g. pre-track-mode slices). These are
+      // independent — every non-terminal one is actionable.
+      const untracked = slices.filter(s => !s.track)
+        .sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state));
+      if (untracked.length) {
+        const ut = untracked.filter(s => TERMINAL_STATES.has(s.state)).length;
+        const actionableIds = new Set(
+          untracked.filter(s => !TERMINAL_STATES.has(s.state)).map(s => s.id));
+        groups.push(`
+        <div class="track-group">
+          <div class="track-header">
+            <span class="track-id track-id-muted">untracked</span>
+            <span class="track-count">${ut} / ${untracked.length}</span>
+          </div>
+          ${sliceTable(untracked, name, actionableIds)}
+        </div>`);
+      }
+      detail = groups.join('\n');
+    } else {
+      // Pre-track-mode release: flat table, every non-terminal slice actionable.
+      const flat = [...slices].sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state));
+      const actionableIds = new Set(flat.filter(s => !TERMINAL_STATES.has(s.state)).map(s => s.id));
+      detail = sliceTable(flat, name, actionableIds);
+    }
+
+    const releaseCmd = allMerged ? copyChip(`/merge-release ${name}`, 'cmd-merge') : '';
 
     return `
-    <div class="release-card ${clear ? 'clear' : 'blocked'}">
+    <div class="release-card ${clear ? 'clear' : 'blocked'}${needsAttention ? ' open' : ''}">
       <div class="release-header" onclick="this.parentElement.classList.toggle('open')">
         <div class="release-left">
           <span class="caret">▶</span>
           <span class="release-name">${short}</span>
         </div>
         <div class="release-right">
+          ${releaseCmd}
           <span class="counts">${t} / ${n}</span>
           <div class="bar-wrap"><div class="bar" style="width:${pct}%;background:${barCol}"></div></div>
           <span class="verdict ${clear ? 'verdict-clear' : 'verdict-blocked'}">${clear ? '✓ CLEAR' : `${n - t} remaining`}</span>
         </div>
       </div>
       <div class="slice-table-wrap">
-        <table class="slice-table">
-          <thead><tr><th>Slice</th><th>State</th><th>Owner</th><th>Updated</th></tr></thead>
-          <tbody>${sliceRows}</tbody>
-        </table>
+        ${detail}
       </div>
     </div>`;
   });
@@ -171,6 +283,31 @@ function renderPage(releases) {
   .chip { display: inline-block; font-size: 0.75rem; font-weight: 600;
           padding: 2px 8px; border-radius: 99px; letter-spacing: 0.01em; }
 
+  /* track groups */
+  .track-group { margin-top: 16px; }
+  .track-group:first-child { margin-top: 12px; }
+  .track-header { display: flex; align-items: center; gap: 9px;
+                  padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .track-id { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem;
+              font-weight: 600; color: var(--text); }
+  .track-id-muted { color: var(--muted); font-weight: 500; }
+  .track-dep { font-size: 0.72rem; color: #fb923c; }
+  .track-count { margin-left: auto; color: var(--muted); font-size: 0.78rem; }
+  .track-group .slice-table { margin-top: 0; }
+  .track-group .slice-table th { border-bottom: none; }
+
+  /* what's-next copy chips */
+  .copy-cmd { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.72rem;
+              font-weight: 600; padding: 3px 9px; border-radius: 6px;
+              cursor: pointer; white-space: nowrap; transition: background 0.12s; }
+  .copy-cmd.cmd-go    { background: #6366f122; color: #a5b4fc; border: 1px solid #6366f155; }
+  .copy-cmd.cmd-go:hover    { background: #6366f138; }
+  .copy-cmd.cmd-merge { background: #22c55e1f; color: #4ade80; border: 1px solid #22c55e55; }
+  .copy-cmd.cmd-merge:hover { background: #22c55e33; }
+  .copy-cmd.copied { background: #22c55e44 !important; color: #bbf7d0 !important; }
+  .next-cell { white-space: nowrap; }
+  .blocked-mark { font-size: 0.72rem; color: var(--muted); font-style: italic; }
+
   footer { margin-top: 28px; color: var(--muted); font-size: 0.78rem; text-align: center; }
   a { color: var(--accent); text-decoration: none; }
 </style>
@@ -213,6 +350,24 @@ ${releaseBlocks.join('\n')}
   <code>release-board-status.sh --verbose</code> for terminal view &nbsp;·&nbsp;
   reading <code>release-wt/*</code> + <code>track/*</code> branches via git
 </footer>
+
+<script>
+// Click-to-copy: writes the full slash command to the clipboard so it can be
+// pasted straight into an agent session. localhost is a secure context, so
+// navigator.clipboard is available.
+function copyCmd(ev, btn) {
+  ev.stopPropagation(); // don't toggle the enclosing release card
+  navigator.clipboard.writeText(btn.dataset.cmd).then(function () {
+    var prev = btn.textContent;
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    setTimeout(function () {
+      btn.textContent = prev;
+      btn.classList.remove('copied');
+    }, 1200);
+  });
+}
+</script>
 
 </body>
 </html>`;
