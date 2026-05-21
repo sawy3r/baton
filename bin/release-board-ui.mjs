@@ -129,7 +129,6 @@ function renderPage(releases) {
     const short = name.replace(/^\d{4}-\d{2}-\d{2}-/, '');
 
     const hasTracks = tracks.length > 0;
-    const mergedIds = new Set(tracks.filter(tr => tr.state === 'merged').map(tr => tr.id));
     const allMerged = hasTracks && tracks.every(tr => tr.state === 'merged');
     // A release "needs attention" — and so renders expanded — if any slice is
     // non-terminal or any track is still unmerged.
@@ -142,19 +141,13 @@ function renderPage(releases) {
         const trSlices = tr.slices.map(id => byId[id]).filter(Boolean);
         if (!trSlices.length) return '';
         const tt = trSlices.filter(s => TERMINAL_STATES.has(s.state)).length;
-        const allTerminal = tt === trSlices.length;
-        // A track is dependency-blocked while any depends_on track is unmerged.
-        const unmet = tr.dependsOn.filter(d => !mergedIds.has(d));
-        const depBlocked = unmet.length > 0;
-        // Sequential gate: only the first non-terminal slice is actionable —
-        // and none are, if the whole track is dependency-blocked.
-        const nextSlice = depBlocked ? null : trSlices.find(s => !TERMINAL_STATES.has(s.state));
-        const actionableIds = new Set(nextSlice ? [nextSlice.id] : []);
-        // A fully-verified, not-yet-merged, unblocked track is ready to merge.
-        const trackCmd = (!depBlocked && allTerminal && tr.state !== 'merged')
+        // Actionability (sequential gate + dependency gate) and merge-readiness
+        // are derived once in release-board.mjs; here we only render them.
+        const actionableIds = new Set(trSlices.filter(s => s.actionable).map(s => s.id));
+        const trackCmd = tr.readyToMerge
           ? copyChip(`/merge-track ${tr.id} ${name}`, 'cmd-merge') : '';
-        const dep = depBlocked
-          ? `<span class="track-dep">needs ${unmet.join(', ')}</span>` : '';
+        const dep = (tr.blockedBy && tr.blockedBy.length)
+          ? `<span class="track-dep">needs ${tr.blockedBy.join(', ')}</span>` : '';
         return `
         <div class="track-group">
           <div class="track-header">
@@ -174,8 +167,7 @@ function renderPage(releases) {
         .sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state));
       if (untracked.length) {
         const ut = untracked.filter(s => TERMINAL_STATES.has(s.state)).length;
-        const actionableIds = new Set(
-          untracked.filter(s => !TERMINAL_STATES.has(s.state)).map(s => s.id));
+        const actionableIds = new Set(untracked.filter(s => s.actionable).map(s => s.id));
         groups.push(`
         <div class="track-group">
           <div class="track-header">
@@ -189,7 +181,7 @@ function renderPage(releases) {
     } else {
       // Pre-track-mode release: flat table, every non-terminal slice actionable.
       const flat = [...slices].sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state));
-      const actionableIds = new Set(flat.filter(s => !TERMINAL_STATES.has(s.state)).map(s => s.id));
+      const actionableIds = new Set(flat.filter(s => s.actionable).map(s => s.id));
       detail = sliceTable(flat, name, actionableIds);
     }
 

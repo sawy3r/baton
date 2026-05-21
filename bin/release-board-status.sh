@@ -78,6 +78,24 @@ state_label() {
   esac
 }
 
+track_state_label() {
+  case "$1" in
+    merged)      green  "merged" ;;
+    in_progress) yellow "in_progress" ;;
+    planned)     gray   "planned" ;;
+    *)           gray   "${1:-unknown}" ;;
+  esac
+}
+
+# The slash command that advances a slice in a given state ('' = terminal).
+next_command() {
+  case "$1" in
+    planned|in_progress|failed_verification) echo "/implement-slice" ;;
+    implemented)                             echo "/verify-slice" ;;
+    *)                                       echo "" ;;
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # collect data — via the shared branch-aware reader
 # ---------------------------------------------------------------------------
@@ -95,28 +113,19 @@ fi
 
 declare -A release_total
 declare -A release_terminal
-declare -A release_blocking_slices  # newline-separated list of "slice_id\tstate"
 
 total_all=0
 terminal_all=0
 
-while IFS=$'\t' read -r release slice_id state; do
+while IFS=$'\t' read -r release state; do
   [[ -z "$release" ]] && continue
   release_total["$release"]=$(( ${release_total["$release"]:-0} + 1 ))
   total_all=$(( total_all + 1 ))
-
   if is_terminal "$state"; then
     release_terminal["$release"]=$(( ${release_terminal["$release"]:-0} + 1 ))
     terminal_all=$(( terminal_all + 1 ))
-  else
-    existing="${release_blocking_slices["$release"]:-}"
-    if [[ -n "$existing" ]]; then
-      release_blocking_slices["$release"]="$existing"$'\n'"$slice_id"$'\t'"$state"
-    else
-      release_blocking_slices["$release"]="$slice_id"$'\t'"$state"
-    fi
   fi
-done < <(jq -r '.releases | to_entries[] | .key as $r | .value.slices[] | "\($r)\t\(.id)\t\(.state)"' <<< "$board_json")
+done < <(jq -r '.releases | to_entries[] | .key as $r | .value.slices[] | "\($r)\t\(.state)"' <<< "$board_json")
 
 remaining_all=$(( total_all - terminal_all ))
 
@@ -138,6 +147,56 @@ HR="─────────────────────────�
 
 printf "%-52s  %-12s  %s\n" "Release" "Verified" "Verdict"
 echo "$HR"
+
+# Track-grouped detail for one release (--verbose). Renders each track with
+# its non-terminal slices; the actionable slice and a merge-ready track are
+# annotated with the slash command to run next. release-board.mjs derives the
+# actionable / blockedBy / readyToMerge facts — this only renders them.
+print_verbose_detail() {
+  local release="$1"
+  local kind f2 f3 f4 f5 f6 f7 verb
+  while IFS=$'\t' read -r kind f2 f3 f4 f5 f6 f7; do
+    case "$kind" in
+      T)  # f2=id f3=state f4=verified f5=total f6=blockedBy(csv) f7=readyToMerge
+        printf "  "; bold "$f2"; printf "  "
+        track_state_label "$f3"
+        printf "  %s/%s" "$f4" "$f5"
+        [[ "$f6" != "-" ]] && { printf "  "; yellow "needs ${f6//,/, }"; }
+        [[ "$f7" == "1" ]] && { printf "  "; green "-> /merge-track $f2 $release"; }
+        echo
+        ;;
+      S)  # f2=id f3=state f4=actionable(0/1)
+        printf "    %-46s " "$f2"
+        state_label "$f3"
+        if [[ "$f4" == "1" ]]; then
+          verb="$(next_command "$f3")"
+          [[ -n "$verb" ]] && { printf "  "; green "-> $verb $f2 $release"; }
+        fi
+        echo
+        ;;
+    esac
+  done < <(jq -r --arg r "$release" '
+    .releases[$r] as $rel
+    | ($rel.tracks // []) as $tracks
+    | ($rel.slices | map({key: .id, value: .}) | from_entries) as $byId
+    | if ($tracks | length) > 0
+      then
+        $tracks[] | . as $tr
+        | ([ $tr.slices[]? | $byId[.] | select(. != null) ]) as $own
+        | ([ $own[] | select(.state | IN("verified","shipped","deferred")) ] | length) as $term
+        | ([ $own[] | select((.state | IN("verified","shipped","deferred")) | not) ]) as $pending
+        | select(($pending | length) > 0 or ($tr.state != "merged"))
+        | (
+            "T\t\($tr.id)\t\($tr.state)\t\($term)\t\($own | length)\t\(if (($tr.blockedBy // []) | length) > 0 then ($tr.blockedBy | join(",")) else "-" end)\t\(if $tr.readyToMerge then "1" else "0" end)"
+          ),
+          ( $pending[] | "S\t\(.id)\t\(.state)\t\(if .actionable then "1" else "0" end)" )
+      else
+        $rel.slices[]
+        | select((.state | IN("verified","shipped","deferred")) | not)
+        | "S\t\(.id)\t\(.state)\t\(if .actionable then "1" else "0" end)"
+      end
+  ' <<< "$board_json")
+}
 
 for release in $(echo "${!release_total[@]}" | tr ' ' '\n' | sort); do
   total=${release_total["$release"]}
@@ -161,11 +220,7 @@ for release in $(echo "${!release_total[@]}" | tr ' ' '\n' | sort); do
   echo
 
   if $VERBOSE && [[ "$remaining" -gt 0 ]]; then
-    while IFS=$'\t' read -r sid sstate; do
-      printf "  %-50s  " "$sid"
-      state_label "$sstate"
-      echo
-    done <<< "${release_blocking_slices["$release"]}"
+    print_verbose_detail "$release"
   fi
 done
 
@@ -225,8 +280,8 @@ else
   red "NOT READY"; echo
   echo "$remaining_all slice(s) remaining before go-live."
   echo
-  if ! $VERBOSE && [[ "${#release_blocking_slices[@]}" -gt 0 ]]; then
-    gray "Run with --verbose to list every remaining slice."
+  if ! $VERBOSE; then
+    gray "Run with --verbose for the track-grouped breakdown + next commands."
     echo
   fi
   exit 1

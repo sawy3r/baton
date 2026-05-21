@@ -306,6 +306,7 @@ function readRelease(rel, releaseWtBranches) {
       owner: status.owner ?? '',
       lastUpdated: status.last_updated_at ?? null,
       track: trackId ?? null,
+      actionable: false,
     });
     // Index rows may name the slice by directory name or by slice_id field;
     // key both so the planning-record check matches either spelling.
@@ -315,6 +316,29 @@ function readRelease(rel, releaseWtBranches) {
     stateById[sliceId] = state;
   }
 
+  // --- "what's next" derivation: sequential gate + dependency gate --------
+  // Tag the one actionable slice per track (first non-terminal, in track
+  // order); record each track's unmet dependencies and merge-readiness. A
+  // dependency-blocked track has no actionable slice. Untracked slices are
+  // independent — every non-terminal one is actionable.
+  const sliceById = {};
+  for (const s of slices) sliceById[s.id] = s;
+  const mergedTrackIds = new Set(
+    tracks.filter(t => t.state === 'merged').map(t => t.id));
+  for (const tr of tracks) {
+    tr.blockedBy = tr.dependsOn.filter(d => !mergedTrackIds.has(d));
+    const own = tr.slices.map(id => sliceById[id]).filter(Boolean);
+    const allTerminal = own.length > 0 && own.every(s => TERMINAL_STATES.has(s.state));
+    tr.readyToMerge = allTerminal && tr.state !== 'merged' && tr.blockedBy.length === 0;
+    if (tr.blockedBy.length === 0) {
+      const next = own.find(s => !TERMINAL_STATES.has(s.state));
+      if (next) next.actionable = true;
+    }
+  }
+  for (const s of slices) {
+    if (!s.track && !TERMINAL_STATES.has(s.state)) s.actionable = true;
+  }
+
   return { rel, slices, specSlices, knownIds, stateById, idxText, trackIds, tracks };
 }
 
@@ -322,9 +346,12 @@ function readRelease(rel, releaseWtBranches) {
 // public API
 // ---------------------------------------------------------------------------
 
-// The whole release board: every release's resolved slices (each tagged with
-// its `track`) and ordered `tracks` metadata, plus planning-record integrity
-// warnings (index.md rows that diverge from committed branch reality).
+// The whole release board: every release's resolved slices and ordered
+// `tracks` metadata, plus planning-record integrity warnings (index.md rows
+// that diverge from committed branch reality).
+// Each slice carries `track` + `actionable` (the next slice to act on in its
+// track); each track carries `state`, `dependsOn`, `blockedBy` (unmet deps),
+// and `readyToMerge`.
 // Shape: { releases: { <rel>: { slices, tracks } }, ghostSlices, pendingSpecs }.
 export function readBoard() {
   const releaseWtBranches = new Set(listBranches('release-wt/'));
