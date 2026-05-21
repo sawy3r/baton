@@ -37,7 +37,7 @@ All four fields are required. Omit none.
 ## When to emit
 
 - **Implementer**: emit at the wrap-up step, after `status.json` is updated to `implemented` and the proof bundle is written. STATE should be `verified_validate`.
-- **Verifier**: emit after the PASS/FAIL/BLOCKED verdict. STATE maps directly: PASS → `verified_awaiting_approval`, FAIL → `blocked_needs_human`, BLOCKED → `blocked_needs_planner`.
+- **Verifier**: emit after the PASS/FAIL/BLOCKED verdict. FAIL → `blocked_needs_human`; BLOCKED → `blocked_needs_planner`. PASS is **track-aware**: if the verified slice's track still has an incomplete slice, PASS → `verified_implement_next` with `NEXT` set to that slice (the watcher auto-advances to `/implement-slice`); if every slice in the track is now verified, PASS → `verified_awaiting_approval` with `NEXT: NONE` (the track is ready for `/merge-track` — a human-gated merge, no auto-advance).
 - **Planner**: emit after the release index and all slice specs are written and committed. STATE should be `verified_implement_next` with NEXT set to the first slice id.
 - **Any session that hits a blocker**: emit immediately with the appropriate blocked state before stopping.
 
@@ -60,7 +60,7 @@ REASON: All gates passed, proof bundle written, ready for adversarial verificati
 -->
 ```
 
-## Example — verifier PASS
+## Example — verifier PASS, track has a further slice
 
 ```
 PASS
@@ -70,10 +70,27 @@ Verified against: 4a2b3c1d
 Verifier session: fresh, artefact-only
 
 <!-- WATCHER
-STATE: verified_awaiting_approval
+STATE: verified_implement_next
 SLICE: S07-playwright-harness-suite
 NEXT: S08-foo-bar
-REASON: All six gates passed. S08 is the next unimplemented slice per the release index.
+REASON: All six gates passed. S08 is the next slice in track T2-harness.
+-->
+```
+
+## Example — verifier PASS, track complete
+
+```
+PASS
+
+Slice: S08-foo-bar
+Verified against: 9f1e2d3c
+Verifier session: fresh, artefact-only
+
+<!-- WATCHER
+STATE: verified_awaiting_approval
+SLICE: S08-foo-bar
+NEXT: NONE
+REASON: All six gates passed. Track T2-harness is complete — run /merge-track T2-harness, then /merge-release once every track is merged.
 -->
 ```
 

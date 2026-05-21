@@ -3,9 +3,10 @@
 # install.sh — install baton at the user level (~/.claude/).
 #
 # Idempotent: re-running overwrites the six slash commands, the
-# baton docs package, and the release-verify.sh script. It does NOT
-# touch ~/.claude/CLAUDE.md or any other user config — wiring the AGENTS rules
-# fragment into your CLAUDE.md is a manual step printed at the end.
+# baton docs package, and the bin/ scripts (release-verify.sh + the
+# release-board tooling). It does NOT touch ~/.claude/CLAUDE.md or any other
+# user config — wiring the AGENTS rules fragment into your CLAUDE.md is a
+# manual step printed at the end.
 
 set -euo pipefail
 
@@ -26,6 +27,9 @@ Installs:
   ~/.claude/commands/{plan-release,replan-release,implement-slice,verify-slice,merge-track,merge-release}.md
   ~/.claude/baton/                  (rule docs, role prompts, templates)
   ~/.claude/bin/release-verify.sh              (first-pass verifier script)
+  ~/.claude/bin/release-board-status.sh        (release board — terminal verdict)
+  ~/.claude/bin/release-board-ui.mjs           (release board — HTML dashboard)
+  ~/.claude/bin/lib/release-board.mjs          (shared branch-aware board reader)
 
 Does NOT modify:
   ~/.claude/CLAUDE.md                          (wire AGENTS-fragment.md in manually)
@@ -69,9 +73,12 @@ done
 # Docs package: rules, role-prompts/, release-mode-template/
 run cp -rv "$BUNDLE_DIR"/claude/baton/. "$CLAUDE_HOME/baton/"
 
-# release-verify.sh
-run cp -v "$BUNDLE_DIR"/bin/release-verify.sh "$CLAUDE_HOME/bin/release-verify.sh"
-run chmod +x "$CLAUDE_HOME/bin/release-verify.sh"
+# bin/: release-verify.sh + the release-board tooling (status CLI, HTML
+# dashboard, and the shared reader under bin/lib/).
+run cp -rv "$BUNDLE_DIR"/bin/. "$CLAUDE_HOME/bin/"
+run chmod +x "$CLAUDE_HOME/bin/release-verify.sh" \
+             "$CLAUDE_HOME/bin/release-board-status.sh" \
+             "$CLAUDE_HOME/bin/release-board-ui.mjs"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo
@@ -95,6 +102,13 @@ Slash commands available in every project on this machine:
 Verify script lives at:  $CLAUDE_HOME/bin/release-verify.sh
   (the slash commands invoke it by absolute path; you can also call it
    directly from any repo as \$HOME/.claude/bin/release-verify.sh)
+
+Release-board tooling, also at $CLAUDE_HOME/bin/ — run from inside any repo:
+  release-board-status.sh [--verbose]    terminal go/no-go verdict (exit 0/1)
+  release-board-ui.mjs [--port N]        auto-refreshing HTML dashboard
+  Both resolve slice state from track/* + release-wt/* git branches. The
+  release-docs root defaults to docs/release/; set BATON_RELEASE_DIR to
+  override (e.g. apps/docs/content/docs/release for a Fumadocs layout).
 
 Remaining manual step — wire the Rule 1–5 fragment into your global
 agent instructions if you haven't already. The fragment ships at:

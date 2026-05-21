@@ -97,16 +97,16 @@ cp -r docs/baton/role-prompts docs/release/_role-prompts
 
 Adopters copy these into the repo so they're discoverable from `docs/release/` directly, rather than spread across the documentation package. The originals stay in `docs/baton/` as the canonical reference; the copies are working templates.
 
-### Step C — Port `release-verify.sh`
+### Step C — Adjust `release-verify.sh` to your stack
 
-The script that ships in the source monorepo (`scripts/release-verify.sh`) is a reference implementation, not a portable artefact. It bakes in:
+`./install.sh` places `release-verify.sh` at `~/.claude/bin/release-verify.sh`; the slash commands invoke it from there by absolute path. It is a reference implementation, not a universal artefact — it bakes in defaults that may not match your project:
 
 - The base branch name (defaults to `main`)
-- Test commands relevant to the source project (Go + TypeScript)
+- Test commands relevant to the reference project (Go + TypeScript)
 - Dark-code marker patterns
 - Glob patterns for which files are scanned
 
-Copy the script into your repo's `scripts/` directory and adjust those defaults to your stack. Keep the structure (six checks producing a numbered first-pass verdict) — the structure is the contract, the contents are project-flavoured.
+Adjust those defaults to your stack — edit `bin/release-verify.sh` in your baton checkout and re-run `./install.sh`, or edit the installed copy directly. Keep the structure (six checks producing a numbered first-pass verdict) — the structure is the contract, the contents are project-flavoured.
 
 ### Step D — Bind the harness to your workflow
 
@@ -114,7 +114,7 @@ The full loop, per release, is:
 
 1. **Planner session (chat mode)**. Human pastes `role-prompts/planner.md` into a fresh agent session. They describe the release conversationally — screenshots, gestures, references. The planner captures everything to `docs/release/<release-name>/intake.md`, proposes a slice decomposition, writes a `spec.md` per agreed slice, and commits. No code is written in this session.
 
-2. **Implementer session (per slice)**. Human opens a fresh session and pastes `role-prompts/implementer.md`. The implementer reads the slice's `spec.md`, makes the changes, writes `proof.md` from live repo state, runs `scripts/release-verify.sh <slice-id>`, and stops at state `implemented`. The implementer is forbidden from declaring `verified`.
+2. **Implementer session (per slice)**. Human opens a fresh session and pastes `role-prompts/implementer.md`. The implementer reads the slice's `spec.md`, makes the changes, writes `proof.md` from live repo state, runs `~/.claude/bin/release-verify.sh <slice-id>`, and stops at state `implemented`. The implementer is forbidden from declaring `verified`.
 
 3. **Verifier session (per slice, fresh context)**. Human opens **another** fresh session — new terminal, no inherited transcript — and pastes `role-prompts/verifier.md`. The verifier reads only `spec.md`, `proof.md`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`. Verdict goes to `journal.md`.
 
@@ -162,122 +162,3 @@ They are tool-agnostic at the rule level. The only tool-specific bits are the pe
 ## Questions / issues
 
 If a rule misfires in your context, or you find a failure mode the rules don't cover, open an issue on the source repo or copy this package and amend locally. The rule-set is designed to evolve.
-
----
-
-## Appendix: future Claude Code plugin packaging (not yet extracted)
-
-This folder + the six slash commands at `.claude/commands/{plan-release,replan-release,implement-slice,verify-slice,merge-track,merge-release}.md` + `scripts/release-verify.sh` are intended to be extracted into a standalone Claude Code plugin repo (`baton`) so other projects can install them via `/plugin`. This appendix captures the install / lifecycle / develop instructions now so they don't need re-research at extraction time. The parallelism model the commands operate is `track-mode.md`.
-
-### Target plugin layout
-
-```
-baton/
-├── .claude-plugin/plugin.json          # name: "baton", version: "0.1.0"
-├── skills/
-│   ├── plan-release/SKILL.md           # → /baton:plan-release
-│   ├── replan-release/SKILL.md         # → /baton:replan-release
-│   ├── implement-slice/SKILL.md        # → /baton:implement-slice
-│   ├── verify-slice/SKILL.md           # → /baton:verify-slice
-│   ├── merge-track/SKILL.md            # → /baton:merge-track
-│   └── merge-release/SKILL.md          # → /baton:merge-release
-├── bin/release-verify.sh               # Auto-PATH when plugin loads
-├── docs/
-│   ├── role-prompts/{planner,implementer,verifier}.md
-│   └── templates/{intake,index,proof,journal,spec,status}.{md,json}
-└── README.md
-```
-
-Skills reference supporting docs via `${CLAUDE_SKILL_DIR}/../../docs/role-prompts/X.md` — the one mechanical rewrite needed during extraction. Bash scripts in `bin/` are auto-on-PATH; existing `release-verify.sh` call sites work unchanged.
-
-### Install (paste into the plugin's README at extraction time)
-
-```shell
-/plugin marketplace add sawy3r/baton
-/plugin install baton@sawy3r-baton
-```
-
-Or directly from git URL (handy for forks):
-
-```shell
-/plugin marketplace add https://github.com/sawy3r/baton.git
-/plugin install baton@baton
-```
-
-After install, six namespaced slash commands appear:
-
-- `/baton:plan-release <name>` — planner role (decomposes into slices + tracks)
-- `/baton:replan-release <name>` — planner revision mode (revise a release already in flight)
-- `/baton:implement-slice <slice-id> [<release-name>]` — implementer role
-- `/baton:verify-slice <slice-id> [<release-name>]` — verifier role (run in a fresh session)
-- `/baton:merge-track <track-id> [<release-name>]` — track integrator (track → release-wt)
-- `/baton:merge-release <release-name>` — release integrator (release-wt → integration branch)
-
-Update: `/plugin marketplace update sawy3r-baton`. Auto-update is off by default for third-party marketplaces.
-Uninstall: `/plugin uninstall baton@sawy3r-baton`.
-Plugins live at `~/.claude/plugins/` for local inspection.
-
-### Lifecycle (one closed loop per release)
-
-```
-~/projects/<repo>
-    ↓ /baton:plan-release <YYYY-MM-DD-theme>
-    (planner runs in primary worktree on integration branch; writes
-     docs/release/<name>/{intake,index,SNN-*/spec}.md. index.md groups
-     slices into touchpoint-disjoint TRACKS — see track-mode.md.)
-    ↓ /new — one session per track; tracks run in parallel
-    ↓ /baton:implement-slice <slice-id> <release-name>
-    (first slice of the release auto-creates the release worktree on
-     release-wt/<name>; first slice of each track auto-creates that
-     track's worktree on track/<name>/<track-id>. Slices in a track run
-     sequentially in that one worktree.)
-    ↓ /new (fresh terminal — Rule 7 requires no inherited context)
-    ↓ /baton:verify-slice <slice-id> <release-name>
-    (BLOCKED / FAIL / PASS — PASS flips the slice to 'verified')
-    ↓ repeat implement→verify for every slice in the track
-    ↓ /baton:merge-track <track-id> <release-name>
-    (asserts every slice in the track verified; merges
-     track/<name>/<track-id> → release-wt/<name> with --no-ff)
-    ↓ repeat for every track
-    ↓ /baton:merge-release <release-name>
-    (asserts every track merged; merges release-wt/<name> → integration
-     branch with --no-ff. Does NOT push, NOT delete worktrees, NOT flip
-     state to 'shipped'.)
-    ↓ deploy integration branch to prod via existing pipeline
-    ↓ slice states flip to 'shipped'
-```
-
-Terminology is locked: **verified** = verifier PASSed a slice, **track-merged** = a track branch joined `release-wt`, **release-merged** = `release-wt` joined the integration branch, **shipped** = code in prod. Four distinct events, four distinct verbs.
-
-### Develop locally (during plugin extraction or maintenance)
-
-```shell
-git clone git@github.com:sawy3r/baton.git ~/projects/baton
-cd ~/your-project
-claude --plugin-dir ~/projects/baton
-```
-
-Changes to `skills/`, `bin/`, or `docs/` are picked up on next session start.
-
-### Extraction checklist (when you come back to this)
-
-1. `mkdir ~/projects/baton && cd ~/projects/baton && git init`.
-2. Create `.claude-plugin/plugin.json` with `name: "baton"`, `version: "0.1.0"`.
-3. Move `.claude/commands/*.md` (from the source repo) → `skills/*/SKILL.md` (rename + restructure).
-4. Move `apps/docs/content/docs/baton/{role-prompts,release-mode-template}/*` → `docs/{role-prompts,templates}/`.
-5. Rewrite path references in skills: `apps/docs/content/docs/baton/role-prompts/X.md` → `${CLAUDE_SKILL_DIR}/../../docs/role-prompts/X.md`.
-6. Move `scripts/release-verify.sh` → `bin/release-verify.sh`.
-7. Drop the Install + Lifecycle + Develop sections above into `README.md`.
-8. Push to `github.com/sawy3r/baton`.
-9. In the source repo: delete the carved-out paths and `/plugin install` from the new repo. Update memory entries that reference old paths.
-
-### Naming trade-off to decide at extraction time
-
-Plugin-namespaced commands become `/baton:plan-release`, `/baton:implement-slice`, etc. The current bare `/plan-release` form will no longer exist post-extraction. Decide upfront whether the namespacing benefit (no command-name collisions, clear origin) is worth retraining muscle memory.
-
-### Authoritative docs
-
-- [Create plugins](https://code.claude.com/docs/en/plugins.md)
-- [Custom skills](https://code.claude.com/docs/en/custom-skills.md)
-- [Discover and install plugins](https://code.claude.com/docs/en/discover-plugins.md)
-- [Plugins reference](https://code.claude.com/docs/en/plugins-reference.md)

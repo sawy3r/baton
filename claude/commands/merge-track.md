@@ -28,26 +28,41 @@ The merge target is `release-wt/$2`, which the release worktree owns.
 3. If `depends_on` names another track whose `state` is not `merged`, BLOCK: "Track `$1` depends on `<other>` (state `<state>`) — merge that track first."
 4. **Verification gate.** For every slice in the track, read its `status.json` `state` from the **track branch** — `git -C <release_worktree_path> show track/$2/$1:docs/release/$2/<slice>/status.json` — because the verifier's commits land on the track branch, not on `release-wt`. Every slice must be `verified` (or `deferred` / `superseded`). If any is `planned` / `in_progress` / `implemented` / `failed_verification`, BLOCK: "Cannot merge track `$1` — not verified: <list>. Each must complete /verify-slice with PASS first."
 
-## Step 2 — Drift gate
+## Step 2 — Drift gate (self-healing)
 
-1. `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2`. If `0`, proceed to Step 3.
-2. If non-zero, `release-wt/$2` has advanced since the track branched (a sibling track merged first). BLOCK with:
+`release-wt/$2` advances every time a sibling track merges, so from the second track merge of a release onward this gate almost always fires. **It is not a planner error — it is the ordinary cost of parallelism.** The older behaviour ejected you to forward-merge by hand; this step reconciles the drift itself, in the track worktree, and only BLOCKs on a genuine fault.
 
-   > `release-wt/$2` has advanced N commits since track `$1` branched. Forward-merge it into the track worktree first so any reconciliation happens with track context:
-   >
-   > ```
-   > cd <track-worktree-path>
-   > git fetch origin && git merge release-wt/$2
-   > # resolve any index.md reconciliation, re-run the track's tests, commit
-   > ```
-   >
-   > Then re-run `/merge-track $1 $2`.
+1. **Locate the track worktree.** From the `tracks:` frontmatter entry for `$1`, capture `worktree_path` (= `<track-worktree-path>`). If unset, BLOCK: "Track `$1` has no worktree — nothing has been implemented." Confirm via `git worktree list` that it exists on branch `track/$2/$1`; if absent, BLOCK with the `git worktree add` recreate command. Confirm its working tree is clean (`git -C <track-worktree-path> status --short` empty); if dirty, BLOCK — never forward-merge into a dirty worktree.
 
-   List the first 5 driving commits (`git log --oneline track/$2/$1..release-wt/$2 | head -5`). By the touchpoint-disjointness invariant the forward-merge is conflict-free on code — expect at most an `index.md` reconciliation.
+2. **Measure drift.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2`. If `0`, the track already carries `release-wt`'s tip — proceed to Step 3.
+
+3. **Forward-merge `release-wt/$2` into the track worktree.** Drift is non-zero. List the driving commits first for the audit trail (`git -C <release_worktree_path> log --oneline track/$2/$1..release-wt/$2`), then:
+
+   ```
+   git -C <track-worktree-path> merge --no-ff release-wt/$2 -m "Merge release-wt/$2 into track/$2/$1 — sync before track merge
+
+   Forward-merge so the track branch carries release-wt's tip before
+   /merge-track integrates it back. Drift reconciled: <N> sibling commits.
+
+   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+   ```
+
+4. **Resolve conflicts — identical touchpoint contract to Step 4.** By invariant 2 of track-mode.md, disjoint tracks never write the same code/test file, so the forward-merge is conflict-free on code — expect at most an `index.md` reconciliation. On `git -C <track-worktree-path> diff --name-only --diff-filter=U`:
+
+   - **No conflicts** — `git merge` already created the merge commit. Continue to step 5.
+   - **Release `index.md`** — expected board reconciliation. Per-slice and per-track rows are disjoint and auto-merge; only the **Aggregate state** block and the **Recent activity** log collide. Resolve: keep both sides' rows, union the Recent activity entries chronologically, recompute the Aggregate state counts. `git -C <track-worktree-path> add` the file.
+   - **A documented shared file** (matrix row marked `DOCUMENTED SHARED` with each track's declared region) — inspect the hunks: if they sit in the declared-separate regions, keep both tracks' regions and `git -C <track-worktree-path> add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git -C <track-worktree-path> merge --abort` and BLOCK as a planner error.
+   - **Any other file** — `git -C <track-worktree-path> merge --abort` and BLOCK: "Forward-merge of `release-wt/$2` into track `$1` conflicted on <files>, which are neither `index.md` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a merged sibling track both wrote <file>. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
+
+   After resolving any conflicts, commit the merge: `git -C <track-worktree-path> commit --no-edit` (retains the message from step 3).
+
+5. **Re-run the track's tests in the track worktree.** Collect the deduplicated union of every track slice's `status.json` `test_commands` and run each from `<track-worktree-path>`. The per-slice verifications each ran against an *older* `release-wt`; this is the first run with the merged siblings underneath. If any command fails, BLOCK with the failing command and its output — the forward-merge surfaced a real integration regression. The forward-merge commit stays on the track branch; fix forward, then re-run `/merge-track $1 $2`.
+
+6. **Re-confirm.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2` must now be `0`. Proceed to Step 3.
 
 ## Step 3 — Confirm scope with the human
 
-`AskUserQuestion`: show release, track id, branch, the verified slice list, and the commit count (`git rev-list --count release-wt/$2..track/$2/$1`). Question: "Merge `track/$2/$1` into `release-wt/$2`?" Options: "Yes, merge" / "No, abort". If aborted, exit cleanly.
+`AskUserQuestion`: show release, track id, branch, the verified slice list, and the commit count (`git rev-list --count release-wt/$2..track/$2/$1`). If Step 2 performed a forward-merge, say so explicitly — cite the sync commit SHA and note that the track's tests were re-run green on the merged base. Question: "Merge `track/$2/$1` into `release-wt/$2`?" Options: "Yes, merge" / "No, abort". If aborted, exit cleanly.
 
 ## Step 4 — Perform the merge
 

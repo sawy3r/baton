@@ -75,6 +75,12 @@ All artefact edits below land **inside the track worktree** (`<wt>/docs/release/
 
 ## Output to human at session end
 
-Your verdict block exactly as specified in `role-prompts/verifier.md`. If FAIL, then the human re-opens an `/implement-slice $1 $2` session in a fresh window to address. If PASS, the slice is `verified` and awaits human approval to ship. If BLOCKED, the human resolves the blocker and re-runs verification.
+Your verdict block exactly as specified in `role-prompts/verifier.md`. End the verdict with the **concrete next step** — state the exact next command, do not leave it implicit:
+
+- **PASS** — the slice is `verified`. The next step is **track-aware** (see `role-prompts/verifier.md` "Determining the next step"): walk the current track's ordered `slices` after `$1`.
+  - If the track has a further incomplete slice, the next step is `/implement-slice <next-slice-id> $2` in a fresh session.
+  - If every slice in the track is now `verified`, the track is complete: the next step is `/merge-track <track-id>`, and then `/merge-release $2` once every track in the release has merged.
+- **FAIL** — the human re-opens an `/implement-slice $1 $2` session in a fresh window to address the numbered violations.
+- **BLOCKED** — the human resolves the blocker, then re-runs `/verify-slice $1 $2`.
 
 Do not soften FAIL into "mostly PASS with minor issues." Your value is your willingness to FAIL slices that look fine.
