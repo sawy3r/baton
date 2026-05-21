@@ -180,17 +180,41 @@ Reason: <specific external dependency or unreadable artefact>
 
 Your value to the project is your willingness to FAIL slices that look fine. Sessions where the verifier never returns FAIL are sessions where the verifier was not actually adversarial.
 
+## Determining the next step (PASS only)
+
+A PASS does not end the work — it advances the **track**. After you have formed and recorded the PASS verdict (never before — this computation must not influence any gate), determine the next step from the **current track**, not the release as a whole:
+
+1. From `<wt>/docs/release/<release-name>/index.md` frontmatter, take the ordered `slices` array of the track that owns `<slice-id>` (the track you discovered in Step 0).
+2. Walk the slices that appear **after** `<slice-id>` in that array. For each, read its `status.json` `state`.
+3. The next step is one of exactly two outcomes:
+   - **A further incomplete slice exists** — the first slice after `<slice-id>` whose state is not `verified`. In a sequential track this is the immediately-following `planned` slice. The next step is `/implement-slice <that-slice-id> <release-name>` in a fresh session.
+   - **Every slice after `<slice-id>` in the track is `verified`** (or `<slice-id>` is the last in the array) — the **track is complete**. The next step is `/merge-track <track-id>`, and then `/merge-release <release-name>` once every track in the release has been merged.
+
+This is release-routing, not verification: slices in *other* tracks never enter this computation. Reading sibling `status.json` files is permitted post-verdict and only for this routing purpose.
+
 ## Watcher status block (mandatory)
 
 After your PASS/FAIL/BLOCKED verdict, emit this as the absolute last content of the turn:
 
-For PASS:
+For PASS, the STATE depends on the next step computed in "Determining the next step" above.
+
+If the track still has a further incomplete slice (auto-advance to implement it):
+```
+<!-- WATCHER
+STATE: verified_implement_next
+SLICE: <slice-id>
+NEXT: <next-incomplete-slice-id in this track>
+REASON: All six gates passed. <next-incomplete-slice-id> is the next slice in track <track-id>.
+-->
+```
+
+If every slice in the track is now verified (track ready to merge):
 ```
 <!-- WATCHER
 STATE: verified_awaiting_approval
 SLICE: <slice-id>
-NEXT: <next-slice-id from release index, or NONE>
-REASON: All six gates passed.
+NEXT: NONE
+REASON: All six gates passed. Track <track-id> is complete — run /merge-track <track-id>, then /merge-release <release-name> once every track is merged.
 -->
 ```
 
