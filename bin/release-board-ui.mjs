@@ -114,16 +114,16 @@ function renderPage(releases) {
   // Incomplete releases first so blocked work is visible without scrolling;
   // cleared releases sink to the bottom. Array.sort is stable, so each group
   // keeps readBoard()'s alphabetical order.
-  const releaseList = Object.entries(releases).map(([name, { slices, tracks }]) => {
+  const releaseList = Object.entries(releases).map(([name, { slices, tracks, mergedToBase }]) => {
     const t = slices.filter(s => TERMINAL_STATES.has(s.state)).length;
     const n = slices.length;
     total += n;
     terminal += t;
-    return { name, slices, tracks: tracks || [], t, n, clear: t === n };
+    return { name, slices, tracks: tracks || [], mergedToBase, t, n, clear: t === n };
   });
   releaseList.sort((a, b) => Number(a.clear) - Number(b.clear));
 
-  const releaseBlocks = releaseList.map(({ name, slices, tracks, t, n, clear }) => {
+  const releaseBlocks = releaseList.map(({ name, slices, tracks, mergedToBase, t, n, clear }) => {
     const pct = n === 0 ? 100 : Math.round((t / n) * 100);
     const barCol = clear ? '#22c55e' : pct > 50 ? '#f59e0b' : '#ef4444';
     const short = name.replace(/^\d{4}-\d{2}-\d{2}-/, '');
@@ -148,9 +148,13 @@ function renderPage(releases) {
           ? copyChip(`/merge-track ${tr.id} ${name}`, 'cmd-merge') : '';
         const dep = (tr.blockedBy && tr.blockedBy.length)
           ? `<span class="track-dep">needs ${tr.blockedBy.join(', ')}</span>` : '';
+        // A track whose every slice is terminal collapses by default (still
+        // expandable); a track with live work renders open.
+        const trComplete = tt === trSlices.length;
         return `
-        <div class="track-group">
-          <div class="track-header">
+        <div class="track-group${trComplete ? '' : ' open'}">
+          <div class="track-header" onclick="this.parentElement.classList.toggle('open')">
+            <span class="track-caret">▶</span>
             <span class="track-id">${tr.id}</span>
             ${trackStateChip(tr.state)}
             ${dep}
@@ -169,8 +173,9 @@ function renderPage(releases) {
         const ut = untracked.filter(s => TERMINAL_STATES.has(s.state)).length;
         const actionableIds = new Set(untracked.filter(s => s.actionable).map(s => s.id));
         groups.push(`
-        <div class="track-group">
-          <div class="track-header">
+        <div class="track-group${ut === untracked.length ? '' : ' open'}">
+          <div class="track-header" onclick="this.parentElement.classList.toggle('open')">
+            <span class="track-caret">▶</span>
             <span class="track-id track-id-muted">untracked</span>
             <span class="track-count">${ut} / ${untracked.length}</span>
           </div>
@@ -185,7 +190,12 @@ function renderPage(releases) {
       detail = sliceTable(flat, name, actionableIds);
     }
 
-    const releaseCmd = allMerged ? copyChip(`/merge-release ${name}`, 'cmd-merge') : '';
+    // The /merge-release chip is an offered action — show it only while the
+    // release is assembled (all tracks merged) but NOT yet merged into its
+    // integration branch. Once merged, the action is done; the chip would be
+    // stale. `mergedToBase` is resolved by git ancestry in release-board.mjs.
+    const releaseCmd = (allMerged && !mergedToBase)
+      ? copyChip(`/merge-release ${name}`, 'cmd-merge') : '';
 
     return `
     <div class="release-card ${clear ? 'clear' : 'blocked'}${needsAttention ? ' open' : ''}">
@@ -264,10 +274,19 @@ function renderPage(releases) {
 
   .slice-table-wrap { display: none; border-top: 1px solid var(--border); padding: 0 18px 14px; }
   .release-card.open .slice-table-wrap { display: block; }
-  .slice-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 12px; }
+  .slice-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 12px;
+                 table-layout: fixed; }
+  /* Fixed column geometry. Every slice table renders at the same width (all are
+     width:100% inside the same-width track group), so identical column widths
+     make all five columns align down the whole page, across every release. */
+  .slice-table th:nth-child(1) { width: 32%; }  /* Slice   */
+  .slice-table th:nth-child(2) { width: 15%; }  /* State   */
+  .slice-table th:nth-child(3) { width: 22%; }  /* Owner   */
+  .slice-table th:nth-child(4) { width: 12%; }  /* Updated */
+  .slice-table th:nth-child(5) { width: 19%; }  /* Next    */
   .slice-table th { color: var(--muted); font-weight: 500; text-align: left;
                     padding: 4px 8px 8px; border-bottom: 1px solid var(--border); }
-  .slice-table td { padding: 6px 8px; }
+  .slice-table td { padding: 6px 8px; overflow-wrap: anywhere; }
   .slice-table tr + tr td { border-top: 1px solid var(--border)18; }
   .slice-id { font-family: 'SF Mono', 'Fira Code', monospace; color: var(--muted); font-size: 0.78rem; }
   .muted { color: var(--muted); }
@@ -279,13 +298,19 @@ function renderPage(releases) {
   .track-group { margin-top: 16px; }
   .track-group:first-child { margin-top: 12px; }
   .track-header { display: flex; align-items: center; gap: 9px;
-                  padding: 5px 8px; border-bottom: 1px solid var(--border); }
+                  padding: 5px 8px; border-bottom: 1px solid var(--border);
+                  cursor: pointer; user-select: none; transition: background 0.15s; }
+  .track-header:hover { background: var(--surface2); }
+  .track-caret { color: var(--muted); font-size: 0.6rem; transition: transform 0.2s; }
+  .track-group.open .track-caret { transform: rotate(90deg); }
   .track-id { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem;
               font-weight: 600; color: var(--text); }
   .track-id-muted { color: var(--muted); font-weight: 500; }
   .track-dep { font-size: 0.72rem; color: #fb923c; }
   .track-count { margin-left: auto; color: var(--muted); font-size: 0.78rem; }
-  .track-group .slice-table { margin-top: 0; }
+  /* Track-level accordion — a completed track renders collapsed (no .open). */
+  .track-group .slice-table { margin-top: 0; display: none; }
+  .track-group.open .slice-table { display: table; }
   .track-group .slice-table th { border-bottom: none; }
 
   /* what's-next copy chips */

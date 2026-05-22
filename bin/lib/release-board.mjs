@@ -96,6 +96,18 @@ function listBranches(prefix) {
   return out.split('\n').map(s => s.trim()).filter(Boolean);
 }
 
+// Does a ref resolve? Used to prefer a local branch over its origin/ mirror.
+function refExists(ref) {
+  return git(['rev-parse', '--verify', '--quiet', ref]) != null;
+}
+
+// Is `ancestor` fully contained in `descendant`'s history? `git merge-base
+// --is-ancestor` exits 0 (yes) or non-zero (no, or a bad ref); git() maps every
+// non-zero exit to null, so a non-null result is exactly the "yes" answer.
+function isAncestor(ancestor, descendant) {
+  return git(['merge-base', '--is-ancestor', ancestor, descendant]) != null;
+}
+
 // Parse a status.json blob, healing the one known subagent artifact in memory
 // (stray `</content></invoke>` tool-envelope tags). Returns the object or null.
 // The heal is in-memory only — the file on disk is never rewritten.
@@ -272,6 +284,32 @@ function parseReleaseWorktree(text) {
   };
 }
 
+// The integration branch a release merges back into, from index.md "Release
+// summary" — e.g. "- **Target version / integration branch**: `release/v0.5.0`".
+function parseIntegrationBranch(text) {
+  const m = text.match(/integration branch[^\n`]*`([^`]+)`/i);
+  return m ? m[1].trim() : null;
+}
+
+// Has this release already been merged into its integration branch? /merge-release
+// records nothing structural (no release-level state flag), so git ancestry is
+// the only signal: the release-wt branch is contained in the integration branch.
+// A release-wt branch that no longer exists was wound down after merging
+// (merge-release.md retains it only until the release is concluded) — also
+// treated as merged. Unknown integration branch ⇒ false (cannot claim merged).
+function releaseMergedToBase(rel, idxText) {
+  const rwt = `release-wt/${rel}`;
+  const rwtRef = refExists(rwt) ? rwt
+               : refExists(`origin/${rwt}`) ? `origin/${rwt}` : null;
+  if (!rwtRef) return true; // no release-wt branch anywhere — release concluded
+  const integ = parseIntegrationBranch(idxText);
+  if (!integ) return false;
+  const integRef = refExists(integ) ? integ
+                 : refExists(`origin/${integ}`) ? `origin/${integ}` : null;
+  if (!integRef) return false;
+  return isAncestor(rwtRef, integRef);
+}
+
 // Slice rows from a release's index.md `## Slices` table. Returns
 // [{ sid, specCell }]. Track-table rows share the row shape `| `ID` | ... |`
 // (`T1-projection` matches a slice-ID regex just as well as `S13-...`), so
@@ -382,7 +420,8 @@ function readRelease(rel, releaseWtBranches) {
   }
 
   return { rel, slices, specSlices, knownIds, stateById, idxText, trackIds, tracks,
-           releaseWorktreePath, releaseWorktreeBranch };
+           releaseWorktreePath, releaseWorktreeBranch,
+           mergedToBase: releaseMergedToBase(rel, idxText) };
 }
 
 // ---------------------------------------------------------------------------
@@ -395,9 +434,10 @@ function readRelease(rel, releaseWtBranches) {
 // Each slice carries `track` + `actionable` (the next slice to act on in its
 // track); each track carries `state`, `dependsOn`, `blockedBy` (unmet deps),
 // `readyToMerge`, and `worktreePath` / `worktreeBranch`. Each release also
-// carries `releaseWorktreePath` / `releaseWorktreeBranch`.
+// carries `releaseWorktreePath` / `releaseWorktreeBranch` and `mergedToBase`
+// (release-wt is already contained in the integration branch).
 // Shape: { releases: { <rel>: { slices, tracks, releaseWorktreePath,
-//          releaseWorktreeBranch } }, ghostSlices, pendingSpecs }.
+//          releaseWorktreeBranch, mergedToBase } }, ghostSlices, pendingSpecs }.
 export function readBoard() {
   const releaseWtBranches = new Set(listBranches('release-wt/'));
 
@@ -423,6 +463,7 @@ export function readBoard() {
         tracks: r.tracks,
         releaseWorktreePath: r.releaseWorktreePath,
         releaseWorktreeBranch: r.releaseWorktreeBranch,
+        mergedToBase: r.mergedToBase,
       };
     }
 
