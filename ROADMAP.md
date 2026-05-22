@@ -7,7 +7,8 @@ shipped.
 ## Now (shipped)
 
 - Slash commands for Claude Code: `/plan-release`, `/replan-release`,
-  `/implement-slice`, `/verify-slice`, `/merge-track`, `/merge-release`.
+  `/implement-slice`, `/verify-slice`, `/merge-track`, `/merge-release`,
+  `/mark-shipped`.
 - Track mode — slices grouped into touchpoint-disjoint tracks for safe
   parallelism, each track in its own worktree. See
   `claude/baton/track-mode.md`.
