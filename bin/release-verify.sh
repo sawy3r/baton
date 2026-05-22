@@ -237,6 +237,79 @@ if [[ -f "$PROOF_FILE" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Board consistency
+# ---------------------------------------------------------------------------
+#
+# The release board (index.md, one level up from the slice folder) carries a
+# slice table whose state column is the planner/human-facing surface. The
+# per-slice status.json is the machine-facing source of truth. These two can
+# drift silently when a slice ends in an unusual terminal state (blocked,
+# failed_verification, partial deferral) because nobody downstream is going
+# to open every status.json to discover the release lost a slot.
+#
+# Rule: the board's state cell for this slice must contain a normalised token
+# that maps from status.json's `state` field. Parenthetical annotations are
+# allowed (precedent: `deferred (superseded by S06 in ...)`).
+
+section "Board consistency"
+
+RELEASE_DIR="$(dirname "$SLICE_DIR")"
+BOARD_FILE="$RELEASE_DIR/index.md"
+
+if [[ ! -f "$BOARD_FILE" ]]; then
+  check_fail "release board not found: $BOARD_FILE"
+elif [[ -z "${STATE:-}" ]]; then
+  gray "  status.json state unknown (jq missing or parse failed); skipping board check"
+else
+  # Match the row whose first markdown cell is `<slice-id>` (backticked).
+  ROW=$(grep -E "^\| \`${SLICE_ID}\` \|" "$BOARD_FILE" || true)
+  if [[ -z "$ROW" ]]; then
+    check_fail "slice '$SLICE_ID' not listed in board $BOARD_FILE"
+  else
+    # Locate the State column by its header rather than a hardcoded index.
+    # The release-mode template gained a `Track` column for track mode, so
+    # State is no longer at a fixed position (6-col legacy boards vs 7-col
+    # track-mode boards). Split on the literal `|` cell delimiter: a row
+    # `| a | b |` yields cell N at awk field N+1; find the field whose
+    # header text is exactly `State`, then read that field from the row.
+    BOARD_HEADER=$(grep -E '^\| *ID *\|' "$BOARD_FILE" | head -1)
+    STATE_COL=$(printf '%s\n' "$BOARD_HEADER" | awk -F'|' '{
+      for (i = 1; i <= NF; i++) {
+        cell = $i; gsub(/^ +| +$/, "", cell)
+        if (cell == "State") { print i; exit }
+      }
+    }')
+    BOARD_STATE=$(printf '%s\n' "$ROW" | awk -F'|' -v c="${STATE_COL:-0}" '{
+      cell = $c; gsub(/^ +| +$/, "", cell); print cell
+    }')
+    gray "  status.json state: $STATE"
+    gray "  board state cell:  $BOARD_STATE"
+
+    # Map status.json state -> board token that must appear in the cell.
+    # Watcher-protocol blocked_* variants collapse onto board's `blocked`.
+    case "$STATE" in
+      planned|in_progress|implemented|verified|failed_verification|deferred|shipped)
+        EXPECTED_TOKEN="$STATE"
+        ;;
+      blocked|blocked_needs_planner|blocked_needs_human)
+        EXPECTED_TOKEN="blocked"
+        ;;
+      *)
+        EXPECTED_TOKEN=""
+        ;;
+    esac
+
+    if [[ -z "$EXPECTED_TOKEN" ]]; then
+      check_fail "no board-token mapping for status.json state '$STATE' — extend the case in release-verify.sh"
+    elif [[ "$BOARD_STATE" == *"$EXPECTED_TOKEN"* ]]; then
+      check_pass "board cell contains '$EXPECTED_TOKEN' (matches status.json '$STATE')"
+    else
+      check_fail "board cell ('$BOARD_STATE') does not contain '$EXPECTED_TOKEN' (status.json says '$STATE'); update $BOARD_FILE"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Board home — track-mode invariant 5
 # ---------------------------------------------------------------------------
 #
@@ -254,8 +327,6 @@ fi
 
 section "Board home (track-mode invariant 5)"
 
-RELEASE_DIR="$(dirname "$SLICE_DIR")"
-BOARD_FILE="$RELEASE_DIR/index.md"
 RELEASE_NAME_RESOLVED="${RELEASE_NAME:-$(basename "$RELEASE_DIR")}"
 RELEASE_WT_BRANCH="release-wt/${RELEASE_NAME_RESOLVED}"
 BOARD_GIT_PATH="docs/release/${RELEASE_NAME_RESOLVED}/index.md"
