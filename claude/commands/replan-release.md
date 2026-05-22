@@ -44,6 +44,17 @@ Before reconciling state or revising anything, bring `release-wt/$1` up to date 
 4. Print the reconciled state table — slice → true state, track → `planned` / `in_progress` / `merged` — and call out every drift from what the integration-branch `index.md` records, including every spec-drift slice found in step 3 and every ghost slice / pending spec the oracle flagged. The revision and the `index.md` correction are done in the same pass.
 5. **Diagnose why the replan was called — read the journals, not just the oracle.** The oracle reports each slice's `state` but not *why* it is there: it has no blocked-reason field and never reads journals. A slice the oracle shows as `in_progress` may actually be a stalled BLOCKED handoff routed back to the planner. For every slice the oracle reports as `in_progress` or `failed_verification` — plus any the human's request points at — read its `status.json` **`blocked` block** and **`verification.result`**, and the tail of its `journal.md`. These carry the implementer's or verifier's BLOCKED diagnosis, the recommended action, and the spec defect (if any) that routed the work here. Summarise the diagnosed trigger before proposing any revision — the revision must answer it.
 
+## Step 2b — Resolve any inbound BLOCKED slice
+
+A slice whose `status.json` has `verification.result: "blocked"` was routed here by a verifier: verification could not complete because the slice's own contract is the problem. Correcting a factual spec defect flagged by a BLOCKED verdict is squarely **in remit** for `/replan-release` — it is the reason the BLOCKED handoff routes to the planner.
+
+For each BLOCKED slice surfaced by the Step 2 reconciliation you have exactly **two** legal outcomes:
+
+1. **Correct the spec.** Amend `spec.md` to fix the defect — the verifier's verdict should carry a concrete proposed amendment; ratify it or improve on it. Then **clear `verification.result`** back to `"pending"` in the slice's `status.json` so the slice can re-enter verification, and set `state` to whatever the corrected spec now requires (`implemented` if the existing implementation already satisfies it, otherwise `failed_verification` or `planned`). Record the correction in `journal.md`.
+2. **Escalate to the human.** If you believe the verifier was wrong — the spec was correct and the BLOCKED verdict was a misjudgement — do not silently overturn it. Surface the disagreement to the human with both positions and let them decide.
+
+**Returning the handoff to the verifier is not an option.** "Re-run `/verify-slice` and see" is a return-to-sender handoff — non-terminating by construction (see `$HOME/.claude/baton/session-discipline.md` "Handoff directionality"). The slice re-enters verification only after the planner has cleared `verification.result`.
+
 ## Steps 3-5 — Drive the revision
 
 Follow the planner role prompt's **"Re-planning a release in flight"** section:
@@ -84,6 +95,6 @@ A single message with:
 
 - Release name; slices added / re-scoped / dropped; tracks added / changed.
 - **Base-branch sync (Step 1)**: already-current, merged cleanly, or stopped for a production-code conflict.
-- The reconciled state table, the **diagnosed replan trigger** (Step 2.5), and every `index.md` drift correction made this session.
+- The reconciled state table, the **diagnosed replan trigger** (Step 2.5), the resolution of any inbound BLOCKED slice (Step 2b — spec corrected, or escalated to the human), and every `index.md` drift correction made this session.
 - **Track propagation (Step 6)**: which track branches were synced, skipped (dirty / no worktree), or left for downstream Step 0 self-heal.
 - Handoff: which tracks are now ready for a fresh `/implement-slice` session, and any new `depends_on` ordering. With Step 6 done, tracks no longer need a manual `release-wt → track` sync before `/implement-slice` — call out any exception left for self-heal.

@@ -202,6 +202,14 @@ A PASS does not end the work — it advances the **track**. After you have forme
 
 This is release-routing, not verification: slices in *other* tracks never enter this computation. Reading sibling `status.json` files is permitted post-verdict and only for this routing purpose.
 
+## When the verdict is BLOCKED
+
+A BLOCKED verdict means verification cannot complete because the slice's own contract is the problem — a spec defect, an ambiguous or unfalsifiable acceptance check, or an external gap — not something an implementer can fix. It routes in exactly one direction:
+
+- **The next step is `/replan-release <release-name>`.** The planner is the only role that can amend a spec and clear `verification.result`. Do not tell the human to "resolve the blocker and re-run `/verify-slice`" — that vague instruction is the non-terminating handoff this routing exists to prevent. Do not route to `/implement-slice`: an implementer cannot clear a BLOCKED verdict, and re-opening the slice for implementation re-enters the verifier → planner → verifier loop.
+- **A spec-defect BLOCKED verdict must carry a concrete proposed `spec.md` amendment.** If you are BLOCKing because the spec is factually wrong, incomplete, or self-contradictory, your verdict states the exact change the planner should ratify — the precise sentence, acceptance check, or touchpoint to add, remove, or correct. A BLOCKED verdict that only says "the spec is wrong" forces the planner to re-derive the analysis you already did; carry the amendment so the planner's job is to ratify, not re-investigate.
+- A handoff resolves forward to the next role or escalates up to the human; it never returns to its sender. The canonical statement is `$HOME/.claude/baton/session-discipline.md` "Handoff directionality".
+
 ## Watcher status block (mandatory)
 
 After your PASS/FAIL/BLOCKED verdict, emit this as the absolute last content of the turn:
