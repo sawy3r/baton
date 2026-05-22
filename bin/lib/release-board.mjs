@@ -208,8 +208,12 @@ function indexText(rel, releaseWtBranches) {
 // Parsed view of a release's index.md frontmatter `tracks:` block. Returns:
 //   sliceTrack — { sliceId: trackId }   ownership map (resolution)
 //   trackIds   — Set<trackId>            for the ghost-slice row filter
-//   tracks     — [{ id, state, dependsOn:[trackId], slices:[sliceId] }]
-//                in frontmatter order, for track-grouped rendering
+//   tracks     — [{ id, state, dependsOn:[trackId], slices:[sliceId],
+//                   worktreePath, worktreeBranch }]  in frontmatter order
+// `worktreePath` / `worktreeBranch` let the oracle stand in as the complete
+// track-discovery source for the slash commands — they no longer re-read
+// index.md frontmatter themselves (a launch-directory read was the recurring
+// stale-branch trap). An un-materialised track has `worktreePath: null`.
 // The per-slice `track` field in status.json was not backfilled for slices
 // planned before track mode, so index.md is the authoritative mapping.
 function parseTracks(text) {
@@ -222,7 +226,8 @@ function parseTracks(text) {
   for (const line of fm[1].split('\n')) {
     const idM = line.match(/^\s*-\s+id:\s*(\S+)/);
     if (idM) {
-      cur = { id: idM[1], state: null, dependsOn: [], slices: [] };
+      cur = { id: idM[1], state: null, dependsOn: [], slices: [],
+              worktreePath: null, worktreeBranch: null };
       trackIds.add(cur.id);
       tracks.push(cur);
       continue;
@@ -238,6 +243,10 @@ function parseTracks(text) {
     }
     const stM = line.match(/^\s*state:\s*(\S+)/);
     if (stM) { cur.state = stM[1]; continue; }
+    const wpM = line.match(/^\s*worktree_path:\s*(.*)$/);
+    if (wpM) { cur.worktreePath = wpM[1].trim() || null; continue; }
+    const wbM = line.match(/^\s*worktree_branch:\s*(.*)$/);
+    if (wbM) { cur.worktreeBranch = wbM[1].trim() || null; continue; }
     const dgM = line.match(/^\s*depends_on:\s*(.+)$/);
     if (dgM) {
       const v = dgM[1].trim();
@@ -248,6 +257,19 @@ function parseTracks(text) {
     }
   }
   return { sliceTrack, trackIds, tracks };
+}
+
+// Release-level worktree fields from index.md frontmatter — the release
+// assembly worktree, set by the first /implement-slice in the release.
+// Top-level frontmatter keys, distinct from the per-track worktree_path.
+function parseReleaseWorktree(text) {
+  const fm = text.match(/^---\n([\s\S]*?)\n---/);
+  const body = fm ? fm[1] : '';
+  const pick = (key) => (body.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'))?.[1] ?? '').trim() || null;
+  return {
+    releaseWorktreePath: pick('release_worktree_path'),
+    releaseWorktreeBranch: pick('release_worktree_branch'),
+  };
 }
 
 // Slice rows from a release's index.md `## Slices` table. Returns
@@ -279,6 +301,7 @@ function readRelease(rel, releaseWtBranches) {
   const releaseDirGit = `${RELEASE_DIR_GIT}/${rel}`;
   const idxText = indexText(rel, releaseWtBranches);
   const { sliceTrack, trackIds, tracks } = parseTracks(idxText);
+  const { releaseWorktreePath, releaseWorktreeBranch } = parseReleaseWorktree(idxText);
 
   const trackTrees = {}; // track branch name -> { statuses, specSlices }
   for (const tb of listBranches(`track/${rel}/`)) {
@@ -358,7 +381,8 @@ function readRelease(rel, releaseWtBranches) {
     if (!s.track && !TERMINAL_STATES.has(s.state)) s.actionable = true;
   }
 
-  return { rel, slices, specSlices, knownIds, stateById, idxText, trackIds, tracks };
+  return { rel, slices, specSlices, knownIds, stateById, idxText, trackIds, tracks,
+           releaseWorktreePath, releaseWorktreeBranch };
 }
 
 // ---------------------------------------------------------------------------
@@ -370,8 +394,10 @@ function readRelease(rel, releaseWtBranches) {
 // that diverge from committed branch reality).
 // Each slice carries `track` + `actionable` (the next slice to act on in its
 // track); each track carries `state`, `dependsOn`, `blockedBy` (unmet deps),
-// and `readyToMerge`.
-// Shape: { releases: { <rel>: { slices, tracks } }, ghostSlices, pendingSpecs }.
+// `readyToMerge`, and `worktreePath` / `worktreeBranch`. Each release also
+// carries `releaseWorktreePath` / `releaseWorktreeBranch`.
+// Shape: { releases: { <rel>: { slices, tracks, releaseWorktreePath,
+//          releaseWorktreeBranch } }, ghostSlices, pendingSpecs }.
 export function readBoard() {
   const releaseWtBranches = new Set(listBranches('release-wt/'));
 
@@ -391,7 +417,14 @@ export function readBoard() {
 
   for (const rel of [...names].sort()) {
     const r = readRelease(rel, releaseWtBranches);
-    if (r.slices.length) releases[rel] = { slices: r.slices, tracks: r.tracks };
+    if (r.slices.length) {
+      releases[rel] = {
+        slices: r.slices,
+        tracks: r.tracks,
+        releaseWorktreePath: r.releaseWorktreePath,
+        releaseWorktreeBranch: r.releaseWorktreeBranch,
+      };
+    }
 
     // Planning-record integrity: walk the index.md `## Slices` table and flag
     // rows that committed branch state can't back.
