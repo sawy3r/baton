@@ -3,6 +3,26 @@ description: Enter Implementer role for a specific slice. Reads spec.md, impleme
 argument-hint: <slice-id> [<release-name>] (e.g. S03-portfolio-add-flow 2026-05-16-expenses-ia)
 ---
 
+## Argument resolution — do this first, before Step 0
+
+This command is invoked as `/implement-slice <slice-id> [<release-name>]`. The
+harness substitutes `$1` / `$2` into this prompt **before you see it**, and
+that positional substitution has been observed to drop or swap tokens (the
+release-name landing in the slice-id slot, `$2` left empty). **Do not trust
+the substituted slice-id / release-name that appear in the text below.**
+Re-derive them yourself, by shape:
+
+1. Raw, unsplit argument string: `$ARGUMENTS`
+2. Split it on whitespace.
+3. The **slice-id** is the token matching `^S[0-9]+-` — e.g. `S03-portfolio-add-flow`.
+4. The **release-name** is the token matching `^[0-9]{4}-[0-9]{2}-[0-9]{2}-` — e.g. `2026-05-16-expenses-ia`. Optional; may be absent.
+5. If the two tokens are swapped, trust the shape and reassign. If no slice-id-shaped token exists, stop and tell the human the invocation is malformed (show them `$ARGUMENTS`).
+
+The values you resolve here are the single source of truth for `<slice-id>`
+and `<release-name>` for the whole session. Wherever the text below shows a
+concrete slice-id or release-name (a substituted `$1` / `$2`), use your
+shape-resolved values instead if they differ.
+
 You are now operating in the **Implementer role** for slice `$1` in release `$2`.
 
 **Release artefact root:** All paths in this command are repo-relative and anchored at `docs/release/$2/$1/`. If your project renders docs from a different location (e.g. Fumadocs at `apps/docs/content/docs/`), create a `docs/` symlink to that path before running the harness. When a symlink is in use, prefer the canonical (non-symlinked) target for `git add` / `git mv` / `git rm` — git refuses to stage paths "beyond a symbolic link".

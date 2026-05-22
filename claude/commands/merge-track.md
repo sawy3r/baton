@@ -3,6 +3,26 @@ description: Merge a completed track's track/<release>/<track-id> branch into th
 argument-hint: <track-id> [<release-name>] (e.g. T1-identity-account 2026-05-19-uat-bug-fix)
 ---
 
+## Argument resolution — do this first
+
+This command is invoked as `/merge-track <track-id> [<release-name>]`. The
+harness substitutes `$1` / `$2` into this prompt **before you see it**, and
+that positional substitution has been observed to drop or swap tokens (the
+release-name landing in the track-id slot, `$2` left empty). **Do not trust
+the substituted track-id / release-name that appear in the text below.**
+Re-derive them yourself, by shape:
+
+1. Raw, unsplit argument string: `$ARGUMENTS`
+2. Split it on whitespace.
+3. The **track-id** is the token matching `^T[0-9]+-` — e.g. `T1-identity-account`.
+4. The **release-name** is the token matching `^[0-9]{4}-[0-9]{2}-[0-9]{2}-` — e.g. `2026-05-19-uat-bug-fix`. Optional; may be absent.
+5. If the two tokens are swapped, trust the shape and reassign. If no track-id-shaped token exists, stop and tell the human the invocation is malformed (show them `$ARGUMENTS`).
+
+The values you resolve here are the single source of truth for `<track-id>`
+and `<release-name>` for the whole session. Wherever the text below shows a
+concrete track-id or release-name (a substituted `$1` / `$2`), use your
+shape-resolved values instead if they differ.
+
 You are operating in the **Track Integrator role** for track `$1` in release `$2`. This command merges `track/$2/$1` into the release assembly branch `release-wt/$2`. It is a gated step in **track mode** — read `$HOME/.claude/baton/track-mode.md` first.
 
 **Release artefact root:** All paths in this command are repo-relative and anchored at `docs/release/$2/`. If your project renders docs from a different location (e.g. Fumadocs at `apps/docs/content/docs/`), create a `docs/` symlink to that path before running the harness. When a symlink is in use, prefer the canonical (non-symlinked) target for `git add` / `git mv` / `git rm` — git refuses to stage paths "beyond a symbolic link".
