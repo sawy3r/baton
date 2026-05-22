@@ -35,7 +35,7 @@ If you've shipped non-trivial work with an LLM coding agent, you may have hit on
 - **Context loss.** Substantial analysis lives only in chat transcript. `/clear` happens. The reasoning is gone. The next session starts from scratch.
 - **Plan / proof drift.** Planning docs say one thing, implementation does another, the divergence is never surfaced.
 
-baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Seven rules, three roles, six slash commands. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
+baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Seven rules, three roles, seven slash commands. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
 
 ## The seven rules
 
@@ -149,6 +149,7 @@ For each release:
 3. **Verifier session, per slice** — *another* fresh window with no inherited context. Human runs `/verify-slice <slice-id>`. Verifier reads only `spec.md`, `proof.md`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`.
 4. **Merge a track** — when every slice in a track is verified, `/merge-track <track-id>` lands the track branch on the release assembly branch `release-wt/<name>`.
 5. **Merge the release** — when every track is merged, `/merge-release <name>` integrates `release-wt/<name>` back to the integration base.
+6. **Mark it shipped** — once the integration branch has actually deployed to production, `/mark-shipped <name>` flips every `verified` slice to the terminal `shipped` state, recording the deployed commit as evidence. Bookkeeping only — it does not deploy.
 
 Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`claude/baton/track-mode.md`](claude/baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
 

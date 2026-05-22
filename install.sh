@@ -2,7 +2,7 @@
 #
 # install.sh — install baton at the user level (~/.claude/).
 #
-# Idempotent: re-running overwrites the six slash commands, the
+# Idempotent: re-running overwrites the seven slash commands, the
 # baton docs package, and the bin/ scripts (release-verify.sh + the
 # release-board tooling). It does NOT touch ~/.claude/CLAUDE.md or any other
 # user config — wiring the AGENTS rules fragment into your CLAUDE.md is a
@@ -24,7 +24,7 @@ Environment:
   CLAUDE_HOME   Override install target (default: \$HOME/.claude).
 
 Installs:
-  ~/.claude/commands/{plan-release,replan-release,implement-slice,verify-slice,merge-track,merge-release}.md
+  ~/.claude/commands/{plan-release,replan-release,implement-slice,verify-slice,merge-track,merge-release,mark-shipped}.md
   ~/.claude/baton/                  (rule docs, role prompts, templates)
   ~/.claude/bin/release-verify.sh              (first-pass verifier script)
   ~/.claude/bin/release-board-status.sh        (release board — terminal verdict)
@@ -33,7 +33,7 @@ Installs:
 
 Does NOT modify:
   ~/.claude/CLAUDE.md                          (wire AGENTS-fragment.md in manually)
-  any existing pre-installed slash commands other than the six named above
+  any existing pre-installed slash commands other than the seven named above
 EOF
 }
 
@@ -98,6 +98,7 @@ Slash commands available in every project on this machine:
   /verify-slice <slice-id> [<release-name>]      (run in a FRESH terminal — Rule 7)
   /merge-track <track-id> [<release-name>]       (track → release-wt)
   /merge-release <release-name>                  (release-wt → integration branch)
+  /mark-shipped <release-name>                   (verified → shipped, after deploy)
 
 Verify script lives at:  $CLAUDE_HOME/bin/release-verify.sh
   (the slash commands invoke it by absolute path; you can also call it
