@@ -36,23 +36,27 @@ You are operating in the **Track Integrator role** for track `$1` in release `$2
 
 The merge target is `release-wt/$2`, which the release worktree owns.
 
-1. If `$2` is empty, find the release: search `docs/release/*/index.md` frontmatter for a `tracks:` entry with `id: $1`.
-2. Read `docs/release/$2/index.md` frontmatter. Capture `release_worktree_path` and `release_worktree_branch` (= `release-wt/$2`). If `release_worktree_path` is unset, BLOCK: "Release `$2` has no release worktree — nothing has been implemented yet."
-3. Confirm via `git worktree list` that the release worktree exists at `release_worktree_path` on `release-wt/$2`. If absent, BLOCK with the `git worktree add` recreate command.
+**Read the board through the oracle.** Run `$HOME/.claude/bin/release-board-status.sh --json` from anywhere inside the repo — it reads `index.md` and every `status.json` straight from the `release-wt/$2` and `track/$2/*` **git refs**, so the track and slice states it reports are branch-accurate regardless of which branch the launch directory sits on. Every gate in Steps 0-1 reads this one JSON; do not re-read `index.md` or `status.json` by hand. If the script is missing or exits non-zero, BLOCK: "release board oracle unavailable — install baton (`~/.claude/bin/`) before merging."
+
+1. If `$2` is empty, find the release from the oracle: the release whose `.tracks[]` contains an entry with `.id == "$1"`. Exactly one match ⇒ that is `$2`; none ⇒ BLOCK ("no release contains track `$1`"); more than one ⇒ stop and ask the human.
+2. From `.releases["$2"]` capture `<release_worktree_path>` (`.releaseWorktreePath`) and `<release_worktree_branch>` (`.releaseWorktreeBranch`, = `release-wt/$2`). If `.releaseWorktreePath` is null, BLOCK: "Release `$2` has no release worktree — nothing has been implemented yet."
+3. Confirm via `git worktree list` that the release worktree exists at `<release_worktree_path>` on `release-wt/$2`. If absent, BLOCK with the `git worktree add` recreate command.
 4. For the rest of this session every git/file operation runs against `<release_worktree_path>` via `git -C` and absolute paths. Confirm its working tree is clean (`git -C <release_worktree_path> status --short` empty); if not, BLOCK.
 
 ## Step 1 — Locate the track and gate on verification
 
-1. From `index.md` frontmatter `tracks:`, capture the entry `id: $1` — its ordered `slices`, `worktree_branch` (= `track/$2/$1`), `depends_on`, `state`. If no such track, BLOCK.
-2. If the track's `state` is already `merged`, BLOCK: "Track `$1` is already merged."
-3. If `depends_on` names another track whose `state` is not `merged`, BLOCK: "Track `$1` depends on `<other>` (state `<state>`) — merge that track first."
-4. **Verification gate.** For every slice in the track, read its `status.json` `state` from the **track branch** — `git -C <release_worktree_path> show track/$2/$1:docs/release/$2/<slice>/status.json` — because the verifier's commits land on the track branch, not on `release-wt`. Every slice must be `verified` (or `deferred` / `superseded`). If any is `planned` / `in_progress` / `implemented` / `failed_verification`, BLOCK: "Cannot merge track `$1` — not verified: <list>. Each must complete /verify-slice with PASS first."
+Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]` (each track carries `state`, `dependsOn`, `blockedBy`, `readyToMerge`, ordered `slices`, `worktreePath`, `worktreeBranch`) and `.releases["$2"].slices[]` (per-slice `state`). The oracle resolves each slice's state from its own track branch, so the verification gate cannot misfire on a stale integration-branch `status.json`.
+
+1. Find the track entry with `.id == "$1"`. If none, BLOCK: "Track `$1` is not in release `$2`." Capture its ordered `<slices>` (`.slices`), `<worktree_branch>` (`.worktreeBranch`, = `track/$2/$1`), `<worktree_path>` (`.worktreePath`), `<blocked_by>` (`.blockedBy`), `<state>` (`.state`), and `<ready_to_merge>` (`.readyToMerge`).
+2. If `<state>` is already `merged`, BLOCK: "Track `$1` is already merged."
+3. If `<blocked_by>` is non-empty, BLOCK: "Track `$1` depends on `<blocked_by>` — not yet merged to `release-wt`. Merge those tracks first."
+4. **Verification gate.** `<ready_to_merge>` is the oracle's bundled gate: true only when every slice in the track is terminal (`verified` / `deferred` / `shipped`), the track is not already merged, and `<blocked_by>` is empty. If `<ready_to_merge>` is false and Steps 1.2-1.3 passed, the cause is unverified slices: list every slice in `<slices>` whose `.state` (from `.releases["$2"].slices[]`) is not `verified` / `deferred` / `shipped`, and BLOCK: "Cannot merge track `$1` — not verified: <list>. Each must complete /verify-slice with PASS first." When `<ready_to_merge>` is true, proceed.
 
 ## Step 2 — Drift gate (self-healing)
 
 `release-wt/$2` advances every time a sibling track merges, so from the second track merge of a release onward this gate almost always fires. **It is not a planner error — it is the ordinary cost of parallelism.** The older behaviour ejected you to forward-merge by hand; this step reconciles the drift itself, in the track worktree, and only BLOCKs on a genuine fault.
 
-1. **Locate the track worktree.** From the `tracks:` frontmatter entry for `$1`, capture `worktree_path` (= `<track-worktree-path>`). If unset, BLOCK: "Track `$1` has no worktree — nothing has been implemented." Confirm via `git worktree list` that it exists on branch `track/$2/$1`; if absent, BLOCK with the `git worktree add` recreate command. Confirm its working tree is clean (`git -C <track-worktree-path> status --short` empty); if dirty, BLOCK — never forward-merge into a dirty worktree.
+1. **Locate the track worktree.** Use `<worktree_path>` captured from the oracle in Step 1.1 (= `<track-worktree-path>`). If it is null, BLOCK: "Track `$1` has no worktree — nothing has been implemented." Confirm via `git worktree list` that it exists on branch `track/$2/$1`; if absent, BLOCK with the `git worktree add` recreate command. Confirm its working tree is clean (`git -C <track-worktree-path> status --short` empty); if dirty, BLOCK — never forward-merge into a dirty worktree.
 
 2. **Measure drift.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2`. If `0`, the track already carries `release-wt`'s tip — proceed to Step 3.
 

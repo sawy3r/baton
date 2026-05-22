@@ -13,14 +13,19 @@
 # Run from anywhere inside the target repo. The release-docs root defaults to
 # docs/release/; override with the BATON_RELEASE_DIR environment variable.
 #
-# Usage: release-board-status.sh [--verbose]
+# Usage: release-board-status.sh [--verbose] [--json]
 #   --verbose  list every non-terminal slice beneath its release
+#   --json     emit the raw branch-resolved board JSON and exit 0 — the
+#              structured entrypoint for tooling and slash commands; no human
+#              tables, no countdown verdict
 
 set -euo pipefail
 
 VERBOSE=false
+JSON=false
 for arg in "$@"; do
   [[ "$arg" == "--verbose" ]] && VERBOSE=true
+  [[ "$arg" == "--json" ]] && JSON=true
 done
 
 # Repo we report on: the git toplevel of wherever we're invoked from.
@@ -109,6 +114,16 @@ if ! board_json="$(node "$BOARD_READER")"; then
   red "release-board-status: failed to read the release board"; echo
   echo "  $BOARD_READER exited non-zero"
   exit 2
+fi
+
+# --json: emit the raw branch-resolved board and stop. This is the structured
+# entrypoint for tooling and slash commands — the same JSON the HTML dashboard
+# and the countdown below both consume, so a programmatic caller can never
+# disagree with the human verdict. Exit 0 means "board read OK"; a reader
+# failure has already exited 2 above.
+if $JSON; then
+  printf '%s\n' "$board_json"
+  exit 0
 fi
 
 declare -A release_total
