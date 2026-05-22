@@ -36,14 +36,14 @@ You are operating in the **Track Integrator role** for track `$1` in release `$2
 
 The merge target is `release-wt/$2`, which the release worktree owns.
 
-1. If `$2` is empty, find the release: search `docs/release/*/index.md` frontmatter for a `tracks:` entry with `id: $1`.
-2. Read `docs/release/$2/index.md` frontmatter. Capture `release_worktree_path` and `release_worktree_branch` (= `release-wt/$2`). If `release_worktree_path` is unset, BLOCK: "Release `$2` has no release worktree — nothing has been implemented yet."
+1. If `$2` is empty, find the release: search `docs/release/*/index.md` frontmatter for a `tracks:` entry with `id: $1`. This launch-directory glob is a last resort to recover the release name only; once `$2` is known, every board read below uses the canonical `release-wt/$2` copy.
+2. **Read the board from `release-wt/$2`, never the launch directory** (track-mode.md invariant 5). The board `index.md` has one home — the `release-wt/$2` branch; the launch directory is on the integration branch and is stale for an in-flight release (it misses every slice/track `/replan-release` added). Read it with `git show release-wt/$2:docs/release/$2/index.md` (the ref resolves from any cwd via the shared object store). From its frontmatter capture `release_worktree_path` and `release_worktree_branch` (= `release-wt/$2`). If `release-wt/$2` does not exist or `release_worktree_path` is unset, BLOCK: "Release `$2` has no release worktree — nothing has been implemented yet."
 3. Confirm via `git worktree list` that the release worktree exists at `release_worktree_path` on `release-wt/$2`. If absent, BLOCK with the `git worktree add` recreate command.
 4. For the rest of this session every git/file operation runs against `<release_worktree_path>` via `git -C` and absolute paths. Confirm its working tree is clean (`git -C <release_worktree_path> status --short` empty); if not, BLOCK.
 
 ## Step 1 — Locate the track and gate on verification
 
-1. From `index.md` frontmatter `tracks:`, capture the entry `id: $1` — its ordered `slices`, `worktree_branch` (= `track/$2/$1`), `depends_on`, `state`. If no such track, BLOCK.
+1. From the board read in Step 0 (the canonical `git show release-wt/$2:docs/release/$2/index.md` copy — never the launch-directory copy), capture the `tracks:` frontmatter entry `id: $1` — its ordered `slices`, `worktree_branch` (= `track/$2/$1`), `depends_on`, `state`. If no such track, BLOCK.
 2. If the track's `state` is already `merged`, BLOCK: "Track `$1` is already merged."
 3. If `depends_on` names another track whose `state` is not `merged`, BLOCK: "Track `$1` depends on `<other>` (state `<state>`) — merge that track first."
 4. **Verification gate.** For every slice in the track, read its `status.json` `state` from the **track branch** — `git -C <release_worktree_path> show track/$2/$1:docs/release/$2/<slice>/status.json` — because the verifier's commits land on the track branch, not on `release-wt`. Every slice must be `verified` (or `deferred` / `superseded`). If any is `planned` / `in_progress` / `implemented` / `failed_verification`, BLOCK: "Cannot merge track `$1` — not verified: <list>. Each must complete /verify-slice with PASS first."

@@ -62,13 +62,16 @@ fi
 
 PASS=0
 FAIL=0
+WARN=0
 
-green() { printf '\033[32m%s\033[0m\n' "$*"; }
-red()   { printf '\033[31m%s\033[0m\n' "$*"; }
-gray()  { printf '\033[90m%s\033[0m\n' "$*"; }
+green()  { printf '\033[32m%s\033[0m\n' "$*"; }
+red()    { printf '\033[31m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
+gray()   { printf '\033[90m%s\033[0m\n' "$*"; }
 
-check_pass() { green "  PASS  $1"; PASS=$((PASS+1)); }
-check_fail() { red   "  FAIL  $1"; FAIL=$((FAIL+1)); }
+check_pass() { green  "  PASS  $1"; PASS=$((PASS+1)); }
+check_fail() { red    "  FAIL  $1"; FAIL=$((FAIL+1)); }
+check_warn() { yellow "  WARN  $1"; WARN=$((WARN+1)); }
 section()    { echo; echo "== $1 =="; }
 
 echo "release-verify.sh"
@@ -234,6 +237,57 @@ if [[ -f "$PROOF_FILE" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Board home — track-mode invariant 5
+# ---------------------------------------------------------------------------
+#
+# The release board index.md has ONE home: the release-wt/<release> branch.
+# /plan-release seeds it on the integration branch before any worktree exists;
+# every later read and write happens on release-wt. If the integration branch
+# received index.md commits AFTER release-wt was cut, the board has forked into
+# a partial frankenstein (worktree paths but missing /replan-release slices),
+# and a launch-directory read of it silently mis-discovers slices and tracks.
+# This is a detector backstop — the structural guard is in the slash commands,
+# which read the board via `git show release-wt/<release>:...` and write it
+# only inside the release/track worktree. WARN, not FAIL: a pre-existing fork
+# is real drift to surface, but it self-resolves at /merge-release and must
+# not block per-slice first-pass verification.
+
+section "Board home (track-mode invariant 5)"
+
+RELEASE_DIR="$(dirname "$SLICE_DIR")"
+BOARD_FILE="$RELEASE_DIR/index.md"
+RELEASE_NAME_RESOLVED="${RELEASE_NAME:-$(basename "$RELEASE_DIR")}"
+RELEASE_WT_BRANCH="release-wt/${RELEASE_NAME_RESOLVED}"
+BOARD_GIT_PATH="docs/release/${RELEASE_NAME_RESOLVED}/index.md"
+
+if ! git rev-parse --verify --quiet "$RELEASE_WT_BRANCH" >/dev/null 2>&1; then
+  gray "  no $RELEASE_WT_BRANCH branch — release not yet in flight; board-home check N/A"
+elif [[ ! -f "$BOARD_FILE" ]]; then
+  gray "  board file absent; skipping board-home check"
+else
+  INTEGRATION=$(grep -iE 'Target version / integration branch' "$BOARD_FILE" \
+    | grep -oE '`[^`]+`' | tail -1 | tr -d '`' || true)
+  if [[ -z "$INTEGRATION" ]] || ! git rev-parse --verify --quiet "$INTEGRATION" >/dev/null 2>&1; then
+    gray "  integration branch not resolvable from board; skipping board-home check"
+  else
+    FORK=$(git merge-base "$INTEGRATION" "$RELEASE_WT_BRANCH" 2>/dev/null || true)
+    if [[ -z "$FORK" ]]; then
+      gray "  no merge-base for $INTEGRATION..$RELEASE_WT_BRANCH; skipping"
+    else
+      STRAY=$(git log --oneline "${FORK}..${INTEGRATION}" -- "$BOARD_GIT_PATH" 2>/dev/null || true)
+      if [[ -z "$STRAY" ]]; then
+        check_pass "board has one home: no index.md commits on '$INTEGRATION' since $RELEASE_WT_BRANCH was cut"
+      else
+        check_warn "index.md committed on integration branch '$INTEGRATION' after $RELEASE_WT_BRANCH was cut — invariant 5 violation (the board has forked)"
+        printf '%s\n' "$STRAY" | sed 's/^/    /'
+        gray "    the board's one home is $RELEASE_WT_BRANCH; the integration-branch copy is stale and must not be read by /implement-slice, /merge-track, or /replan-release"
+        gray "    self-resolves at /merge-release when release-wt overwrites the integration-branch board"
+      fi
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Final verdict
 # ---------------------------------------------------------------------------
 
@@ -241,6 +295,7 @@ section "First-pass verdict"
 
 echo "  checks passed: $PASS"
 echo "  checks failed: $FAIL"
+echo "  checks warned: $WARN"
 
 if [[ "$FAIL" -gt 0 ]]; then
   red ""

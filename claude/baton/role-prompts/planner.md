@@ -154,9 +154,9 @@ A release in flight has work in two places, and `index.md` may be stale about bo
 - **On the integration branch / `release-wt/<release-name>`** — slices whose track has been merged via `/merge-track`, or that were merged individually.
 - **On the track branches / track worktrees** — slices that are `in_progress` or `verified` but whose track has not merged yet. Their true `status.json` state lives on the **track branch**, not the integration branch. The integration-branch `index.md` under-reports them — the classic failure is a slice verified on its track branch still showing `planned` on the board.
 
-Before proposing any revision, rebuild the true state table:
+Before proposing any revision, rebuild the true state table. First read `index.md` itself from its one home, the `release-wt/<release-name>` branch — `git show release-wt/<release-name>:docs/release/<release-name>/index.md` (track-mode.md invariant 5); the launch-directory copy is on the integration branch and is stale for an in-flight release.
 
-1. For each track in `index.md` frontmatter with a `worktree_path`, read each of its slices' `status.json` from the **track branch** (`git show <track-branch>:docs/release/<release-name>/<slice>/status.json`).
+1. For each track in that board's frontmatter with a `worktree_path`, read each of its slices' `status.json` from the **track branch** (`git show <track-branch>:docs/release/<release-name>/<slice>/status.json`).
 2. Tracks with no worktree yet: their slices are `planned`.
 3. **Spec drift.** For each in-flight track, diff every slice's `spec.md` between `release-wt/<release-name>` and the track branch (`git diff release-wt/<release-name> <track-branch> -- docs/release/<release-name>/<slice>/spec.md`). A non-empty diff means an earlier re-scope landed on `release-wt` but never reached the track, so the verifier has been reading a stale spec. Name the slice, track, and diff size — this is the signature of the `/verify-slice` ↔ `/replan-release` loop, where each `/replan-release` re-scopes the spec, each `/verify-slice` reads the stale track copy and re-BLOCKs. `/verify-slice` Step 0 now forward-merges `release-wt` and self-heals this; report it regardless so the human sees why the slice was stuck.
 4. Cross-check `git log` on the integration branch and `release-wt/<release-name>` for merged work.
@@ -170,7 +170,7 @@ Before proposing any revision, rebuild the true state table:
 - **Drop or re-scope a started slice** → a human decision surfaced explicitly; `in_progress` / `verified` / `merged` work is never silently rewritten. A materially different spec for an already-`verified` slice is a **new slice** (new id), not an edit — verified work is immutable.
 - **Never** materialise or modify a worktree, and never edit the spec of a `verified` or `merged` slice.
 
-The output is the same as `/plan-release`: updated `index.md` (frontmatter tracks, tables, touchpoint matrix), new/updated specs, all committed.
+The output is the same as `/plan-release`: updated `index.md` (frontmatter tracks, tables, touchpoint matrix), new/updated specs — all written inside the release worktree and committed on `release-wt/<release-name>`, never the integration branch (track-mode.md invariant 5).
 
 ### Where re-plan artefacts are committed
 

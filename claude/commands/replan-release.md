@@ -19,7 +19,7 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
 
 ## Step 0 — Confirm the release is planned and in flight
 
-1. Read `docs/release/$1/index.md`. If it does not exist, STOP: "Release `$1` has no plan — use `/plan-release $1`, not `/replan-release`."
+1. **Read the board from `release-wt/$1`, never the launch directory** (track-mode.md invariant 5). The board `index.md` has one home — the `release-wt/$1` branch — and the launch directory is on the integration branch, stale for an in-flight release. Read it with `git show release-wt/$1:docs/release/$1/index.md`. If `release-wt/$1` does not exist, no `/implement-slice` has run yet — fall back to the launch-directory copy `docs/release/$1/index.md` (the current seed). If neither exists, STOP: "Release `$1` has no plan — use `/plan-release $1`, not `/replan-release`."
 2. If `index.md` exists but has no `tracks:` in frontmatter, the release was planned under the pre-track-mode model. STOP and tell the human: this release needs a one-time track grouping first — run `/plan-release $1` to add tracks and the touchpoint matrix, then use `/replan-release` for subsequent revisions.
 3. Confirm in one sentence: "Re-planning **$1** — it currently has N slices across M tracks. What has changed?"
 

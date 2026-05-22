@@ -54,12 +54,23 @@ Both worktree levels are materialised **lazily** — the planner creates no work
 
 ## The safety invariants
 
-Parallelism is safe **only** while all four hold. Every command enforces one or more of them.
+Parallelism is safe **only** while all five hold. Every command enforces one or more of them.
 
 1. **One worktree per track; one implementer at a time; slices sequential.** A track worktree has its own working tree and its own git index, so concurrent implementers in *different* tracks cannot race. Within a track, slices are done one after another — never two implementers in one track worktree.
 2. **Tracks are touchpoint-disjoint.** No file is written by two tracks — with one narrow, documented exception. The planner proves disjointness with the **touchpoint matrix** (below). **Documented region-split exception:** a large, append-mostly module (a shared types file, a registry, a barrel export) MAY appear in two tracks IF the touchpoint matrix row records the specific, well-separated region/symbol each track edits and they do not overlap. Such a row is a *documented shared file*. This exception is for genuinely additive, region-separable modules only — never a component, a hook, or a logic file.
 3. **A track branch is linear and contiguous.** Because a track's slices are sequential, the track branch carries only that track's commits, in order. A slice's diff is therefore exactly `start_commit..HEAD` — no commit-range archaeology.
 4. **A conflict at `/merge-track` is a planner error — except on a documented shared file.** Invariant 2 means track branches never touch the same file *except documented shared files*, so `track → release-wt` merges are conflict-free on every other file. A conflict on `index.md` or a **documented shared file** is expected reconciliation, and `/merge-track` resolves it. A conflict on **any other file** means the touchpoint matrix was wrong: `/merge-track` BLOCKs and the release returns to `/plan-release` (or `/replan-release`) to re-group.
+5. **The release board has one home: `release-wt/<release>`.** Once the release worktree exists, `index.md` — and every slice's `spec.md` / `status.json` / `journal.md` / `proof.md` — is read and written **only** on `release-wt/<release>` and the track branches beneath it, never on the version integration branch. `/plan-release` seeds the board on the integration branch *before* any worktree exists; the first `/implement-slice` cuts `release-wt/<release>` from there, carrying the seed forward; from that point every command reads the board with `git show release-wt/<release>:<path>` and writes it only inside the release or track worktree. The integration branch receives the board again only at `/merge-release`. A launch-directory read of `index.md` for an in-flight release is the canonical defect: the integration-branch copy is frozen at the seed and silently misses every slice and track `/replan-release` later added on `release-wt` — yielding a spurious `BLOCKED: slice not assigned to a track`. A write to the integration-branch copy makes it a partial frankenstein (worktree paths but no new slices) that no reader can trust.
+
+### Reading the board — the canonical-board-read
+
+Every command that discovers a release's slices and tracks reads `index.md` *before* any worktree is known, so it cannot use the worktree-anchor that the rest of Step 0 uses. The branch ref is the only anchor available. The canonical read, used verbatim by `/implement-slice`, `/verify-slice`, `/merge-track`, and `/replan-release`:
+
+```
+git show release-wt/<release>:<path-to-index.md>
+```
+
+The `release-wt/<release>` ref lives in the shared object store, so this resolves from any cwd and needs only the release name. If `release-wt/<release>` does not exist, no `/implement-slice` has run for the release yet — the release worktree has not been created, nothing has diverged, and the launch-directory copy is the current seed; read that. **Never read the launch-directory copy when `release-wt/<release>` exists.** This same rule governs writes: a command updating the board updates it inside the release/track worktree and commits on `release-wt/<release>` (or the track branch) — never on the integration branch.
 
 ## The touchpoint matrix — the planner's load-bearing artefact
 
