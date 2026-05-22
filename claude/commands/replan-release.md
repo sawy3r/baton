@@ -31,8 +31,9 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
 2. For each track in `index.md` frontmatter `tracks:`:
    - **If it has a `worktree_path` / `worktree_branch`:** read each of its slices' `status.json` from the **track branch** — `git show <worktree_branch>:docs/release/$1/<slice>/status.json`. This is where `in_progress` / `verified` states actually land; the integration-branch copy will under-report them.
    - **If it has no worktree yet:** its slices are `planned`.
-3. Check the integration branch and `release-wt/$1` with `git log` for any merged track or slice work.
-4. Print the reconciled state table — slice → true state, track → `planned` / `in_progress` / `merged` — and call out every drift from what `index.md` records. The revision and the `index.md` correction are done in the same pass.
+3. **Spec-drift check — has a prior re-scope failed to reach a track?** For each in-flight track with a `worktree_path`, for each slice in that track, run `git diff release-wt/$1 <track-branch> -- docs/release/$1/<slice>/spec.md` (`<track-branch>` = `track/$1/<track-id>`). A non-empty diff means an **earlier `/replan-release` committed a re-scoped `spec.md` to `release-wt/$1` that the track branch never synced** — the verifier has been reading a stale spec, the signature of the `/verify-slice` ↔ `/replan-release` loop. Report it explicitly: "Track `<track-id>`'s `spec.md` for `<slice>` is out of sync (N diff lines) — sync `release-wt/$1 → <track-branch>` before re-verifying." `/verify-slice` Step 0 now self-heals this on its next run via a forward-merge; still surface it so the human understands why the slice looked stuck.
+4. Check the integration branch and `release-wt/$1` with `git log` for any merged track or slice work.
+5. Print the reconciled state table — slice → true state, track → `planned` / `in_progress` / `merged` — and call out every drift from what `index.md` records, including every spec-drift slice found in step 3. The revision and the `index.md` correction are done in the same pass.
 
 ## Steps 2-4 — Drive the revision
 

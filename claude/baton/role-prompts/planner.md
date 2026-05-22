@@ -158,8 +158,9 @@ Before proposing any revision, rebuild the true state table:
 
 1. For each track in `index.md` frontmatter with a `worktree_path`, read each of its slices' `status.json` from the **track branch** (`git show <track-branch>:docs/release/<release-name>/<slice>/status.json`).
 2. Tracks with no worktree yet: their slices are `planned`.
-3. Cross-check `git log` on the integration branch and `release-wt/<release-name>` for merged work.
-4. Surface every drift between `index.md` and branch reality to the human. Re-planning proceeds from branch reality, and the same pass corrects `index.md`.
+3. **Spec drift.** For each in-flight track, diff every slice's `spec.md` between `release-wt/<release-name>` and the track branch (`git diff release-wt/<release-name> <track-branch> -- docs/release/<release-name>/<slice>/spec.md`). A non-empty diff means an earlier re-scope landed on `release-wt` but never reached the track, so the verifier has been reading a stale spec. Name the slice, track, and diff size — this is the signature of the `/verify-slice` ↔ `/replan-release` loop, where each `/replan-release` re-scopes the spec, each `/verify-slice` reads the stale track copy and re-BLOCKs. `/verify-slice` Step 0 now forward-merges `release-wt` and self-heals this; report it regardless so the human sees why the slice was stuck.
+4. Cross-check `git log` on the integration branch and `release-wt/<release-name>` for merged work.
+5. Surface every drift between `index.md` and branch reality to the human, including every spec-drift slice from step 3. Re-planning proceeds from branch reality, and the same pass corrects `index.md`.
 
 ### What a revision may and may not do
 
