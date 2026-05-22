@@ -14,10 +14,11 @@ usage() {
   cat <<EOF
 baton installer
 
-Usage: ./install.sh [--dry-run] [--help]
+Usage: ./install.sh [--dry-run] [-y|--yes] [--help]
 
 Options:
   --dry-run   Print what would be copied, don't actually copy.
+  -y, --yes   Skip the interactive confirmation prompt.
   -h, --help  Show this message and exit.
 
 Environment:
@@ -38,10 +39,12 @@ EOF
 }
 
 DRY_RUN=0
+ASSUME_YES=0
 for arg in "$@"; do
   case "$arg" in
     -h|--help)    usage; exit 0 ;;
     --dry-run)    DRY_RUN=1 ;;
+    -y|--yes)     ASSUME_YES=1 ;;
     *)            echo "install.sh: unknown argument '$arg'" >&2; usage >&2; exit 2 ;;
   esac
 done
@@ -62,6 +65,35 @@ run() {
     "$@"
   fi
 }
+
+# Show the plan, then — at an interactive terminal — gate on confirmation so the
+# install never runs by surprise. A non-interactive run (pipe, CI, another tool)
+# has no one to answer a prompt, so it proceeds — but it still prints this plan,
+# so the run is never silent. --dry-run previews in full; -y/--yes skips the
+# prompt. This script writes only inside $CLAUDE_HOME and touches no shell rc.
+cat <<EOF
+About to install baton into $CLAUDE_HOME:
+  commands/   baton slash commands               (existing baton ones overwritten)
+  baton/      rule docs, role prompts, templates  (overwritten)
+  bin/        release-verify.sh + release-board tooling  (overwritten)
+
+Not touched: your shell rc, $CLAUDE_HOME/CLAUDE.md, any other config.
+EOF
+
+if [[ "$DRY_RUN" -eq 0 && "$ASSUME_YES" -eq 0 ]]; then
+  if [[ -t 0 ]]; then
+    printf '\nProceed? [y/N] '
+    read -r reply || reply=''
+    case "$reply" in
+      [yY]|[yY][eE][sS]) ;;
+      *) echo "Aborted — nothing was installed."; exit 0 ;;
+    esac
+  else
+    echo
+    echo "Non-interactive shell — proceeding. (--dry-run to preview, --help for options.)"
+  fi
+fi
+echo
 
 run mkdir -p "$CLAUDE_HOME/commands" "$CLAUDE_HOME/baton" "$CLAUDE_HOME/bin"
 
@@ -130,3 +162,19 @@ Project setup before first /plan-release:
 See $CLAUDE_HOME/baton/README.md for the rule rationale and
 $CLAUDE_HOME/baton/INSTALL.md for deeper integration notes.
 EOF
+
+# PATH guidance — surfaced, never auto-applied (this script edits no shell rc).
+# Shown only when the bin dir is genuinely missing from PATH.
+case ":${PATH}:" in
+  *":$CLAUDE_HOME/bin:"*) : ;;  # already on PATH — nothing to surface
+  *)
+    cat <<EOF
+
+Optional — add baton's bin/ to your PATH so the release-board scripts run by
+bare name (release-board-status.sh / release-board-ui.mjs), the way their own
+output refers to them. Add to your shell rc (~/.zshrc, ~/.bashrc, …):
+
+  export PATH="\$HOME/.claude/bin:\$PATH"
+EOF
+    ;;
+esac
