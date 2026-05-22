@@ -217,7 +217,6 @@ function renderPage(releases) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="20">
 <title>Release Board</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -359,6 +358,27 @@ function copyCmd(ev, btn) {
     }, 1200);
   });
 }
+
+// Live refresh without a full-page reload. A meta-refresh tag would re-navigate
+// the document — blank repaint, scroll reset, lost accordion state.
+// Instead we fetch the same URL, parse it, and swap only the panels that
+// change. The HTTP route already sends Cache-Control: no-store and recomputes
+// the board on every hit, so no server-side change is needed. DOMParser never
+// executes scripts, so copyCmd/refresh stay defined from the original page
+// load; the swapped-in nodes keep their inline onclick handlers as attributes.
+async function refresh() {
+  try {
+    const res = await fetch(location.href, { cache: 'no-store' });
+    if (!res.ok) return;                       // transient — next tick retries
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    for (const sel of ['.subtitle', '.summary-row', '.releases']) {
+      const cur = document.querySelector(sel);
+      const next = doc.querySelector(sel);
+      if (cur && next) cur.replaceWith(next);  // adopts the node, repaints in place
+    }
+  } catch (_) { /* server gone or offline — silently retry next tick */ }
+}
+setInterval(refresh, 20000);
 </script>
 
 </body>
