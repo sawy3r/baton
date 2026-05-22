@@ -73,6 +73,19 @@ Rule of thumb: *if it would become stale as work progresses, it belongs in an is
 
 If you're unsure whether to anchor: anchor. The cost is one `gh issue create`. The cost of *not* anchoring is the rework discussed in Rule 3.
 
+## Handoff directionality
+
+A session that ends by passing work to another role emits a **handoff**. Every handoff resolves in exactly one of two directions:
+
+- **Forward** — to the next role in the pipeline (planner → implementer → verifier).
+- **Up** — escalated to the human, when no role can resolve the matter.
+
+A handoff **never returns to its sender.** A return-to-sender handoff — a verifier handing back to an implementer who hands back to the verifier, or an implementer handing back to a planner who hands back to the implementer — is non-terminating by construction: neither party gained the authority to break the cycle, so the work oscillates indefinitely.
+
+This is why a verifier `BLOCKED` verdict routes to `/replan-release` (forward, to the planner) and never to "re-run `/verify-slice`" (back, to itself); why the planner's two legal responses to an inbound BLOCKED slice are *correct the spec* (forward — the slice re-enters verification) or *escalate to the human* (up), never *return to the verifier*; and why `/implement-slice` halts on a slice with an open BLOCKED verdict rather than absorbing a blocker an implementer has no authority to clear.
+
+When you are about to hand work back to whoever just handed it to you, stop: either you can resolve it (do so, then hand forward) or you cannot (escalate up). "Hand it back and hope" is not a third option.
+
 ## Symptoms of broken session discipline
 
 - "What were we working on last week?" requires reading chat history.

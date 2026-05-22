@@ -118,6 +118,6 @@ Your verdict block exactly as specified in `role-prompts/verifier.md`. End the v
   - If the track has a further incomplete slice, the next step is `/implement-slice <next-slice-id> $2` in a fresh session.
   - If every slice in the track is now `verified`, the track is complete: the next step is `/merge-track <track-id>`, and then `/merge-release $2` once every track in the release has merged.
 - **FAIL** — the human re-opens an `/implement-slice $1 $2` session in a fresh window to address the numbered violations.
-- **BLOCKED** — the human resolves the blocker, then re-runs `/verify-slice $1 $2`.
+- **BLOCKED** — the slice has a spec defect or external gap that an implementer cannot resolve. The single next step is `/replan-release $2` — not a re-run of `/verify-slice`, and never `/implement-slice` (an implementer cannot clear a BLOCKED verdict, and re-opening the slice for implementation re-enters the verifier → planner → verifier loop). The planner corrects the spec (or escalates to the human), clears `verification.result`, and only then does the slice re-enter verification. If you are BLOCKing on a spec defect, your verdict must carry a concrete proposed `spec.md` amendment for the planner to ratify — see `$HOME/.claude/baton/role-prompts/verifier.md` "When the verdict is BLOCKED".
 
 Do not soften FAIL into "mostly PASS with minor issues." Your value is your willingness to FAIL slices that look fine.

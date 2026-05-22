@@ -78,6 +78,8 @@ If `spec.md` is missing or ambiguous, stop and ask the human. Do not infer scope
 - Continue to another slice in the same session. One slice per session is the discipline; cross-slice context contamination is the failure mode. The *next* slice of this track is a fresh `/implement-slice` that reuses the same track worktree.
 - Touch a file outside this track's rows in the `index.md` touchpoint matrix. A file you need but another track owns is a **track collision** — surface it in `journal.md` and stop; do not absorb it silently. It means the planner's matrix was wrong.
 - Skip the track-branch push. Your in-session commits are not durable until they exist at `origin/track/<release-name>/<track-id>`.
+- Pick up a slice with an open BLOCKED verdict. `/implement-slice` Step 0b refuses a slice whose `verification.result` is `"blocked"` — a BLOCKED verdict flags a spec defect or external gap that is the planner's to resolve via `/replan-release`, never the implementer's to work around.
+- Mark a slice `implemented` around a blocker. If you *discover* a spec defect or an unresolvable external gap mid-session, stop at a non-`implemented` state, record it in `journal.md`, and route to `/replan-release`. A handoff resolves forward to the planner or up to the human — never as a silent workaround (`$HOME/.claude/baton/session-discipline.md`, "Handoff directionality").
 
 ## Output to the human
 

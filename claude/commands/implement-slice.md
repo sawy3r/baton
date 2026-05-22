@@ -51,7 +51,7 @@ Run it from anywhere inside the repo — it resolves the repo from cwd and reads
 2. **Enforce sequential order within the track.** For every slice listed *before* `$1` in the track's `.slices`, read its `.state` from `.releases["$2"].slices[]`. If any is not `verified` (nor `deferred` / `shipped`), BLOCK: "Slice `<earlier>` precedes `$1` in track `<track-id>` (state `<state>`). Slices in a track are implemented in order — finish and verify `<earlier>` first."
 3. **If `<worktree_path>` is non-null** (track worktree already materialised):
    - Run `git worktree list`; confirm a worktree exists at `<worktree_path>` on `<worktree_branch>`. If absent, BLOCK: "Track worktree recorded as `<worktree_path>` but missing — recreate with `git worktree add <worktree_path> <worktree_branch>`, or clear the field and re-run."
-   - Capture `<worktree_path>`. **For the rest of this session, every Bash command runs `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`); every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`.** Skip to the session start handshake.
+   - Capture `<worktree_path>`. **For the rest of this session, every Bash command runs `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`); every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`.** Skip to Step 0b (the BLOCKED-verdict guard) below.
 4. **If `<worktree_path>` is null** (first `/implement-slice` for this track): materialise it.
    - **Dependency gate.** If the oracle reports a non-empty `.blockedBy` for this track, BLOCK: "Track `<track-id>` depends on `<blocked_by>` — not yet merged to `release-wt`. A dependent track may only start once its predecessors have merged." (`blockedBy` is exactly the subset of the track's `depends_on` whose tracks are not in state `merged`; an empty list means the gate is clear.)
    - **Release worktree first.** If `.releases["$2"].releaseWorktreePath` is null, this is also the first `/implement-slice` in the release: parse the integration branch from `index.md` "Release summary" → `Target version / integration branch` (e.g. `release/v0.5.0`), then `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2 -b release-wt/$2 <integration-branch>`.
@@ -60,6 +60,14 @@ Run it from anywhere inside the repo — it resolves the repo from cwd and reads
    - Treat the new worktree as `<worktree_path>` per step 3. Continue silently — no human handoff.
 
 Briefly tell the human in one sentence what you did ("Using track worktree at `<worktree_path>`" or "Materialised track worktree at `<worktree_path>` for track `<track-id>`"). Then continue.
+
+## Step 0b — BLOCKED-verdict guard (before any implementation)
+
+With `<worktree_path>` captured, read the target slice's own `status.json` from the **track worktree** — `<worktree_path>/docs/release/$2/$1/status.json`, never the launch-directory copy (the worktree is the only branch that carries the verifier's commits). The `verification.result` field is per-slice verdict detail the board oracle does not surface, so this one read is direct — but it is still worktree-anchored, never read from the launch directory. If `verification.result` is `"blocked"`, BLOCK immediately and do not start implementation:
+
+> Slice `$1` has an open BLOCKED verdict — the implementer cannot resolve a blocker. Route it through `/replan-release $2` first; that clears `verification.result`.
+
+A BLOCKED verdict means a fresh-context verifier found a spec defect or external gap that only the planner can resolve; an implementer session cannot clear it. Picking the slice up here would re-enter the verifier → planner → verifier loop this guard exists to break — the handoff routes forward to `/replan-release`, never back to the implementer (handoff directionality is canonical in `$HOME/.claude/baton/session-discipline.md`). Stop here; do not run the session start handshake.
 
 ## Session start handshake
 
