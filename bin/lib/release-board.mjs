@@ -171,9 +171,13 @@ function readWorktreeTree(rel) {
   const specSlices = new Set();
   const relDir = path.join(RELEASE_DIR, rel);
   if (!fs.existsSync(relDir)) return { statuses, specSlices };
-  for (const slice of fs.readdirSync(relDir)) {
+  // withFileTypes resolves the entry type within the readdir syscall — no
+  // follow-up statSync, so an atomic-write temp file (index.md.tmp.<pid>.<hash>)
+  // renamed away between listing and stat can't ENOENT-crash the scan.
+  for (const entry of fs.readdirSync(relDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const slice = entry.name;
     const sliceDir = path.join(relDir, slice);
-    if (!fs.statSync(sliceDir).isDirectory()) continue;
     if (fs.existsSync(path.join(sliceDir, 'spec.md'))) specSlices.add(slice);
     const statusFile = path.join(sliceDir, 'status.json');
     if (!fs.existsSync(statusFile)) continue;
