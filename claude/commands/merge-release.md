@@ -45,26 +45,36 @@ Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktre
 4. If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed. **Before returning BLOCKED, double-check you read from the worktree branch — the most common false-block is reading stale integration-branch status files.**
 5. **Track merge gate.** Read the `tracks:` list from `index.md` frontmatter (worktree-branch copy: `git show <worktree_branch>:docs/release/$1/index.md`). Every track must have `state: merged` — i.e. its `/merge-track` has run and its slices are already on `release-wt/$1`. A track whose slices are all `verified` but whose `state` is still `planned`/`in_progress` has **not** had its commits merged into `release-wt` and would be silently omitted from this release merge. If any track is not `merged`, BLOCK: `cannot merge release '$1' — these tracks are verified but not yet merged to release-wt: <list>. Run /merge-track <track-id> $1 for each before /merge-release.`
 
-## Step 1.5 — Integration drift gate
+## Step 1.5 — Forward-merge the integration branch into the release worktree
 
-Long-lived release worktrees diverge from their integration branch every time a sibling release merges first. A `git merge` that has to resolve sibling-release conflicts at integration time has no context for them — those conflicts belong in the release worktree, owned by the release author.
+Base drift is the normal state, not the exception. A long-lived release worktree falls behind `<integration>` every time a sibling release merges first, or a fix lands directly on the integration branch. The release worktree branch **must absorb `<integration>` before it can merge back** — otherwise the Step 3 merge resolves integration-side conflicts with no release context, in the wrong worktree, owned by the wrong role.
 
-1. Run `git rev-list --count <worktree_branch>..<integration>`. If the count is `0`, proceed to Step 2.
-2. If the count is non-zero, BLOCK with:
+So the forward-merge is a routine prerequisite of `/merge-release`, not a failure mode. This step performs it for you when it is **conflict-free** (the common case), and BLOCKs to the release author **only when the forward-merge genuinely conflicts** and needs release context to resolve. The gate is conflict-presence, not drift-presence: drift alone is expected and safe to absorb mechanically.
 
-   > Integration branch `<integration>` has advanced N commits since `<worktree_branch>` was last synced. The merge will conflict on shared files (typical: validation/projection code that sibling releases also touch).
-   >
-   > Forward-merge integration into the release worktree first, so conflicts are resolved with full release context:
+1. Run `git rev-list --count <worktree_branch>..<integration>`. If the count is `0`, the worktree branch is already current — skip to Step 2.
+2. Otherwise, list what will be absorbed: `git log --oneline <worktree_branch>..<integration>`. Report the count and the commits to the human so the forward-merge is never silent — a forward-merge commit is a real change to the release branch.
+3. Confirm the release worktree's tree is clean: `git -C <worktree_path> status --short` returns nothing. If it is dirty, BLOCK with: "Release worktree `<worktree_path>` has uncommitted changes; the forward-merge needs a clean tree. Commit, stash, or revert there, then re-run /merge-release."
+4. Perform the forward-merge **in the release worktree**, without leaving the primary worktree, using `git -C`:
+
+   ```
+   git -C <worktree_path> merge <integration> --no-ff \
+     -m "chore(release-wt/$1): forward-merge <integration> before /merge-release"
+   ```
+
+5. **Conflict-free (exit 0) — the common case.** The worktree branch now contains `<integration>`. This is a mechanical, judgement-free sync; proceed to Step 2. In the Step 2 scope summary and the Step 5 handoff, state explicitly that a forward-merge commit was created on `<worktree_branch>` and list the absorbed commits. If any absorbed commit touches application code (not only docs / governance files), call that out in Step 2 so the human can choose to run the release's test suite before approving the merge.
+6. **Conflicted — routes to the release author.** Abort the attempt (`git -C <worktree_path> merge --abort`) and BLOCK with:
+
+   > Forward-merging `<integration>` into `<worktree_branch>` conflicts on: `<conflicted files>`. These conflicts must be resolved in the release worktree, by the release author, with full release context — the integrator role has none.
    >
    > ```
    > cd <worktree_path>
-   > git fetch origin && git merge <integration>
-   > # resolve any conflicts, run the release's test commands, commit
+   > git merge <integration>
+   > # resolve the conflicts, run the release's test commands, commit
    > ```
    >
    > Then re-run `/merge-release $1` from the primary worktree.
 
-   List the first 5 commits driving the drift (`git log --oneline <worktree_branch>..<integration> | head -5`) so the human can scan what's being absorbed.
+   When the conflict is in agent-discipline / harness files, a sibling fix on `<integration>` and one of this release's slices are often *adjacent fixes to the same area* — both sets of changes must survive the resolution; neither automatically supersedes the other. Name the overlapping files so the release author knows where to look.
 
 ## Step 2 — Confirm scope with the human
 
@@ -72,6 +82,7 @@ Print a short merge plan and ask `AskUserQuestion` to confirm before merging:
 
 - Release name + integration branch + worktree branch.
 - Slice state breakdown ("N verified, M deferred").
+- If Step 1.5 created a forward-merge commit, say so: name the commit, list the commits it absorbed, and flag whether any of them touched application code (vs docs / governance files only).
 - The first 5 commits on `<worktree_branch>` not in `<integration>` (`git log --oneline <integration>..<worktree_branch> | head -5`).
 - Total commit count diff (`git rev-list --count <integration>..<worktree_branch>`).
 
@@ -100,7 +111,7 @@ Question: "Merge `<worktree_branch>` into `<integration>` now?" Options: "Yes, m
    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
    ```
 
-2. If the merge has conflicts, abort: `git merge --abort`. BLOCK with: "Merge of `<worktree_branch>` into `<integration>` conflicted on: <list>. Resolve in the release worktree first (rebase `release-wt/$1` onto `<integration>`), then re-run /merge-release."
+2. Step 1.5 has already pulled `<integration>` into `<worktree_branch>`, so this merge should apply cleanly. If it nonetheless conflicts, the integration branch advanced *again* between Step 1.5 and here (a sibling release or direct fix landed mid-command). Abort: `git merge --abort`. BLOCK with: "Merge of `<worktree_branch>` into `<integration>` conflicted on: <list> despite the Step 1.5 forward-merge — `<integration>` advanced again mid-command. Re-run /merge-release $1 so Step 1.5 re-syncs the new drift."
 
 ## Step 4 — Update the release board
 
@@ -126,7 +137,8 @@ Tell the human, in one short message:
 
 ## Strict role boundaries
 
-- Do not push. Pushing is a network action the human triggers explicitly.
+- The Step 1.5 forward-merge **is in scope** — but only when it is conflict-free. A conflict-free forward-merge is a mechanical sync the integrator may perform; a *conflicting* forward-merge is conflict resolution, which needs release context the integrator does not have, so it routes to the release author. Never resolve forward-merge conflicts yourself.
+- Do not push. Pushing is a network action the human triggers explicitly. This includes the Step 1.5 forward-merge commit on `<worktree_branch>` — it stays local until the human pushes.
 - Do not delete `release-wt/$1` or remove its worktree. Both are destructive and may need access for a post-merge fix (e.g. a hot-patch slice landing later that wants the same worktree).
 - Do not flip slice states to `shipped`. Shipping = code in prod; this command only integrates code onto the base branch.
 - Do not invoke `/plan-release`, `/implement-slice`, or `/verify-slice` from this session. Single-purpose: just the merge.
