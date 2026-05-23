@@ -5,21 +5,43 @@
 **The baton is the proof bundle.** Three roles, three sealed sessions, one file on disk that crosses between them.
 
 ```
-                                  fresh-context boundary
-                                        (Rule 7)
-                                             ║
-   ┌──────────┐   spec.md   ┌────────────┐   ║   proof.md   ┌──────────┐
-   │ planner  │ ───────────►│ implementer│ ──╫─────────────►│ verifier │
-   └──────────┘             └────────────┘   ║              └──────────┘
-        ▲                                    ║                    │
-        │             status.json            ║                    │
-        └────────────────────────────────────╨────────────────────┘
-                            PASS / FAIL / BLOCKED
+                                    fresh-context boundary
+                                          (Rule 7)
+                                               ║
+    ┌──────────┐    spec.md    ┌────────────┐  ║   proof.md   ┌──────────┐
+    │ planner  │ ─────────────►│ implementer│ ─╫─────────────►│ verifier │
+    │ /plan-   │               │ /implement-│  ║              │ /verify- │
+    │  release │               │   slice    │  ║              │   slice  │
+    └──────────┘               └────────────┘  ║              └──────────┘
+       ▲   ▲                          ▲        ║                  │
+       │   │                     FAIL │        ║                  │
+       │   │     <numbered violations>│◄───────╫──────────────────┤
+       │   │                                   ║                  │
+       │   │   BLOCKED <spec defect>           ║                  │
+       │   └────  /replan-release  ◄───────────╫──────────────────┤
+       │                                       ║                  │
+       │   status.json — state machine                       PASS │
+       └─────────────────────  (every role writes,                │
+                                planner is the reader)            │
+                                                                  ▼
+                                                          verified slice
+                                                                  │
+                                                                  │  gate: every slice
+                                                                  │  in the track verified
+                                                                  ▼
+                              ┌──────────────┐      ┌───────────────┐      ┌───────────────┐
+                              │ /merge-track │─────►│/merge-release │─────►│ /mark-shipped │
+                              └──────────────┘gate: └───────────────┘after └───────────────┘
+                              track/*  →      every release-wt → deploy    verified
+                              release-wt      track release/v*             → shipped
+                                              merged
 ```
 
 The double bar between implementer and verifier is the load-bearing piece: when the verifier session starts, it is a **brand-new context window** with no inherited transcript, framing, or reasoning from the implementer. It reads only `spec.md`, `proof.md`, and `status.json` from disk, then returns `PASS` / `FAIL` / `BLOCKED`. Without that separation, baton's Rule 7 collapses into "the same LLM marking its own homework" — which is precisely the failure mode it exists to prevent.
 
-The other arrows are read/write traffic through artefacts on disk (`spec.md`, `proof.md`, `status.json`). The status.json loop back to planner is the state machine that tracks each slice's lifecycle (`planned` → `in_progress` → `implemented` → `verified` → `shipped`).
+The arrows other than the double bar are read/write traffic through artefacts on disk (`spec.md`, `proof.md`, `status.json`). The `status.json` loop back to the planner is the state machine that tracks each slice's lifecycle (`planned` → `in_progress` → `implemented` → `verified` → `shipped`); `/replan-release` is the planner re-entry point that handles `BLOCKED` verdicts and any in-flight revision.
+
+The merge pipeline below the slice loop runs on gates, not on time: `/merge-track` requires every slice in the track to be `verified`; `/merge-release` requires every track to be merged into `release-wt/<name>`; `/mark-shipped` is the after-deploy bookkeeping step that flips every `verified` slice to the terminal `shipped` state with the deployed commit as evidence.
 
 **License:** [MIT](LICENSE) — permissive, attribution-only. Use it in any project, commercial or otherwise.
 
