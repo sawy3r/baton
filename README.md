@@ -142,16 +142,65 @@ That's it. `/plan-release <YYYY-MM-DD-theme>` from a fresh session bootstraps th
 
 ## The session loop
 
+```mermaid
+flowchart TD
+    classDef cmd fill:#1f2937,stroke:#60a5fa,color:#fff,stroke-width:1px
+    classDef state fill:#fef3c7,stroke:#d97706,color:#111
+    classDef terminal fill:#dcfce7,stroke:#16a34a,color:#111
+    classDef branch fill:#ede9fe,stroke:#7c3aed,color:#111,stroke-dasharray:3 3
+
+    plan["/plan-release &lt;name&gt;<br/><i>fresh window — planner</i>"]:::cmd
+    replan["/replan-release &lt;name&gt;<br/><i>fresh window — planner</i><br/>(in-flight revision)"]:::cmd
+    impl["/implement-slice &lt;slice&gt;<br/><i>fresh window — implementer</i>"]:::cmd
+    verify["/verify-slice &lt;slice&gt;<br/><i>fresh window — verifier (Rule 7)</i>"]:::cmd
+    mtrack["/merge-track &lt;track-id&gt;<br/><i>gate: every slice verified</i>"]:::cmd
+    mrelease["/merge-release &lt;name&gt;<br/><i>gate: every track merged</i>"]:::cmd
+    shipped["/mark-shipped &lt;name&gt;<br/><i>after deploy — bookkeeping</i>"]:::cmd
+
+    planned([planned]):::state
+    inprog([in_progress]):::state
+    implemented([implemented]):::state
+    verified([verified]):::terminal
+    failed([failed_verification]):::state
+    shipState([shipped]):::terminal
+
+    trackBranch[/"track/&lt;name&gt;/&lt;track-id&gt;<br/>(one worktree per track,<br/>slices serial within)"/]:::branch
+    relWt[/"release-wt/&lt;name&gt;<br/>(release assembly branch)"/]:::branch
+    integ[/"release/v* — integration branch"/]:::branch
+
+    plan --> planned
+    replan -.->|adds/re-scopes slices<br/>or clears BLOCKED| planned
+    planned --> impl
+    impl --> inprog --> implemented
+    implemented --> verify
+    verify -->|PASS| verified
+    verify -->|FAIL| failed --> impl
+    verify -->|BLOCKED<br/>spec defect| replan
+    replan -.->|amended spec| impl
+
+    verified --> mtrack
+    mtrack --> trackBranch
+    trackBranch --> relWt
+    relWt --> mrelease --> integ
+    integ -->|deploy| shipped --> shipState
+```
+
 For each release:
 
-1. **Planner session** — fresh window. Human pastes `/plan-release <name>`. Conversational discovery; planner writes `intake.md`, decomposes into slices, groups the slices into touchpoint-disjoint **tracks**, writes `spec.md` per slice. No code written here. (Revising a release already in flight is `/replan-release <name>`.)
+1. **Planner session** — fresh window. Human pastes `/plan-release <name>`. Conversational discovery; planner writes `intake.md`, decomposes into slices, groups the slices into touchpoint-disjoint **tracks**, writes `spec.md` per slice. No code written here.
 2. **Implementer session, per slice** — fresh window. Human runs `/implement-slice <slice-id>`. Implementer reads `spec.md`, makes changes, writes `proof.md` from live repo state, runs `release-verify.sh`, stops at state `implemented`. **Never marks `verified`.**
 3. **Verifier session, per slice** — *another* fresh window with no inherited context. Human runs `/verify-slice <slice-id>`. Verifier reads only `spec.md`, `proof.md`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`.
-4. **Merge a track** — when every slice in a track is verified, `/merge-track <track-id>` lands the track branch on the release assembly branch `release-wt/<name>`.
-5. **Merge the release** — when every track is merged, `/merge-release <name>` integrates `release-wt/<name>` back to the integration base.
-6. **Mark it shipped** — once the integration branch has actually deployed to production, `/mark-shipped <name>` flips every `verified` slice to the terminal `shipped` state, recording the deployed commit as evidence. Bookkeeping only — it does not deploy.
+   - **PASS** → slice transitions to `verified`, available for `/merge-track`.
+   - **FAIL** → slice goes to `failed_verification`; back to the implementer with the verifier's numbered violations.
+   - **BLOCKED** → spec defect or external gap the implementer can't resolve. Handoff routes *forward* (never back to the implementer) to `/replan-release <name>` — the only command authorised to amend a spec or re-group tracks on an in-flight release. Once the planner ratifies the resolution, the slice re-enters at `/implement-slice`.
+4. **Replan in flight, when needed** — `/replan-release <name>` is the planner re-entry point for any in-flight revision: adding unplanned scope, dropping a not-started slice, re-grouping tracks, or clearing a BLOCKED verdict. It reconciles board state from `release-wt/<name>` and every `track/<name>/*` branch (not the stale `index.md` on the integration branch) before proposing changes, and propagates the revised plan back out to in-flight track branches so the verifier doesn't loop on a stale spec.
+5. **Merge a track** — when every slice in a track is `verified`, `/merge-track <track-id>` merges the track branch into the release assembly branch `release-wt/<name>` with `--no-ff`. Gate: every slice in the track verified; a planner-domain conflict (cross-track touchpoint collision) BLOCKs and routes to `/replan-release`.
+6. **Merge the release** — when every track is merged into `release-wt/<name>`, `/merge-release <name>` merges the assembly branch into the version integration branch (e.g. `release/v0.5.0`) with `--no-ff`. Gate: every track merged (which implies every slice verified).
+7. **Mark it shipped** — once the integration branch has actually deployed to production, `/mark-shipped <name>` flips every `verified` slice to the terminal `shipped` state, recording the deployed commit as evidence. Bookkeeping only — it does not deploy.
 
 Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`claude/baton/track-mode.md`](claude/baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
+
+> GitHub renders the diagram above as a flowchart natively. If you read this README in a tool without Mermaid support, the prose 1-7 below it is the source of truth.
 
 ## Tracking the board
 
