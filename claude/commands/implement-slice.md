@@ -63,9 +63,19 @@ Briefly tell the human in one sentence what you did ("Using track worktree at `<
 
 ## Step 0b — BLOCKED-verdict guard (before any implementation)
 
-With `<worktree_path>` captured, read the target slice's own `status.json` from the **track worktree** — `<worktree_path>/docs/release/$2/$1/status.json`, never the launch-directory copy (the worktree is the only branch that carries the verifier's commits). The `verification.result` field is per-slice verdict detail the board oracle does not surface, so this one read is direct — but it is still worktree-anchored, never read from the launch directory. If `verification.result` is `"blocked"`, BLOCK immediately and do not start implementation:
+With `<worktree_path>` captured, read the target slice's own `status.json` from the **track worktree** — `<worktree_path>/docs/release/$2/$1/status.json`, never the launch-directory copy (the worktree is the only branch that carries the verifier's commits). The `verification.result` field is per-slice verdict detail the board oracle does not surface, so this one read is direct — but it is still worktree-anchored, never read from the launch directory. If `verification.result` is `"blocked"`, do **not** halt immediately — first cross-check `release-wt`'s copy of the same `status.json` to make sure the BLOCKED state has not already been cleared by a prior `/replan-release` whose Step 6 propagation failed to reach this track branch:
 
-> Slice `$1` has an open BLOCKED verdict — the implementer cannot resolve a blocker. Route it through `/replan-release $2` first; that clears `verification.result`.
+```
+git -C <worktree_path> fetch origin --quiet
+git -C <worktree_path> show origin/release-wt/$2:docs/release/$2/$1/status.json | jq -r '.verification.result'
+```
+
+- If `release-wt`'s copy is also `"blocked"`, the planner has not (yet) ratified a resolution — BLOCK and route to `/replan-release` as below. This is the canonical case.
+- If `release-wt`'s copy is `"pending"` (or any non-`"blocked"` value) and was last updated by the planner *after* the track's BLOCKED verdict (compare `last_updated_at`), the planner has cleared the BLOCKED state but Step 6's release-wt → track propagation never reached here — the Step 6 ↔ Step 0b deadlock from baton#16. **Self-heal** by cherry-picking the planner's relevant commits onto the track branch *before* continuing. Identify the commits via `git -C <worktree_path> log origin/release-wt/$2 --not HEAD -- docs/release/$2/$1/` and cherry-pick them in order, resolving any planning-artefact conflicts. Push the track branch. Then re-read `status.json` and continue with the session start handshake. Note the self-heal in `journal.md`.
+
+If you do need to halt, surface:
+
+> Slice `$1` has an open BLOCKED verdict (also live on `release-wt`) — the implementer cannot resolve a blocker. Route it through `/replan-release $2` first; that clears `verification.result`.
 
 A BLOCKED verdict means a fresh-context verifier found a spec defect or external gap that only the planner can resolve; an implementer session cannot clear it. Picking the slice up here would re-enter the verifier → planner → verifier loop this guard exists to break — the handoff routes forward to `/replan-release`, never back to the implementer (handoff directionality is canonical in `$HOME/.claude/baton/session-discipline.md`). Stop here; do not run the session start handshake.
 
