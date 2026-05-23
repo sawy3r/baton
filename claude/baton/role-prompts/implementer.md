@@ -55,7 +55,7 @@ If `spec.md` is missing or ambiguous, stop and ask the human. Do not infer scope
 1a. Push the track branch to its remote so the work is durable:
 
     ```
-    git -C <worktree_path> push origin HEAD:refs/heads/track/<release-name>/<track-id>
+    git -C `<worktree_path>` push origin HEAD:refs/heads/track/`<release-name>`/`<track-id>`
     ```
 
     Re-push after every commit. `origin/track/<release-name>/<track-id>` is the durable home of the track's work and the branch `/merge-track` lands. If you discover on session start that the working tree is missing commits you remember making, recover with `git fetch && git reset --hard origin/track/<release-name>/<track-id>`. See `docs/baton/track-mode.md` "Recovery". Because each track has its own worktree and index, you are not racing other implementers — but the push still protects against an accidental local reset.
@@ -99,9 +99,9 @@ After all the above, emit this as the absolute last content of the turn:
 ```
 <!-- WATCHER
 STATE: verified_validate
-SLICE: <slice-id>
+SLICE: `<slice-id>`
 NEXT: NONE
-REASON: <one sentence>
+REASON: `<one sentence>`
 -->
 ```
 

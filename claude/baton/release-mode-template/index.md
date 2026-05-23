@@ -29,11 +29,11 @@ tracks: []
 
 - **Goal**: <one sentence; cite `intake.md` for the long form>
 - **Target version / integration branch**: <e.g. `release/v0.5.0`, `release/v0.6.0`>
-- **Started**: <YYYY-MM-DD> (should match the date prefix in the folder name)
-- **Target ship**: <YYYY-MM-DD or "uncommitted">
+- **Started**: `<YYYY-MM-DD>` (should match the date prefix in the folder name)
+- **Target ship**: `<YYYY-MM-DD or "uncommitted">`
 - **Intake**: `intake.md`
-- **Stakeholder**: <name>
-- **Tracking issue**: <link>
+- **Stakeholder**: `<name>`
+- **Tracking issue**: `<link>`
 
 ## Tracks
 
@@ -59,9 +59,9 @@ Track state: `planned` (no slice started) → `in_progress` (≥1 slice started,
 
 | ID | Track | User outcome | State | Owner | Spec | Proof |
 |---|---|---|---|---|---|---|
-| `S01-<name>` | T1 | <one sentence> | planned | human | [spec](./S01-<name>/spec.md) | — |
-| `S02-<name>` | T1 | <one sentence> | planned | human | [spec](./S02-<name>/spec.md) | — |
-| `S03-<name>` | T2 | <one sentence> | planned | human | [spec](./S03-<name>/spec.md) | — |
+| `S01-<name>` | T1 | `<one sentence>` | planned | human | [spec](./S01-`<name>`/spec.md) | — |
+| `S02-<name>` | T1 | `<one sentence>` | planned | human | [spec](./S02-`<name>`/spec.md) | — |
+| `S03-<name>` | T2 | `<one sentence>` | planned | human | [spec](./S03-`<name>`/spec.md) | — |
 
 ### State legend
 
@@ -79,7 +79,7 @@ A slice stays `verified` through `/merge-track` and `/merge-release`; it flips t
 
 ## Aggregate state
 
-<Rolling count, updated whenever any slice transitions.>
+`<Rolling count, updated whenever any slice transitions.>`
 
 - Planned: N
 - In progress: N
@@ -93,21 +93,21 @@ A slice stays `verified` through `/merge-track` and `/merge-release`; it flips t
 
 ## Recent activity
 
-<Chronological log of the most recent state transitions, including track merges.>
+`<Chronological log of the most recent state transitions, including track merges.>`
 
-### <YYYY-MM-DD HH:MM> — `<slice-id>`: `<old-state>` → `<new-state>`
+### `<YYYY-MM-DD HH:MM>` — `<slice-id>`: `<old-state>` → `<new-state>`
 
-- **Actor**: <implementer / verifier / human>
-- **Note**: <one line>
+- **Actor**: `<implementer / verifier / human>`
+- **Note**: `<one line>`
 
 ## Decisions deferred (Rule 2)
 
-<Items carved out of this release with explicit acknowledgement.>
+`<Items carved out of this release with explicit acknowledgement.>`
 
 - ...
 
 ## Cross-slice / cross-track notes
 
-<Anything affecting more than one slice or track that needs human-level coordination — data-model migrations, env-var changes, shared infra, dependent-track ordering.>
+`<Anything affecting more than one slice or track that needs human-level coordination — data-model migrations, env-var changes, shared infra, dependent-track ordering.>`
 
 - ...

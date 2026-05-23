@@ -9,7 +9,7 @@ description: Rule 6 proof bundle, scoped to one slice. Generated from live repo 
 
 ## Scope
 
-<One sentence. Should mirror the spec's "User outcome" exactly — if it doesn't, fix the spec or fix the implementation; don't paper over the gap here.>
+`<One sentence. Should mirror the spec's "User outcome" exactly — if it doesn't, fix the spec or fix the implementation; don't paper over the gap here.>`
 
 ## Files changed
 
@@ -24,14 +24,14 @@ $ git diff --name-only main
 
 > Each project supplies its own test commands. Replace the commands below with your project's actual invocations. If a stack is not touched by this slice, write the section as `N/A — no <stack> changes`.
 
-### <Stack 1, e.g. Go>
+### `<Stack 1, e.g. Go>`
 
 ```
 $ <your backend test command>
 <paste full output including exit code>
 ```
 
-### <Stack 2, e.g. TypeScript>
+### `<Stack 2, e.g. TypeScript>`
 
 ```
 $ <your frontend test command>
@@ -40,30 +40,30 @@ $ <your frontend test command>
 
 ## Reachability artefact
 
-<Path to screenshot / Playwright trace / explicit smoke-step description naming the user gesture. Must exist on disk and be discoverable from this path. "Tests pass" is not a reachability artefact — see Rule 1.>
+`<Path to screenshot / Playwright trace / explicit smoke-step description naming the user gesture. Must exist on disk and be discoverable from this path. "Tests pass" is not a reachability artefact — see Rule 1.>`
 
-- **Type**: <screenshot | playwright-trace | manual-smoke-step>
-- **Path**: <relative path from repo root>
-- **User gesture**: <"User clicks X, observes Y" — exact words>
+- **Type**: `<screenshot | playwright-trace | manual-smoke-step>`
+- **Path**: `<relative path from repo root>`
+- **User gesture**: `<"User clicks X, observes Y" — exact words>`
 
 ## Delivered
 
-<Bulleted list. Every item from the spec's acceptance checks that is now demonstrably true, each with an evidence reference the verifier can independently confirm.>
+`<Bulleted list. Every item from the spec's acceptance checks that is now demonstrably true, each with an evidence reference the verifier can independently confirm.>`
 
-- <Acceptance check #1> — evidence: <file path / test name / artefact path>
-- <Acceptance check #2> — evidence: <file path / test name / artefact path>
+- `<Acceptance check #1>` — evidence: `<file path / test name / artefact path>`
+- `<Acceptance check #2>` — evidence: `<file path / test name / artefact path>`
 
 ## Not delivered
 
-<Bulleted list. Every item from the spec's acceptance checks that is NOT demonstrably true. Each must be a Rule 2 deferral: why + tracking + acknowledgement. Empty list is acceptable only if every acceptance check is delivered. Do not omit the section.>
+`<Bulleted list. Every item from the spec's acceptance checks that is NOT demonstrably true. Each must be a Rule 2 deferral: why + tracking + acknowledgement. Empty list is acceptable only if every acceptance check is delivered. Do not omit the section.>`
 
-- <Item> — **Why**: <reason>. **Tracking**: <issue link / punch-list entry>. **Acknowledged**: <who, when>.
+- `<Item>` — **Why**: `<reason>`. **Tracking**: `<issue link / punch-list entry>`. **Acknowledged**: `<who, when>`.
 
 ## Divergence from plan
 
-<Any implementation that differs from the spec's planned touchpoints or approach. Empty is valid but the section must be present and explicit.>
+`<Any implementation that differs from the spec's planned touchpoints or approach. Empty is valid but the section must be present and explicit.>`
 
-- <Divergence description, or "None">
+- `<Divergence description, or "None">`
 
 ## First-pass script output
 
