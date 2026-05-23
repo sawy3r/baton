@@ -104,19 +104,23 @@ A `journal.md` accumulates state transitions and verifier verdicts over the slic
 ```bash
 git clone https://github.com/sawy3r/baton.git ~/projects/baton
 cd ~/projects/baton
-./install.sh
+./install.sh           # Claude Code      — installs ~/.claude/commands/, ~/.claude/baton/, ~/.claude/bin/
+./install-codex.sh     # OpenAI Codex     — installs ~/.agents/skills/baton-*/, ~/.codex/baton/, ~/.codex/bin/
 ```
+
+Run whichever installer matches the tool you use. Codex Mac App and Codex CLI share `~/.codex/` config, so the same install serves both. Either installer can run safely on the same machine — they touch disjoint directories.
 
 Or preview first:
 
 ```bash
-./install.sh --dry-run   # show what would be installed without copying
-./install.sh --help      # full options
+./install.sh --dry-run        # show what would be installed without copying
+./install.sh --help           # full options
+./install-codex.sh --dry-run  # same, for the Codex installer
 ```
 
-Set `CLAUDE_HOME=/custom/path` before running `install.sh` to install under a non-default location (default: `$HOME/.claude`).
+Set `CLAUDE_HOME=/custom/path` before `install.sh`, or `CODEX_HOME` / `AGENTS_HOME` before `install-codex.sh`, to install under a non-default location.
 
-Update later with `git pull && ./install.sh` from the same directory.
+Update later with `git pull && ./install.sh` (and/or `./install-codex.sh`) from the same directory.
 
 ## What lands where
 
@@ -171,7 +175,8 @@ The slash commands use two runtime tokens the agent resolves on first Bash call:
 
 ## Caveats
 
-- **Claude Code only today.** The slash commands target Claude Code's directives ecosystem (`~/.claude/commands/`). Cross-tool adapters for Codex, Gemini, and OpenCode are on the [roadmap](ROADMAP.md).
+- **Claude Code and OpenAI Codex today.** The slash commands target Claude Code's `~/.claude/commands/` (via `install.sh`) and Codex's `~/.agents/skills/` (via `install-codex.sh`, covering Codex CLI and the Codex Mac App, which share `~/.codex/` config). Gemini CLI and OpenCode adapters are on the [roadmap](ROADMAP.md).
+- **Codex skills are mechanically derived** from the Claude Code command bodies at install time, with paths rewritten to `~/.codex/` and a header explaining Codex's free-form argument resolution prepended. Behaviour is preserved; a few presentation differences remain (e.g. `AskUserQuestion` reads fine as "prompt the human" but doesn't render as a Codex-native picker).
 - **Per-project memory is optional.** If your tool maintains per-project persistent memory (Claude Code stores it under `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md`), the planner reads it at session start. On a clean install it doesn't exist; the step skips silently.
 - **`release-verify.sh` is opinionated.** It checks for required artefact files, valid JSON in `status.json`, non-empty diff vs the base branch, dark-code markers in changed files, and required `proof.md` sections. It does *not* make subjective calls about whether the diff actually implements the spec — that's the LLM verifier's job.
 
