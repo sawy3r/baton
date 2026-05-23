@@ -11,18 +11,18 @@ description: The discovery output document. Captures what the human described, w
 
 ## Release goal
 
-<One paragraph. Written by the planner from the human's opening description and confirmed back to them. What user-visible outcome does this release deliver, why now, and what would "shipped" look like?>
+`<One paragraph. Written by the planner from the human's opening description and confirmed back to them. What user-visible outcome does this release deliver, why now, and what would "shipped" look like?>`
 
 ## Source of truth
 
-- **Human stakeholder**: <name / role>
-- **Tracking issue / epic**: <GitHub issue link>
+- **Human stakeholder**: `<name / role>`
+- **Tracking issue / epic**: `<GitHub issue link>`
 - **Related captures**: <links to prior session captures under `docs/captures/` (and historical captures from earlier tooling, if relevant)>
 - **Related memory entries**: <list relevant `feedback_*` / `project_*` memory entries the planner consulted>
 
 ## Users and their gestures
 
-<For each affected user type, name the gestures and the outcomes. Be specific about which user can do what.>
+`<For each affected user type, name the gestures and the outcomes. Be specific about which user can do what.>`
 
 - **Anonymous visitor**: ...
 - **Free user**: ...
@@ -32,38 +32,38 @@ description: The discovery output document. Captures what the human described, w
 
 ## What's currently broken or missing
 
-<The human's "this isn't working" / screenshot dumps go here. Quote them. Don't sanitise them — the verifier may need to reconstruct the original complaint to confirm a fix matches it.>
+`<The human's "this isn't working" / screenshot dumps go here. Quote them. Don't sanitise them — the verifier may need to reconstruct the original complaint to confirm a fix matches it.>`
 
 - ...
 
 ## What the human wants
 
-<The human's "I want this" / wish list. Capture each as a discrete item, not as prose. Items here become candidate slice acceptance checks downstream.>
+`<The human's "I want this" / wish list. Capture each as a discrete item, not as prose. Items here become candidate slice acceptance checks downstream.>`
 
 - ...
 
 ## Constraints and non-negotiables
 
-<Domain constraints surfaced during the conversation. Examples (replace with your project's): privacy-law data minimisation, regional data residency, regulatory advice-language restrictions, encrypted-at-rest persistence per architecture decision records, third-party billing source-of-truth rules.>
+`<Domain constraints surfaced during the conversation. Examples (replace with your project's): privacy-law data minimisation, regional data residency, regulatory advice-language restrictions, encrypted-at-rest persistence per architecture decision records, third-party billing source-of-truth rules.>`
 
 - ...
 
 ## Adjacent / out of scope
 
-<Things the human raised that are NOT in this release. Each must be a Rule 2 deferral: why, tracking link, acknowledgement that the human knows it's deferred.>
+`<Things the human raised that are NOT in this release. Each must be a Rule 2 deferral: why, tracking link, acknowledgement that the human knows it's deferred.>`
 
-- **Item**: <description>. **Why deferred**: <reason>. **Tracking**: <issue/punch-list>. **Acknowledged**: <date>.
+- **Item**: `<description>`. **Why deferred**: `<reason>`. **Tracking**: `<issue/punch-list>`. **Acknowledged**: `<date>`.
 
 ## Decisions made during planning
 
-<Chronological log of decisions reached during planning conversations. Each decision must be re-statable in a commit message body per Rule 4. If a decision is reversed later, append the reversal rather than editing the original.>
+`<Chronological log of decisions reached during planning conversations. Each decision must be re-statable in a commit message body per Rule 4. If a decision is reversed later, append the reversal rather than editing the original.>`
 
-### <YYYY-MM-DD> — <decision summary>
+### `<YYYY-MM-DD>` — `<decision summary>`
 
-- **Context**: <what was being decided>
-- **Options considered**: <briefly>
-- **Decision**: <what was chosen>
-- **Why**: <reason>
+- **Context**: `<what was being decided>`
+- **Options considered**: `<briefly>`
+- **Decision**: `<what was chosen>`
+- **Why**: `<reason>`
 
 ## Schema-vs-spec audit notes
 
@@ -73,20 +73,20 @@ description: The discovery output document. Captures what the human described, w
 
 ## Proposed slice decomposition (draft)
 
-<Working draft of the slice list before specs are written. Iterates with the human during Phase 3 of the planner workflow. Once finalised, slices get their own folders and this section becomes historical reference.>
+`<Working draft of the slice list before specs are written. Iterates with the human during Phase 3 of the planner workflow. Once finalised, slices get their own folders and this section becomes historical reference.>`
 
-- `S01-<name>` — <one-sentence user outcome>
-- `S02-<name>` — <one-sentence user outcome>
+- `S01-<name>` — `<one-sentence user outcome>`
+- `S02-<name>` — `<one-sentence user outcome>`
 - ...
 
 ## Open questions
 
-<Anything the planner couldn't resolve from the conversation. Each must be answered before its dependent slice can move past `planned`.>
+\<Anything the planner couldn't resolve from the conversation. Each must be answered before its dependent slice can move past `planned`.\>
 
 - ...
 
 ## Screenshots / references
 
-<Inline screenshot paths if available, or links to where they live. Image-heavy intakes are fine — the planner is conversational by design.>
+`<Inline screenshot paths if available, or links to where they live. Image-heavy intakes are fine — the planner is conversational by design.>`
 
-- `docs/release/<release-name>/screenshots/<filename>.png` — <one-line description of what the screenshot shows>
+- `docs/release/<release-name>/screenshots/<filename>.png` — `<one-line description of what the screenshot shows>`

@@ -9,36 +9,36 @@ description: Implementation log for one slice. Append-only. Visible to verifier 
 
 ## Session log
 
-### <YYYY-MM-DD HH:MM> — <session start / state transition>
+### `<YYYY-MM-DD HH:MM>` — `<session start / state transition>`
 
-- **State**: <planned | in_progress | implemented | failed_verification | verified | deferred | shipped>
+- **State**: `<planned | in_progress | implemented | failed_verification | verified | deferred | shipped>`
 - **Notes**:
-  - <Decisions made>
-  - <Trade-offs encountered>
-  - <Subagent dispatches and where their outputs landed>
+  - `<Decisions made>`
+  - `<Trade-offs encountered>`
+  - `<Subagent dispatches and where their outputs landed>`
 
-### <YYYY-MM-DD HH:MM> — <next event>
+### `<YYYY-MM-DD HH:MM>` — `<next event>`
 
 - ...
 
 ## Open questions
 
-<Anything the implementer needs the human to resolve. Each open question blocks state transition to `implemented` until answered.>
+\<Anything the implementer needs the human to resolve. Each open question blocks state transition to `implemented` until answered.\>
 
 - ...
 
 ## Deferrals surfaced
 
-<Per Rule 2: each deferral needs why + tracking + acknowledgement. Cross-link to GitHub issue or punch-list entry. If empty, write "None" explicitly.>
+`<Per Rule 2: each deferral needs why + tracking + acknowledgement. Cross-link to GitHub issue or punch-list entry. If empty, write "None" explicitly.>`
 
 - ...
 
 ## Verifier verdicts received
 
-<Append every verifier verdict here. Even FAIL verdicts stay — they are part of the slice's history.>
+`<Append every verifier verdict here. Even FAIL verdicts stay — they are part of the slice's history.>`
 
-### <YYYY-MM-DD HH:MM> — <PASS | FAIL | BLOCKED>
+### `<YYYY-MM-DD HH:MM>` — `<PASS | FAIL | BLOCKED>`
 
-- **Verifier session**: <fresh / inherited — should always be fresh>
-- **Verdict body**: <paste the full verifier output>
-- **Action taken**: <how the implementer responded>
+- **Verifier session**: `<fresh / inherited — should always be fresh>`
+- **Verdict body**: `<paste the full verifier output>`
+- **Action taken**: `<how the implementer responded>`

@@ -151,9 +151,9 @@ If all six gates pass:
 ```
 PASS
 
-Slice: <slice-id>
-Verified against: <commit-sha>
-Verifier session: <fresh, artefact-only>
+Slice: `<slice-id>`
+Verified against: `<commit-sha>`
+Verifier session: `<fresh, artefact-only>`
 ```
 
 If any gate fails:
@@ -161,14 +161,14 @@ If any gate fails:
 ```
 FAIL
 
-Slice: <slice-id>
+Slice: `<slice-id>`
 
 Violations:
-1. Gate <N> — <one-line summary>
-   Evidence: <specific file/line/test-name>
-2. Gate <N> — ...
+1. Gate `<N>` — `<one-line summary>`
+   Evidence: `<specific file/line/test-name>`
+2. Gate `<N>` — ...
 
-Required to address: <numbered list of concrete fixes, tied to gates>
+Required to address: `<numbered list of concrete fixes, tied to gates>`
 ```
 
 If verification cannot proceed:
@@ -176,8 +176,8 @@ If verification cannot proceed:
 ```
 BLOCKED
 
-Slice: <slice-id>
-Reason: <specific external dependency or unreadable artefact>
+Slice: `<slice-id>`
+Reason: `<specific external dependency or unreadable artefact>`
 ```
 
 ## What you must never do
@@ -220,9 +220,9 @@ If the track still has a further incomplete slice (auto-advance to implement it)
 ```
 <!-- WATCHER
 STATE: verified_implement_next
-SLICE: <slice-id>
-NEXT: <next-incomplete-slice-id in this track>
-REASON: All six gates passed. <next-incomplete-slice-id> is the next slice in track <track-id>.
+SLICE: `<slice-id>`
+NEXT: `<next-incomplete-slice-id in this track>`
+REASON: All six gates passed. `<next-incomplete-slice-id>` is the next slice in track `<track-id>`.
 -->
 ```
 
@@ -230,9 +230,9 @@ If every slice in the track is now verified (track ready to merge):
 ```
 <!-- WATCHER
 STATE: verified_awaiting_approval
-SLICE: <slice-id>
+SLICE: `<slice-id>`
 NEXT: NONE
-REASON: All six gates passed. Track <track-id> is complete — run /merge-track <track-id>, then /merge-release <release-name> once every track is merged.
+REASON: All six gates passed. Track `<track-id>` is complete — run /merge-track `<track-id>`, then /merge-release `<release-name>` once every track is merged.
 -->
 ```
 
@@ -240,9 +240,9 @@ For FAIL:
 ```
 <!-- WATCHER
 STATE: blocked_needs_human
-SLICE: <slice-id>
+SLICE: `<slice-id>`
 NEXT: NONE
-REASON: <which gate failed and why, one sentence>
+REASON: `<which gate failed and why, one sentence>`
 -->
 ```
 
@@ -250,9 +250,9 @@ For BLOCKED:
 ```
 <!-- WATCHER
 STATE: blocked_needs_planner
-SLICE: <slice-id>
+SLICE: `<slice-id>`
 NEXT: NONE
-REASON: <specific external dependency or spec gap, one sentence>
+REASON: `<specific external dependency or spec gap, one sentence>`
 -->
 ```
 
