@@ -9,32 +9,42 @@ shipped.
 - Slash commands for Claude Code: `/plan-release`, `/replan-release`,
   `/implement-slice`, `/verify-slice`, `/merge-track`, `/merge-release`,
   `/mark-shipped`.
+- **Codex (CLI + Mac App) install path** via `./install-codex.sh` — the
+  same seven commands are installed as Codex Skills under
+  `~/.agents/skills/baton-<command>/SKILL.md`, invoked as
+  `$baton-plan-release` etc. or via the `/skills` picker. The skill
+  bodies are mechanically derived from the Claude Code command bodies
+  at install time, with paths rewritten from `~/.claude/` to
+  `~/.codex/` and a Codex-specific argument-resolution header prepended.
 - Track mode — slices grouped into touchpoint-disjoint tracks for safe
   parallelism, each track in its own worktree. See
   `claude/baton/track-mode.md`.
 - Seven rules + role prompts + release-mode templates installed at
-  `~/.claude/baton/` via `./install.sh`.
+  `~/.claude/baton/` (Claude Code) and `~/.codex/baton/` (Codex) via
+  the two installers.
 - Deterministic first-pass verifier (`release-verify.sh`) at
-  `~/.claude/bin/`.
-- Release-board tooling at `~/.claude/bin/` — `release-board-status.sh`
-  (terminal go/no-go verdict) and `release-board-ui.mjs` (auto-refreshing
-  HTML dashboard), both resolving slice state straight from `track/*` +
-  `release-wt/*` git branches via the shared `lib/release-board.mjs`.
+  `~/.claude/bin/` and `~/.codex/bin/`.
+- Release-board tooling at `~/.claude/bin/` and `~/.codex/bin/` —
+  `release-board-status.sh` (terminal go/no-go verdict) and
+  `release-board-ui.mjs` (auto-refreshing HTML dashboard), both
+  resolving slice state straight from `track/*` + `release-wt/*` git
+  branches via the shared `lib/release-board.mjs`.
 
 ## Next — cross-tool adapters
 
-The current `install.sh` targets Claude Code's directives ecosystem only.
-The next pass refactors into a two-layer architecture so the same content
-drives slash-commands across four CLI tools.
+`install.sh` targets Claude Code; `install-codex.sh` targets OpenAI Codex
+(CLI + Mac App, which share `~/.codex/` config). The next pass refactors
+into a two-layer architecture so the same content drives slash-commands /
+skills / prompts across the remaining target CLIs.
 
 ### Target tools
 
-| Tool                | Rules file              | User-level commands dir       | Format          |
-|---------------------|-------------------------|-------------------------------|-----------------|
-| Claude Code         | `~/.claude/CLAUDE.md`   | `~/.claude/commands/*.md`     | markdown + frontmatter |
-| OpenAI Codex CLI    | `AGENTS.md` (canonical) | `~/.codex/prompts/*.md`       | markdown |
-| Gemini CLI          | `GEMINI.md` or AGENTS.md| `~/.gemini/commands/*.toml`   | TOML |
-| OpenCode (SST)      | `AGENTS.md`             | `~/.config/opencode/command/` | markdown |
+| Tool                | Rules file              | User-level commands surface       | Format          | Status |
+|---------------------|-------------------------|-----------------------------------|-----------------|--------|
+| Claude Code         | `~/.claude/CLAUDE.md`   | `~/.claude/commands/*.md`         | markdown + frontmatter | shipped (`install.sh`) |
+| OpenAI Codex (CLI + Mac App) | `~/.codex/AGENTS.md` | `~/.agents/skills/<name>/SKILL.md` | markdown + frontmatter | shipped (`install-codex.sh`) |
+| Gemini CLI          | `GEMINI.md` or AGENTS.md| `~/.gemini/commands/*.toml`       | TOML | planned |
+| OpenCode (SST)      | `AGENTS.md`             | `~/.config/opencode/command/`     | markdown | planned |
 
 ### Two-layer architecture
 
