@@ -27,8 +27,8 @@ tracks: []
 
 ## Release summary
 
-- **Goal**: <one sentence; cite `intake.md` for the long form>
-- **Target version / integration branch**: <e.g. `release/v0.5.0`, `release/v0.6.0`>
+- **Goal**: \<one sentence; cite `intake.md` for the long form\>
+- **Target version / integration branch**: \<e.g. `release/v0.5.0`, `release/v0.6.0`\>
 - **Started**: `<YYYY-MM-DD>` (should match the date prefix in the folder name)
 - **Target ship**: `<YYYY-MM-DD or "uncommitted">`
 - **Intake**: `intake.md`

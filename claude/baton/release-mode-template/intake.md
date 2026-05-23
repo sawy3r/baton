@@ -17,8 +17,8 @@ description: The discovery output document. Captures what the human described, w
 
 - **Human stakeholder**: `<name / role>`
 - **Tracking issue / epic**: `<GitHub issue link>`
-- **Related captures**: <links to prior session captures under `docs/captures/` (and historical captures from earlier tooling, if relevant)>
-- **Related memory entries**: <list relevant `feedback_*` / `project_*` memory entries the planner consulted>
+- **Related captures**: \<links to prior session captures under `docs/captures/` (and historical captures from earlier tooling, if relevant)\>
+- **Related memory entries**: \<list relevant `feedback_*` / `project_*` memory entries the planner consulted\>
 
 ## Users and their gestures
 
@@ -67,7 +67,7 @@ description: The discovery output document. Captures what the human described, w
 
 ## Schema-vs-spec audit notes
 
-<Per `feedback_spec_vs_schema_audit`: anything the human's description assumed about the data model that the planner cross-checked against the actual schema. Catches the failure mode where a brainstormed spec encodes plausible-but-wrong data assumptions.>
+\<Per `feedback_spec_vs_schema_audit`: anything the human's description assumed about the data model that the planner cross-checked against the actual schema. Catches the failure mode where a brainstormed spec encodes plausible-but-wrong data assumptions.\>
 
 - ...
 
