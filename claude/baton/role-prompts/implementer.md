@@ -69,6 +69,23 @@ If `spec.md` is missing or ambiguous, stop and ask the human. Do not infer scope
    - Update `status.json` → `implemented`.
    - **Stop.** Do not run a verifier prompt in this session. Do not declare PASS.
 
+## Reachability screenshot convention
+
+Applies only when this slice's reachability artefact (Rule 1 / proof bundle) is a **screenshot**. `playwright-trace` and `manual-smoke-step` keep their free-form paths — backend-only slices that opt out via `manual-smoke-step` have no path obligation here.
+
+- **Screenshot path**: `<docs-tree>/release/<release-name>/screenshots/<slice-id>-<descriptor>.png`. `<docs-tree>` is the consumer project's documentation root (commonly `docs/` or `apps/docs/`). `<descriptor>` is a short kebab-case label for the captured affordance state (e.g. `empty`, `upgrade-modal`, `error-row-422`). One screenshot per acceptance check that needs visual evidence; multiple per slice are fine.
+- **Spec path**: `tests/e2e/release/<release-name>/<track-id>.spec.ts` — one Playwright spec per track, holding the slice-by-slice capture cases. Co-locating per track (not per slice) keeps the spec count proportional to track count and lets the spec share setup across the slices that share a worktree.
+- **Helper module**: `tests/e2e/release/_helpers.ts` exports `screenshotsDir(release: string): string` and `screenshotPath(release: string, basename: string): string` so individual spec files don't hand-roll `path.resolve(__dirname, ...)` chains. Create the helper on the first track that needs it (declare it in that slice's `In scope`); subsequent tracks import.
+- **Capture pattern**: route the test to a **seeded fixture** (not the dev DB), then scope `page.screenshot({ path })` to the **section locator** that owns the affordance rather than the full page. Both choices are about bit-stability — re-runs should produce byte-identical PNGs so a no-op verifier re-run doesn't show diff churn.
+
+The convention is documentation-only — it lives in the consumer project's test tree, not in baton itself. If your project has no existing e2e harness, the slice that first invokes this convention lands the harness scaffolding (helpers + first spec) as part of its diff and declares it in `spec.md` `In scope`.
+
+The pattern is described in Playwright/TypeScript terms because that's the common case; Pytest/Cypress/Selenium/etc. translate one-for-one — the path convention, the slice-id prefix, and the per-track spec file are language-agnostic.
+
+### Disambiguation from planner-context screenshots
+
+`/plan-release` stores screenshots the human pastes during requirements discovery at `docs/release/<release-name>/screenshots/<YYYY-MM-DD>-<slug>.png` — **date-prefixed**. Reachability screenshots use **slice-id-prefix** (`<slice-id>-<descriptor>.png`). Same directory, different prefix family — they sort cleanly and never collide on a filename. Do not invent a `screenshots/reachability/` or `screenshots/planning/` subfolder split; the prefix is the discriminator and keeping the directory flat preserves "every screenshot related to the release lives in one place."
+
 ## What you must never do
 
 - Mark the slice `verified` from this session.

@@ -61,6 +61,8 @@ Before marking any phase complete, produce a **reachability artefact**:
 
 A green typecheck plus green unit-test suite is **not** a reachability artefact. End-to-end coverage is.
 
+For release-mode slices whose artefact is a screenshot, the canonical path, per-track spec layout, and bit-stable capture pattern live in [`role-prompts/implementer.md`](role-prompts/implementer.md) → "Reachability screenshot convention". This rule defines *what counts*; the implementer prompt defines *where it goes* and *how to capture it reproducibly*.
+
 ## When this rule applies
 
 - Any feature with a user-facing affordance.

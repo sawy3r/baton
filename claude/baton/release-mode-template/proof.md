@@ -44,6 +44,8 @@ $ <your frontend test command>
 
 - **Type**: `<screenshot | playwright-trace | manual-smoke-step>`
 - **Path**: `<relative path from repo root>`
+  - When Type is `screenshot`, the canonical path is `<docs-tree>/release/<release-name>/screenshots/<slice-id>-<descriptor>.png`, captured by `tests/e2e/release/<release-name>/<track-id>.spec.ts` via the shared helpers in `tests/e2e/release/_helpers.ts`. Full pattern — including the disambiguation from planner-context screenshots, helper signatures, and the bit-stable capture recipe — lives in [`role-prompts/implementer.md`](../role-prompts/implementer.md) → "Reachability screenshot convention".
+  - For `playwright-trace` and `manual-smoke-step`, Path is free-form.
 - **User gesture**: `<"User clicks X, observes Y" — exact words>`
 
 ## Delivered
