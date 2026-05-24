@@ -228,44 +228,112 @@ function indexText(rel, releaseWtBranches) {
 // stale-branch trap). An un-materialised track has `worktreePath: null`.
 // The per-slice `track` field in status.json was not backfilled for slices
 // planned before track mode, so index.md is the authoritative mapping.
+//
+// Accepted YAML shapes for list-valued track keys (`slices`, `depends_on`):
+//   inline-flow:    `slices: [S01, S02]`
+//   multi-line flow `slices:` then `[`, items on separate lines, then `]`
+//   block-list:     `slices:` followed by indented `- S01` / `- S02` lines
+//   single-scalar   `depends_on: T1-foo`
+//   null/empty:     `depends_on: null` / `depends_on: []`
+// The earlier regex-only walker silently dropped every shape except inline
+// flow — sessions that emitted block YAML or pretty-printed multi-line flow
+// produced a board with empty per-track `slices`, breaking the dashboard's
+// track-grouped render.
 function parseTracks(text) {
   const sliceTrack = {};
   const trackIds = new Set();
   const tracks = [];
   const fm = text.match(/^---\n([\s\S]*?)\n---/);
   if (!fm) return { sliceTrack, trackIds, tracks };
+
+  const SCALAR_KEYS = { state: 'state',
+                        worktree_path: 'worktreePath',
+                        worktree_branch: 'worktreeBranch' };
+  const LIST_KEYS = { slices: 'slices', depends_on: 'dependsOn' };
+
   let cur = null;
-  for (const line of fm[1].split('\n')) {
+  // Which list key on `cur` is currently "open" — i.e. was declared with an
+  // empty value, so subsequent indented `- <item>` lines feed into it.
+  // Closed when any other key on the track is seen, or a new track starts.
+  let openKey = null;
+
+  const pushTo = (prop, value) => {
+    cur[prop].push(value);
+    if (prop === 'slices') sliceTrack[value] = cur.id;
+  };
+
+  const lines = fm[1].split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // `- id:` always starts a new track entry, regardless of any open list.
     const idM = line.match(/^\s*-\s+id:\s*(\S+)/);
     if (idM) {
       cur = { id: idM[1], state: null, dependsOn: [], slices: [],
               worktreePath: null, worktreeBranch: null };
       trackIds.add(cur.id);
       tracks.push(cur);
+      openKey = null;
       continue;
     }
     if (!cur) continue;
-    const slM = line.match(/^\s*slices:\s*\[(.*)\]/);
-    if (slM) {
-      for (const s of slM[1].split(',')) {
-        const id = s.trim();
-        if (id) { cur.slices.push(id); sliceTrack[id] = cur.id; }
-      }
+
+    // Indented `- <scalar>` bullet — feeds the currently open list key.
+    const bulletM = line.match(/^\s+-\s+(\S.*)$/);
+    if (bulletM && openKey) {
+      const v = bulletM[1].trim();
+      if (v) pushTo(openKey, v);
       continue;
     }
-    const stM = line.match(/^\s*state:\s*(\S+)/);
-    if (stM) { cur.state = stM[1]; continue; }
-    const wpM = line.match(/^\s*worktree_path:\s*(.*)$/);
-    if (wpM) { cur.worktreePath = wpM[1].trim() || null; continue; }
-    const wbM = line.match(/^\s*worktree_branch:\s*(.*)$/);
-    if (wbM) { cur.worktreeBranch = wbM[1].trim() || null; continue; }
-    const dgM = line.match(/^\s*depends_on:\s*(.+)$/);
-    if (dgM) {
-      const v = dgM[1].trim();
-      if (v && v !== 'null') {
-        cur.dependsOn = v.replace(/^\[|\]$/g, '').split(',')
-          .map(x => x.trim()).filter(Boolean);
+
+    // `key: <maybe-value>` on a track property line.
+    const kvM = line.match(/^\s+([A-Za-z_][\w-]*)\s*:\s*(.*)$/);
+    if (!kvM) continue;
+    const key = kvM[1];
+    let rest = kvM[2].trim();
+
+    if (key in SCALAR_KEYS) {
+      cur[SCALAR_KEYS[key]] = rest || null;
+      openKey = null;
+      continue;
+    }
+
+    if (key in LIST_KEYS) {
+      const prop = LIST_KEYS[key];
+      // Empty value: could be a block-list (next non-blank line is `- item`),
+      // a multi-line flow sequence (next non-blank line starts with `[`), or
+      // just an empty key. Peek to disambiguate.
+      if (rest === '') {
+        let j = i + 1;
+        while (j < lines.length && lines[j].trim() === '') j++;
+        const peek = j < lines.length ? lines[j].trim() : '';
+        if (peek.startsWith('[')) {
+          // Multi-line flow — collect lines until the closing `]`.
+          let buf = '';
+          for (; j < lines.length; j++) {
+            buf += ' ' + lines[j];
+            if (lines[j].includes(']')) { i = j; break; }
+          }
+          rest = buf.trim();
+        } else {
+          openKey = prop;
+          continue;
+        }
       }
+      openKey = null;
+      // Explicit null/empty.
+      if (rest === 'null' || rest === '~' || rest === '[]') continue;
+      // Flow sequence `[a, b, c]` (single- or multi-line, after joining above).
+      const flow = rest.match(/^\[([\s\S]*)\]$/);
+      if (flow) {
+        for (const s of flow[1].split(',')) {
+          const id = s.trim();
+          if (id) pushTo(prop, id);
+        }
+        continue;
+      }
+      // Bare single scalar (`depends_on: T1-foo`).
+      pushTo(prop, rest);
     }
   }
   return { sliceTrack, trackIds, tracks };
