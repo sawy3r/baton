@@ -90,7 +90,7 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
    - `<wt>/docs/release/$2/$1/status.json`
    - `<wt>/docs/release/$2/$1/proof.md` (may be empty template)
    - `git -C <wt> status` and `git -C <wt> diff <base> --stat`, where `<base>` is this slice's `start_commit` from `status.json` if already set, else `release-wt/$2` (the point the track branch was cut from). Never diff against `main` or the version branch — that inflates the diff with every prior track and slice.
-3. Confirm the slice's `User outcome` from spec.md back to the human in one sentence: "Implementing **$1**: <outcome>. Acceptance checks: N. Out of scope: <summary>."
+3. Confirm the slice's `User outcome` from spec.md back to the human in one sentence: "Implementing **$1**: `<outcome>`. Acceptance checks: N. Out of scope: <summary>."
 4. Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. Capture that commit's SHA (`git -C <wt> rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and is the verifier's exact diff base. **Then push the track branch so the work is durable:**
    ```
    git -C <wt> push origin HEAD:refs/heads/track/$2/<track-id>

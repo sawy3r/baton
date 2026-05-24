@@ -98,7 +98,7 @@ the oracle.)
    - `deferred` / `superseded` — not part of the shipped code; left untouched.
    - Any other state (`planned`, `in_progress`, `implemented`,
      `failed_verification`) — BLOCK: "cannot mark release `$1` shipped — these
-     slices are not verified: <list>. A release must be fully merged and
+     slices are not verified: `<list>`. A release must be fully merged and
      verified before it ships. Finish `/verify-slice` / `/merge-track` /
      `/merge-release` first."
 4. If **no** slice is in `verified` state (all already `shipped` / `deferred` /

@@ -67,8 +67,8 @@ So the forward-merge is a routine prerequisite of `/merge-release`, not a failur
    > Forward-merging `<integration>` into `<worktree_branch>` conflicts on: `<conflicted files>`. These conflicts must be resolved in the release worktree, by the release author, with full release context — the integrator role has none.
    >
    > ```
-   > cd <worktree_path>
-   > git merge <integration>
+   > cd `<worktree_path>`
+   > git merge `<integration>`
    > # resolve the conflicts, run the release's test commands, commit
    > ```
    >
@@ -111,7 +111,7 @@ Question: "Merge `<worktree_branch>` into `<integration>` now?" Options: "Yes, m
    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
    ```
 
-2. Step 1.5 has already pulled `<integration>` into `<worktree_branch>`, so this merge should apply cleanly. If it nonetheless conflicts, the integration branch advanced *again* between Step 1.5 and here (a sibling release or direct fix landed mid-command). Abort: `git merge --abort`. BLOCK with: "Merge of `<worktree_branch>` into `<integration>` conflicted on: <list> despite the Step 1.5 forward-merge — `<integration>` advanced again mid-command. Re-run /merge-release $1 so Step 1.5 re-syncs the new drift."
+2. Step 1.5 has already pulled `<integration>` into `<worktree_branch>`, so this merge should apply cleanly. If it nonetheless conflicts, the integration branch advanced *again* between Step 1.5 and here (a sibling release or direct fix landed mid-command). Abort: `git merge --abort`. BLOCK with: "Merge of `<worktree_branch>` into `<integration>` conflicted on: `<list>` despite the Step 1.5 forward-merge — `<integration>` advanced again mid-command. Re-run /merge-release $1 so Step 1.5 re-syncs the new drift."
 
 ## Step 4 — Update the release board
 
