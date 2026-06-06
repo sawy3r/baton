@@ -152,8 +152,8 @@ function renderPage(releases) {
         // expandable); a track with live work renders open.
         const trComplete = tt === trSlices.length;
         return `
-        <div class="track-group${trComplete ? '' : ' open'}">
-          <div class="track-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="track-group${trComplete ? '' : ' open'}" data-key="trk:${name}:${tr.id}">
+          <div class="track-header" onclick="toggleSection(this.parentElement)">
             <span class="track-caret">▶</span>
             <span class="track-id">${tr.id}</span>
             ${trackStateChip(tr.state)}
@@ -173,8 +173,8 @@ function renderPage(releases) {
         const ut = untracked.filter(s => TERMINAL_STATES.has(s.state)).length;
         const actionableIds = new Set(untracked.filter(s => s.actionable).map(s => s.id));
         groups.push(`
-        <div class="track-group${ut === untracked.length ? '' : ' open'}">
-          <div class="track-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="track-group${ut === untracked.length ? '' : ' open'}" data-key="trk:${name}:untracked">
+          <div class="track-header" onclick="toggleSection(this.parentElement)">
             <span class="track-caret">▶</span>
             <span class="track-id track-id-muted">untracked</span>
             <span class="track-count">${ut} / ${untracked.length}</span>
@@ -198,8 +198,8 @@ function renderPage(releases) {
       ? copyChip(`/merge-release ${name}`, 'cmd-merge') : '';
 
     return `
-    <div class="release-card ${clear ? 'clear' : 'blocked'}${needsAttention ? ' open' : ''}">
-      <div class="release-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="release-card ${clear ? 'clear' : 'blocked'}${needsAttention ? ' open' : ''}" data-key="rel:${name}">
+      <div class="release-header" onclick="toggleSection(this.parentElement)">
         <div class="release-left">
           <span class="caret">▶</span>
           <span class="release-name">${short}</span>
@@ -384,6 +384,25 @@ function copyCmd(ev, btn) {
   });
 }
 
+// Accordion state lives only in the DOM classList, so the refresh swap below
+// (which replaces the whole .releases subtree) would discard it. We remember
+// every section the user *explicitly* toggles, keyed by its stable data-key,
+// and re-apply just those after a swap. Untouched sections keep following the
+// server's sensible defaults — so a newly-blocked slice can still auto-expand
+// while anything the user deliberately opened or closed survives the refresh.
+const userToggled = new Map();
+function toggleSection(el) {
+  const open = el.classList.toggle('open');
+  const key = el.getAttribute('data-key');
+  if (key) userToggled.set(key, open);
+}
+function applyToggles() {
+  for (const [key, open] of userToggled) {
+    const el = document.querySelector('[data-key="' + CSS.escape(key) + '"]');
+    if (el) el.classList.toggle('open', open);
+  }
+}
+
 // Live refresh without a full-page reload. A meta-refresh tag would re-navigate
 // the document — blank repaint, scroll reset, lost accordion state.
 // Instead we fetch the same URL, parse it, and swap only the panels that
@@ -401,6 +420,7 @@ async function refresh() {
       const next = doc.querySelector(sel);
       if (cur && next) cur.replaceWith(next);  // adopts the node, repaints in place
     }
+    applyToggles();                            // restore user-toggled sections
   } catch (_) { /* server gone or offline — silently retry next tick */ }
 }
 setInterval(refresh, 20000);
