@@ -121,6 +121,10 @@ on `:3000` — a sibling `release-2026-05-16-property-debt-ia` next-server was h
 port and rendering pre-S05a UI; re-run on the worktree's recorded `:3002` returned 13/13
 PASS.)
 
+**CI-authoritative Playwright gates.** If `spec.md` marks an E2E gate as `ci-authoritative`, the local verify bar is: (a) the test file is committed with real assertions (not trivially true), (b) integration-level tests for the same user path are green, and (c) `proof.md` names an explicit smoke step. The screenshot and full Playwright run are CI/staging-authoritative per project convention — do **not** BLOCKED solely because the screenshot is not committed locally.
+
+A BLOCKED is still correct if `proof.md` does not acknowledge the CI deferral with all three Rule 2 elements: (1) why local execution is impossible, (2) a concrete tracking reference (#NNN or CI run link), and (3) explicit human acknowledgement. A deferral acknowledged only to "implementer" — not to the human decision-maker — fails element 3.
+
 ### Gate 4 — Reachability artefact proves the user path
 
 Read `proof.md` "Reachability artefact" section.
