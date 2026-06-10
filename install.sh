@@ -107,7 +107,13 @@ run cp -rv "$BUNDLE_DIR"/claude/baton/. "$CLAUDE_HOME/baton/"
 
 # bin/: release-verify.sh + the release-board tooling (status CLI, HTML
 # dashboard, and the shared reader under bin/lib/).
-run cp -rv "$BUNDLE_DIR"/bin/. "$CLAUDE_HOME/bin/"
+# Deliberate allowlist — never a blanket copy of bin/. — so a stray file in
+# the bundle's bin/ can't silently land in the user's ~/.claude/bin.
+for f in release-verify.sh release-board-status.sh release-board-ui.mjs; do
+  run cp -v "$BUNDLE_DIR/bin/$f" "$CLAUDE_HOME/bin/"
+done
+run mkdir -p "$CLAUDE_HOME/bin/lib"
+run cp -rv "$BUNDLE_DIR"/bin/lib/. "$CLAUDE_HOME/bin/lib/"
 run chmod +x "$CLAUDE_HOME/bin/release-verify.sh" \
              "$CLAUDE_HOME/bin/release-board-status.sh" \
              "$CLAUDE_HOME/bin/release-board-ui.mjs"

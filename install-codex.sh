@@ -193,7 +193,13 @@ SKILL_EOF
 done
 
 # bin/: release-verify.sh + release-board tooling. Same set as ~/.claude/bin/.
-run cp -rv "$BUNDLE_DIR"/bin/. "$CODEX_HOME/bin/"
+# Deliberate allowlist — never a blanket copy of bin/. — so a stray file in
+# the bundle's bin/ can't silently land in the user's bin.
+for f in release-verify.sh release-board-status.sh release-board-ui.mjs; do
+  run cp -v "$BUNDLE_DIR/bin/$f" "$CODEX_HOME/bin/"
+done
+run mkdir -p "$CODEX_HOME/bin/lib"
+run cp -rv "$BUNDLE_DIR"/bin/lib/. "$CODEX_HOME/bin/lib/"
 run chmod +x "$CODEX_HOME/bin/release-verify.sh" \
              "$CODEX_HOME/bin/release-board-status.sh" \
              "$CODEX_HOME/bin/release-board-ui.mjs"
