@@ -163,7 +163,15 @@ Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment rules
 Each repo that wants to use Release Mode needs:
 
 1. A `docs/release/` directory at the repo root (the commands create sub-folders here per release). If your docs site renders content from a different location, symlink it to `docs`.
-2. The Rule 1–5 fragment from `~/.claude/baton/AGENTS-fragment.md` either appended to the project's `AGENTS.md` / `CLAUDE.md`, OR appended to `~/.claude/CLAUDE.md` once for all projects.
+2. The Rule 1–5 fragment from `~/.claude/baton/AGENTS-fragment.md` appended to the project's **in-repo** `AGENTS.md` (and, ideally, the full rules vendored into `docs/baton/`).
+
+> Appending the fragment to `~/.claude/CLAUDE.md` instead is **not** equivalent for
+> any repo with collaborators, contributors, or CI — that file lives on your machine
+> and no one else's agent reads it. The global copy makes Baton feel adopted in your
+> own sessions, which is the trap: the per-project `AGENTS.md` gets skipped and a
+> shared/public repo ships with no rules for anyone but you. Wire `AGENTS.md`
+> in-repo for any repo others touch; treat the global file as a personal fallback
+> only. (SwornAgent's `sworn init` does this in-repo wiring for you.)
 
 That's it. `/plan-release <YYYY-MM-DD-theme>` from a fresh session bootstraps the release folder from the templates.
 

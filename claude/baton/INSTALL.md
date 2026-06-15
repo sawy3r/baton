@@ -51,6 +51,15 @@ If you (the individual developer) want these rules to apply across all your proj
 
 This is per-user, not per-project — your settings, your call.
 
+> **Do not let Step 3 replace Step 2.** The user-level fallback makes Baton "work
+> everywhere" on *your* machine, which is exactly why the per-project AGENTS.md
+> wiring (Step 2) is so easy to skip — everything seems fine in your own sessions.
+> But the global `~/.claude/CLAUDE.md` is invisible to **everyone else and to CI**:
+> a collaborator's agent, a contributor's agent, or a CI bot reads the *repo's*
+> `AGENTS.md`, never your machine's config. Any repo that others touch — and every
+> public repo — must have Step 2 done in-repo. Step 3 is a personal add-on, never a
+> substitute. (If you use SwornAgent, `sworn init` performs Step 1 + Step 2 for you.)
+
 ### Step 4 — Seed per-project memory (Claude Code only)
 
 If your AI tool supports per-project persistent memory (Claude Code does via `~/.claude/projects/<scope>/memory/`), seed it with the rule provenance:

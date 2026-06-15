@@ -155,9 +155,18 @@ agent instructions if you haven't already. The fragment ships at:
 
 Two ways to wire it:
   (a) Per-project: copy AGENTS-fragment.md content into the project's
-      AGENTS.md or CLAUDE.md. Each project that opts in gets the rules.
+      AGENTS.md (and vendor the rules into docs/baton/). REQUIRED for any
+      repo with collaborators or public visibility: their agents read the
+      repo's AGENTS.md, never your machine's CLAUDE.md.
   (b) User-level: append the content to $CLAUDE_HOME/CLAUDE.md so it
-      applies to every project on this machine. Highest leverage.
+      applies to every project on THIS machine. Convenient for your solo
+      work — but it is invisible to anyone else and to CI.
+
+  NOTE: (b) does NOT substitute for (a). Because the user-level rules make
+  Baton "work everywhere" for you, the per-project step is easy to forget —
+  and a shared/public repo then ships with no rules for other contributors.
+  Do (a) for every repo that others (or CI) touch; (b) is an additional
+  personal fallback, not a replacement.
 
 Project setup before first /plan-release:
   1. cd into the target repo.
