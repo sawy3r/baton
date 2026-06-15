@@ -21,8 +21,9 @@ Your job is to **disprove** the claim that this slice is complete. You are not h
 - You may not read the implementer's session transcript, conversational handoff, wrap-up summary, or any "ready for review" prose.
 - You may not contact the implementer for clarification. If the artefacts don't answer your question, that is itself a FAIL or BLOCKED.
 - You may not edit production code. You may add or repair verification artefacts (tests, smoke scripts, assertions) only when needed to expose a failure.
-- You return exactly one of: `PASS`, `FAIL: <numbered violations>`, or `BLOCKED: <reason>`.
+- You return exactly one of: `PASS`, `FAIL: <numbered violations>`, `BLOCKED: <reason>`, or `INCONCLUSIVE: <reason>`.
 - Fail closed. Absence of evidence is FAIL, not optimistic PASS.
+- **`BLOCKED` and `INCONCLUSIVE` are different verdicts with different recoveries — do not conflate them.** `BLOCKED` means the slice's own **contract** is the problem (spec defect, unfalsifiable acceptance check, external gap) — only the planner can clear it, so it routes to `/replan-release`. `INCONCLUSIVE` means **you could not run a trustworthy verification this session** (corrupt/garbled tool channel, dev server unreachable, missing worktree, timeout) — the slice contract is not implicated, so the recovery is a **re-verify in a clean session**, never a replan. When you cannot trust your own tool output, the verdict is `INCONCLUSIVE`, not `BLOCKED`. See "When the verdict is BLOCKED" and "When verification cannot run (INCONCLUSIVE)" below for how each is written and routed.
 
 ## Track worktree precondition (Step 0, auto-discovery)
 
@@ -120,6 +121,10 @@ on `:3000` — a sibling `release-2026-05-16-property-debt-ia` next-server was h
 port and rendering pre-S05a UI; re-run on the worktree's recorded `:3002` returned 13/13
 PASS.)
 
+**CI-authoritative Playwright gates.** If `spec.md` marks an E2E gate as `ci-authoritative`, the local verify bar is: (a) the test file is committed with real assertions (not trivially true), (b) integration-level tests for the same user path are green, and (c) `proof.md` names an explicit smoke step. The screenshot and full Playwright run are CI/staging-authoritative per project convention — do **not** BLOCKED solely because the screenshot is not committed locally.
+
+A BLOCKED is still correct if `proof.md` does not acknowledge the CI deferral with all three Rule 2 elements: (1) why local execution is impossible, (2) a concrete tracking reference (#NNN or CI run link), and (3) explicit human acknowledgement. A deferral acknowledged only to "implementer" — not to the human decision-maker — fails element 3.
+
 ### Gate 4 — Reachability artefact proves the user path
 
 Read `proof.md` "Reachability artefact" section.
@@ -171,14 +176,47 @@ Violations:
 Required to address: `<numbered list of concrete fixes, tied to gates>`
 ```
 
-If verification cannot proceed:
+Before you emit FAIL, run the gate in "Before you FAIL: is the remediation a legal implementer fix?" below — if any required fix needs a different test shape, touches an accepted deferral, or exceeds implementer authority, the verdict is BLOCKED, not FAIL.
+
+If the slice's **contract** is the problem (spec defect, unfalsifiable acceptance check, external gap an implementer cannot close):
 
 ```
 BLOCKED
 
 Slice: `<slice-id>`
-Reason: `<specific external dependency or unreadable artefact>`
+Reason: `<specific contract defect>`
+Proposed spec.md amendment: `<the exact change the planner should ratify>`
 ```
+
+If **you could not run a trustworthy verification this session** (corrupt or garbled tool output, dev server unreachable, missing worktree, command timeout) — i.e. the fault is environmental and says nothing about the slice:
+
+```
+INCONCLUSIVE
+
+Slice: `<slice-id>`
+Reason: `<what made the session untrustworthy — e.g. tool channel returned fabricated/contradictory output>`
+Recovery: re-run /verify-slice `<slice-id>` `<release-name>` in a clean session. Do NOT /replan-release.
+```
+
+Do **not** write `verification.result: blocked` for an `INCONCLUSIVE` outcome, and do **not** transition the slice state — leave it `implemented` with `verification.result` empty so the next session re-verifies cleanly.
+
+## Before you FAIL: is the remediation a legal implementer fix?
+
+A **FAIL** asserts a precise contract: *the spec is satisfiable as written, and the implementation simply does not meet it — the implementer can close every violation within the spec.* If that is not true, the defect is in the **contract**, and the verdict is **BLOCKED**, not FAIL. Run this gate before emitting any FAIL.
+
+For every item you would put under "Required to address", confirm it is achievable by the implementer:
+
+1. **within the test shape / approach the spec prescribes** — not a different one;
+2. **without modifying the spec's accepted deferrals, allowlist, or out-of-scope boundary**;
+3. **without authority reserved to the planner** — it does not require changing an acceptance check, a touchpoint, a Risk, or the scope itself.
+
+If any required item fails 1–3, the verdict is **BLOCKED** (carry the proposed `spec.md` amendment), not FAIL.
+
+**The tell.** If, while writing the remediation, you find yourself reaching for *"…OR `<a different approach>`"* because the approach the spec prescribes cannot actually satisfy the acceptance check, stop — that `OR` is the signature of a spec defect. A genuinely fixable FAIL names a concrete fix that lives **entirely inside the spec as written**; it never has to offer the implementer a different test shape as an escape hatch. Offering one means the prescribed shape is insufficient, which only the planner can correct.
+
+**Why this gate exists.** Mis-issuing FAIL where the remediation isn't a legal implementer fix is non-terminating: the implementer either attempts the impossible or unilaterally redesigns (an unratified deviation from a binding AC), the next verifier re-FAILs or BLOCKs on the same point, and the slice burns implement↔verify rounds — the exact loop the BLOCKED→`/replan-release` routing exists to prevent. The no-progress signal does not catch it, because *other* violations resolve each round while the load-bearing one recurs.
+
+**Recurrence is evidence.** If two or more consecutive verdicts name the **same acceptance check or Risk** as unmet, treat that recurrence as strong evidence the **contract**, not the implementation, is at fault — prefer BLOCKED and surface the amendment, rather than FAILing a third time. An implementer who has converged on the maximum achievable under the prescribed shape and reframed (rather than implemented the demanded thing) is the same signal.
 
 ## What you must never do
 
@@ -204,11 +242,25 @@ This is release-routing, not verification: slices in *other* tracks never enter 
 
 ## When the verdict is BLOCKED
 
-A BLOCKED verdict means verification cannot complete because the slice's own contract is the problem — a spec defect, an ambiguous or unfalsifiable acceptance check, or an external gap — not something an implementer can fix. It routes in exactly one direction:
+A BLOCKED verdict means verification cannot complete because the slice's own **contract** is the problem — a spec defect, an ambiguous or unfalsifiable acceptance check, or an external gap — not something an implementer can fix. **It is not for environmental faults** (a tool channel you can't trust, a dev server that won't start, a missing worktree, a timeout): those are `INCONCLUSIVE` (next section). Mislabelling an environmental fault as BLOCKED sends a perfectly good spec to the planner to "fix" — wasted work, and a false signal that the slice has a defect. BLOCKED routes in exactly one direction:
 
-- **The next step is `/replan-release <release-name>`.** The planner is the only role that can amend a spec and clear `verification.result`. Do not tell the human to "resolve the blocker and re-run `/verify-slice`" — that vague instruction is the non-terminating handoff this routing exists to prevent. Do not route to `/implement-slice`: an implementer cannot clear a BLOCKED verdict, and re-opening the slice for implementation re-enters the verifier → planner → verifier loop.
+- **The next step is `/replan-release <release-name>`.** The planner is the only role that can amend a spec and clear `verification.result`. Do not tell the human to "resolve the blocker and re-run `/verify-slice`" — for a *contract* defect that vague instruction is the non-terminating handoff this routing exists to prevent. (This ban does **not** apply to an `INCONCLUSIVE` outcome, where "re-run `/verify-slice` in a clean session" is precisely the correct, terminating recovery.) Do not route to `/implement-slice`: an implementer cannot clear a BLOCKED verdict, and re-opening the slice for implementation re-enters the verifier → planner → verifier loop.
 - **A spec-defect BLOCKED verdict must carry a concrete proposed `spec.md` amendment.** If you are BLOCKing because the spec is factually wrong, incomplete, or self-contradictory, your verdict states the exact change the planner should ratify — the precise sentence, acceptance check, or touchpoint to add, remove, or correct. A BLOCKED verdict that only says "the spec is wrong" forces the planner to re-derive the analysis you already did; carry the amendment so the planner's job is to ratify, not re-investigate.
 - A handoff resolves forward to the next role or escalates up to the human; it never returns to its sender. The canonical statement is `$HOME/.claude/baton/session-discipline.md` "Handoff directionality".
+
+## When verification cannot run (INCONCLUSIVE)
+
+An INCONCLUSIVE verdict means **you could not perform a trustworthy verification this session, and the cause has nothing to do with the slice's contract.** The canonical triggers:
+
+- **The tool channel is untrustworthy** — your own Bash/Read results are dropping output, contradicting each other within a batch (a commit SHA that doesn't resolve, a grep that "ran" but returned nothing because it never executed), or returning plausible-but-fabricated content. If you cannot trust the evidence under your verdict, you cannot responsibly PASS *or* FAIL *or* BLOCK — the honest verdict is INCONCLUSIVE.
+- **The environment won't cooperate** — the dev server won't start for a `playwright-screenshot` gate, the track worktree is missing on disk, a required command times out.
+
+How to write it (this is load-bearing — the loop reads it):
+
+- **Do NOT write `verification.result: blocked`.** Leave `verification.result` empty and leave the slice state at `implemented`. The autonomous loop distinguishes a real BLOCKED (which writes `result: blocked`) from a no-verdict halt purely by that field; writing `blocked` here would re-route an environmental fault to `/replan-release`, the exact mis-route this verdict exists to prevent.
+- **Do NOT invent an off-contract "no verdict, I'm deliberately not BLOCKing" narration.** `INCONCLUSIVE` *is* the contract slot for that situation — use it. (Historical incident, 2026-05-31, S28: a verifier hit a corrupt tool channel, refused to emit BLOCKED to avoid a spurious replan, and instead narrated a freeform "environmental halt." Because it left no machine-readable signal, the loop's state-only catch-all paged `/replan-release` anyway. `INCONCLUSIVE` closes that gap.)
+- **State the recovery explicitly: re-run `/verify-slice <slice-id> <release-name>` in a clean session.** Never `/replan-release`, never `/implement-slice`. If you revert any partial writes you made before detecting the fault, confirm the working tree is clean before exiting.
+- The autonomous loop auto-re-verifies a bounded number of times; only if the fault persists does it page a human as "environmental," still never as a replan.
 
 ## Watcher status block (mandatory)
 
@@ -246,13 +298,23 @@ REASON: `<which gate failed and why, one sentence>`
 -->
 ```
 
-For BLOCKED:
+For BLOCKED (contract defect → planner):
 ```
 <!-- WATCHER
 STATE: blocked_needs_planner
 SLICE: `<slice-id>`
 NEXT: NONE
-REASON: `<specific external dependency or spec gap, one sentence>`
+REASON: `<specific contract defect or spec gap, one sentence>`
+-->
+```
+
+For INCONCLUSIVE (environmental fault → re-verify in a clean session, NOT a replan):
+```
+<!-- WATCHER
+STATE: inconclusive_reverify
+SLICE: `<slice-id>`
+NEXT: `/verify-slice <slice-id> <release-name>`
+REASON: `<what made the session untrustworthy, one sentence — e.g. tool channel returned fabricated/contradictory output>`
 -->
 ```
 

@@ -47,6 +47,7 @@ description: The contract the implementer is held to and the verifier checks aga
 - **Unit**: `<test file path and name pattern>`
 - **Integration**: `<test file path; must exercise the entry point per Rule 1>`
 - **Reachability artefact**: `<screenshot path / Playwright spec path / explicit smoke-step description naming the user gesture>`
+- **E2E gate type** (required when Playwright is listed): `local` (verifier can run; no persona creds needed) | `ci-authoritative` (persona/auth env vars required; test file must be committed with real assertions; execution + screenshot are CI/staging-gated — verifier checks committed spec + integration tests, not screenshot artefact)
 
 ## Risks
 

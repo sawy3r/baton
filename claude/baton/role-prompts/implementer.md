@@ -32,7 +32,19 @@ Release work runs under **track mode** — read `docs/baton/track-mode.md` first
    a. **Ensure the release worktree exists.** If `release_worktree_path` is unset in frontmatter, this is also the first `/implement-slice` in the release: parse the integration branch from `index.md` "Release summary" → `Target version / integration branch`, then `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-<release-name> -b release-wt/<release-name> <integration-branch>`. Record `release_worktree_path` + `release_worktree_branch` in frontmatter.
    b. **Dependency gate.** If the track's `depends_on` names another track, read that track's `state`. If it is not `merged`, BLOCK: "Track `<track-id>` depends on `<other-track>` (state `<state>`). A dependent track may only start once its predecessor has merged to `release-wt`."
    c. **Materialise the track worktree** from the release branch: `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-<release-name>-<track-id> -b track/<release-name>/<track-id> release-wt/<release-name>`.
-   d. In the **primary worktree** (integration branch), update `index.md` frontmatter: set this track's `worktree_path` and `state: in_progress`. Commit `chore(release/<release-name>): materialise worktree for track <track-id>` and push.
+   d. Set this track's `worktree_path` and `state: in_progress` in `index.md` frontmatter. **Use a line-oriented edit, NOT a freehand multi-line replacement** — a dropped newline fuses the next `- id:` track entry onto this entry's last line and the board reader silently absorbs that track (it vanishes from `coach top`; see [[feedback_materialise_newline_eats_next_track_entry]]). Use this `awk` (one line at a time — it cannot fuse entries) with the abort-on-corruption guard:
+      ```bash
+      F=index.md   # the release index for <release-name>
+      before=$(grep -cE '^[[:space:]]*-[[:space:]]+id:' "$F")
+      awk -v t='<track-id>' -v wt='<worktree_path>' '
+        /^[[:space:]]*-[[:space:]]+id:[[:space:]]/ { l=$0; sub(/^[^:]*:[[:space:]]*/,"",l); intrack=(l==t) }
+        intrack && /^[[:space:]]+worktree_path:/ { sub(/worktree_path:.*/, "worktree_path: " wt); print; next }
+        intrack && /^[[:space:]]+state:/         { sub(/state:.*/, "state: in_progress"); print; next }
+        { print }' "$F" > "$F.tmp" && mv "$F.tmp" "$F"
+      after=$(grep -cE '^[[:space:]]*-[[:space:]]+id:' "$F")
+      [ "$before" = "$after" ] || { echo "ABORT: track count $before->$after — index.md corrupted"; exit 1; }
+      ```
+      Commit `chore(release/<release-name>): materialise worktree for track <track-id>` and push.
    e. Treat the new worktree as `<worktree_path>` per step 3.
 
 Briefly tell the human in one sentence what you did ("Using track worktree at `<worktree_path>`" or "Materialised track worktree at `<worktree_path>` for track `<track-id>`"). Then continue.

@@ -21,7 +21,7 @@ const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') ?? '
 // render
 // ---------------------------------------------------------------------------
 
-const STATE_ORDER = ['planned', 'in_progress', 'implemented', 'failed_verification', 'deferred', 'verified', 'shipped'];
+const STATE_ORDER = ['planned', 'in_progress', 'design_review', 'implemented', 'failed_verification', 'deferred', 'verified', 'shipped'];
 
 const STATE_COLOUR = {
   verified:             '#22c55e',
@@ -29,6 +29,7 @@ const STATE_COLOUR = {
   deferred:             '#6b7280',
   implemented:          '#f59e0b',
   in_progress:          '#fb923c',
+  design_review:        '#8b5cf6',  // violet — awaiting Coach review
   planned:              '#ef4444',
   failed_verification:  '#dc2626',
   unknown:              '#6b7280',
@@ -40,6 +41,7 @@ const STATE_LABEL = {
   deferred:             'deferred',
   implemented:          'implemented — needs verify',
   in_progress:          'in progress',
+  design_review:        'design review — coach ack pending',
   planned:              'planned',
   failed_verification:  'failed verification',
   unknown:              'unknown',
@@ -65,12 +67,22 @@ function trackStateChip(state) {
 // --- "what's next" command derivation -----------------------------------
 
 // The slash command that advances a slice in a given state. null = terminal.
+//
+// Note for `design_review`: the precise next command depends on review.md
+// presence (which the board oracle doesn't currently surface). We show
+// `/review-tldr` as the default — if Captain has already reviewed, re-running
+// /review-tldr is harmless (Captain reads existing artefacts and regenerates).
+// For the ack/decline post-review case, the Coach uses `coach ack <slice>` or
+// `coach decline <slice> "<reason>"`. A future oracle enhancement could
+// surface review.md presence so this branches more precisely.
 function sliceCommand(state, sliceId, release) {
   switch (state) {
     case 'planned':
     case 'in_progress':
     case 'failed_verification':
       return `/implement-slice ${sliceId} ${release}`;
+    case 'design_review':
+      return `/review-tldr ${sliceId} ${release}`;
     case 'implemented':
       return `/verify-slice ${sliceId} ${release}`;
     default:
@@ -291,7 +303,8 @@ function renderPage(releases) {
   .muted { color: var(--muted); }
 
   .chip { display: inline-block; font-size: 0.75rem; font-weight: 600;
-          padding: 2px 8px; border-radius: 99px; letter-spacing: 0.01em; }
+          padding: 2px 8px; border-radius: 99px; letter-spacing: 0.01em;
+          white-space: nowrap; }
 
   /* track groups */
   .track-group { margin-top: 16px; }
@@ -326,6 +339,49 @@ function renderPage(releases) {
 
   footer { margin-top: 28px; color: var(--muted); font-size: 0.78rem; text-align: center; }
   a { color: var(--accent); text-decoration: none; }
+
+  /* ── Mobile responsive ───────────────────────────────────────────────── */
+  /* Track and release names: never overflow their container; clip with ellipsis */
+  .track-id, .release-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+  }
+
+  @media (max-width: 640px) {
+    body { padding: 16px 12px; }
+
+    /* Summary row: wrap into a 2×2 grid on small screens */
+    .summary-row { flex-wrap: wrap; gap: 12px; padding: 14px 16px; }
+    .summary-row .divider { display: none; }
+    .total-bar-wrap { min-width: 100%; order: 99; }
+    .verdict-badge { font-size: 0.82rem; padding: 4px 10px; }
+
+    /* Release header: compress the right side */
+    .release-right { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .bar-wrap { width: 60px; }
+    .counts { min-width: auto; font-size: 0.78rem; }
+    .verdict { min-width: auto; font-size: 0.75rem; }
+
+    /* Release name: smaller, allow one-line truncation */
+    .release-name { font-size: 0.82rem; max-width: 180px; }
+
+    /* Track header: truncate long track IDs */
+    .track-header { padding: 5px 6px; }
+    .track-id { max-width: 55vw; }
+
+    /* Slice tables: scroll horizontally instead of squishing columns */
+    .slice-table-wrap { padding: 0 6px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .slice-table { font-size: 0.75rem; min-width: 480px; table-layout: auto; }
+    .slice-table th:nth-child(1) { width: auto; }
+    .slice-table th:nth-child(2) { width: auto; }
+    .slice-table th:nth-child(3) { width: auto; }
+    .slice-table th:nth-child(4) { width: auto; }
+    .slice-table th:nth-child(5) { width: auto; }
+    .slice-table td { padding: 5px 6px; overflow-wrap: normal; white-space: nowrap; }
+    .slice-id { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Copy buttons: stay compact */
+    .copy-cmd { font-size: 0.68rem; padding: 2px 7px; }
+  }
 </style>
 </head>
 <body>
