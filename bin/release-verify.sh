@@ -234,6 +234,46 @@ if [[ -f "$PROOF_FILE" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Check 6: spec.md frontmatter is strict-YAML safe
+# ---------------------------------------------------------------------------
+#
+# The release specs double as Fumadocs content pages, and Fumadocs parses their
+# YAML frontmatter with js-yaml in STRICT mode. A bare (unquoted) top-level
+# scalar whose value contains a ': ' (colon-space) is read as a nested mapping
+# key and throws "bad indentation of a mapping entry", breaking the docs build.
+# Real cases this caught: `description: ...Fix: debounce...`, `... adds
+# release_index: to ...`, `... the track's e2e_specs: list ...`. Quoting the
+# value fixes it. Baton's templates ship quoted and planner.md Phase 4 mandates
+# quoting; this is the deterministic backstop. The check targets ONLY the proven
+# break class, so it never trips on valid frontmatter (`tracks: []`, empty
+# values, `key: # comment`, already-quoted scalars).
+
+section "Frontmatter YAML safety"
+
+SPEC_FILE="$SLICE_DIR/spec.md"
+if [[ -f "$SPEC_FILE" ]]; then
+  HAZ=$(awk '
+    NR==1 && $0!="---" { exit }
+    NR==1 { infm=1; next }
+    infm && $0=="---" { exit }
+    infm && /^[A-Za-z_][A-Za-z0-9_-]*:[ \t]/ {
+      val=$0; sub(/^[A-Za-z_][A-Za-z0-9_-]*:[ \t]+/, "", val)
+      if (val == "") next                              # empty value
+      c = substr(val, 1, 1)
+      if (c == "\"" || c == "\047" || c == "#") next   # quoted scalar / comment
+      if (val ~ /:[ \t]/ || val ~ /:$/) print          # bare colon-space / trailing colon
+    }
+  ' "$SPEC_FILE")
+  if [[ -z "$HAZ" ]]; then
+    check_pass "spec.md frontmatter is strict-YAML safe"
+  else
+    check_fail "spec.md frontmatter has unquoted hazardous scalar(s); strict YAML (Fumadocs/js-yaml) will reject the docs build"
+    gray "  single-quote each value below (double any internal single quote: ' -> ''):"
+    printf '%s\n' "$HAZ" | sed 's/^/    /'
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Final verdict
 # ---------------------------------------------------------------------------
 

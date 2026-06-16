@@ -1,6 +1,6 @@
 ---
-title: Slice spec template
-description: The contract the implementer is held to and the verifier checks against. One slice = one user-reachable outcome.
+title: 'Slice spec template'
+description: 'The contract the implementer is held to and the verifier checks against. One slice = one user-reachable outcome.'
 ---
 
 # Slice: `<slice-id>`

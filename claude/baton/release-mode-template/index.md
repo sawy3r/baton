@@ -1,6 +1,6 @@
 ---
-title: Release board template
-description: The release board — the single source of truth for slice states and track grouping across a release. Updated by the planner during decomposition and by implementer / verifier as each slice progresses.
+title: 'Release board template'
+description: 'The release board — the single source of truth for slice states and track grouping across a release. Updated by the planner during decomposition and by implementer / verifier as each slice progresses.'
 # The frontmatter below is the machine-readable registry the slash commands read.
 # - Planner fills `tracks:` (id, slices, depends_on, worktree_branch) during decomposition.
 # - First /implement-slice in the release fills `release_worktree_path` / `release_worktree_branch`.

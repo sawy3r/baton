@@ -131,6 +131,8 @@ Once the slice list and track grouping are agreed, for each slice:
 3. Initialise `status.json` with `state: planned` and the slice's `track` id.
 4. Leave `journal.md` and `proof.md` as empty templates — they get filled in during implementation.
 
+**Frontmatter must be strict-YAML safe.** Write the `title:` and `description:` values in `spec.md` and `index.md` as **single-quoted** scalars, doubling any internal single quote (`'` → `''`). A bare (unquoted) value breaks strict YAML parsers — notably js-yaml, which Fumadocs uses to build the docs site from these specs — whenever the text contains a `: ` (colon-space) or begins with a YAML indicator char (`[`, `{`, `>`, `|`, `@`, `#`, `&`, `*`, `!`, or a backtick). Real breakages this prevents: `description: …Fix: debounce…`, `description: …adds release_index: to…`, `description: …Reads the track's e2e_specs: list…` — each an unquoted description that strict YAML reads as a nested mapping. `bin/release-verify.sh` enforces this at the first-pass gate; a hazardous unquoted scalar fails the run.
+
 Don't write specs in a batch at the end. Write each one immediately after the human approves the slice description. Commit after each spec, so an interrupted session doesn't lose the planning work.
 
 ### Phase 5 — Update the release board
