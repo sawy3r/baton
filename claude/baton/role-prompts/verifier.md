@@ -42,7 +42,7 @@ Release work runs under **track mode** (`docs/baton/track-mode.md`). Each slice 
    - `verification.result == "blocked"`.
    - `spec.md` is unchanged since that verdict: with `<verdict_commit>` = `git -C <worktree_path> log --no-merges -n1 --format=%H --grep='verifier verdict — BLOCKED'`, the diff `git -C <worktree_path> diff <verdict_commit> HEAD -- <spec.md path>` is empty. **If step 5 just merged a re-scoped spec, this diff is non-empty — fall through and verify against the corrected spec; that is the loop self-healing.**
    - The implementation is byte-identical since that verdict: `git -C <worktree_path> log --no-merges --format=%H --grep='^feat' <start_commit>..<verdict_commit>` equals the same command for `<start_commit>..HEAD`.
-   If all three hold, re-emit the recorded verdict's reason verbatim, emit the `blocked_needs_planner` watcher block, and STOP — do not re-commit. If any condition fails, continue.
+   If all three hold, re-emit the recorded verdict's reason verbatim, emit the `blocked_needs_planner` status block, and STOP — do not re-commit. If any condition fails, continue.
 
 Briefly tell the human in one sentence ("Verifying inside track worktree at `<worktree_path>`" — and, if step 5 forward-merged, how many commits were synced from `release-wt`). Then proceed.
 
@@ -263,7 +263,7 @@ How to write it (this is load-bearing — the loop reads it):
 - **State the recovery explicitly: re-run `/verify-slice <slice-id> <release-name>` in a clean session.** Never `/replan-release`, never `/implement-slice`. If you revert any partial writes you made before detecting the fault, confirm the working tree is clean before exiting.
 - The autonomous loop auto-re-verifies a bounded number of times; only if the fault persists does it page a human as "environmental," still never as a replan.
 
-## Watcher status block (mandatory)
+## Status block (mandatory)
 
 After your PASS/FAIL/BLOCKED verdict, emit this as the absolute last content of the turn:
 
@@ -271,52 +271,42 @@ For PASS, the STATE depends on the next step computed in "Determining the next s
 
 If the track still has a further incomplete slice (auto-advance to implement it):
 ```
-<!-- WATCHER
 STATE: verified_implement_next
 SLICE: `<slice-id>`
 NEXT: `<next-incomplete-slice-id in this track>`
 REASON: All six gates passed. `<next-incomplete-slice-id>` is the next slice in track `<track-id>`.
--->
 ```
 
 If every slice in the track is now verified (track ready to merge):
 ```
-<!-- WATCHER
 STATE: verified_awaiting_approval
 SLICE: `<slice-id>`
 NEXT: NONE
 REASON: All six gates passed. Track `<track-id>` is complete — run /merge-track `<track-id>`, then /merge-release `<release-name>` once every track is merged.
--->
 ```
 
 For FAIL:
 ```
-<!-- WATCHER
 STATE: blocked_needs_human
 SLICE: `<slice-id>`
 NEXT: NONE
 REASON: `<which gate failed and why, one sentence>`
--->
 ```
 
 For BLOCKED (contract defect → planner):
 ```
-<!-- WATCHER
 STATE: blocked_needs_planner
 SLICE: `<slice-id>`
 NEXT: NONE
 REASON: `<specific contract defect or spec gap, one sentence>`
--->
 ```
 
 For INCONCLUSIVE (environmental fault → re-verify in a clean session, NOT a replan):
 ```
-<!-- WATCHER
 STATE: inconclusive_reverify
 SLICE: `<slice-id>`
 NEXT: `/verify-slice <slice-id> <release-name>`
 REASON: `<what made the session untrustworthy, one sentence — e.g. tool channel returned fabricated/contradictory output>`
--->
 ```
 
-See `docs/baton/watcher-protocol.md` for full reference. The block must be last.
+The block must be last.
