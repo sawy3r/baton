@@ -6,11 +6,15 @@ shipped.
 
 ## Now (shipped)
 
+- **Agent-driven install** — point your coding agent (Claude Code, Codex,
+  Gemini CLI, OpenCode, Hermes, …) at the repo and it installs Baton for your
+  tool and wires the rules fragment into your instructions file. See
+  `claude/baton/INSTALL.md`.
 - Slash commands for Claude Code: `/plan-release`, `/replan-release`,
-  `/implement-slice`, `/verify-slice`, `/merge-track`, `/merge-release`,
-  `/mark-shipped`.
+  `/design-review`, `/implement-slice`, `/verify-slice`, `/merge-track`,
+  `/merge-release`, `/mark-shipped`.
 - **Codex (CLI + Mac App) install path** via `./install-codex.sh` — the
-  same seven commands are installed as Codex Skills under
+  same eight commands are installed as Codex Skills under
   `~/.agents/skills/baton-<command>/SKILL.md`, invoked as
   `$baton-plan-release` etc. or via the `/skills` picker. The skill
   bodies are mechanically derived from the Claude Code command bodies
@@ -19,9 +23,9 @@ shipped.
 - Track mode — slices grouped into touchpoint-disjoint tracks for safe
   parallelism, each track in its own worktree. See
   `claude/baton/track-mode.md`.
-- Eleven rules + role prompts + release-mode templates installed at
-  `~/.claude/baton/` (Claude Code) and `~/.codex/baton/` (Codex) via
-  the two installers.
+- Eleven rules + four role prompts (planner, implementer, verifier, captain) +
+  release-mode templates installed at `~/.claude/baton/` (Claude Code) and
+  `~/.codex/baton/` (Codex) via the two installers.
 - Deterministic first-pass verifier (`release-verify.sh`) at
   `~/.claude/bin/` and `~/.codex/bin/`.
 - Release-board tooling at `~/.claude/bin/` and `~/.codex/bin/` —
@@ -32,10 +36,12 @@ shipped.
 
 ## Next — cross-tool adapters
 
-`install.sh` targets Claude Code; `install-codex.sh` targets OpenAI Codex
-(CLI + Mac App, which share `~/.codex/` config). The next pass refactors
-into a two-layer architecture so the same content drives slash-commands /
-skills / prompts across the remaining target CLIs.
+The agent-driven install (above) already covers any tool today — your agent
+places the files and wires the fragment. This pass makes it *scripted and native*:
+`install.sh` targets Claude Code and `install-codex.sh` targets OpenAI Codex
+(CLI + Mac App, which share `~/.codex/` config); the refactor moves to a
+two-layer architecture so the same content drives slash-commands / skills /
+prompts across the remaining target CLIs without an agent in the loop.
 
 - **Native slash commands per tool.** Baton's commands are markdown today (native for Claude Code, Codex `~/.codex/prompts/`, and OpenCode `~/.config/opencode/commands/`). Gemini CLI uses TOML (`~/.gemini/commands/*.toml`), so native Gemini support needs a markdown→TOML transform (`prompt`/`description` fields, `$ARGUMENTS`→`{{args}}`). Goal: the installer (or your agent) emits native commands for whichever tool you use.
 
@@ -46,7 +52,8 @@ skills / prompts across the remaining target CLIs.
 | Claude Code         | `~/.claude/CLAUDE.md`   | `~/.claude/commands/*.md`         | markdown + frontmatter | shipped (`install.sh`) |
 | OpenAI Codex (CLI + Mac App) | `~/.codex/AGENTS.md` | `~/.agents/skills/<name>/SKILL.md` | markdown + frontmatter | shipped (`install-codex.sh`) |
 | Gemini CLI          | `GEMINI.md` or AGENTS.md| `~/.gemini/commands/*.toml`       | TOML | planned |
-| OpenCode (SST)      | `AGENTS.md`             | `~/.config/opencode/command/`     | markdown | planned |
+| OpenCode (SST)      | `AGENTS.md`             | `~/.config/opencode/commands/`    | markdown | planned |
+| Hermes Agent (Nous) | `AGENTS.md`             | `~/.hermes/skills/<name>/`        | skill | planned |
 
 ### Two-layer architecture
 
@@ -54,10 +61,10 @@ skills / prompts across the remaining target CLIs.
 
 ```
 ~/.baton/
-├── role-prompts/{planner,implementer,verifier}.md     # role contracts as plain prose
+├── role-prompts/{planner,implementer,verifier,captain}.md  # role contracts as plain prose
 ├── release-mode-template/*                            # artefact templates
 ├── bin/release-verify.sh                              # deterministic first-pass
-└── AGENTS-fragment.md                                 # Rule 1-5 fragment to splice
+└── AGENTS-fragment.md                                 # the rules fragment to splice
 ```
 
 The role prompts and rule docs are already tool-agnostic prose. Layer 1
@@ -71,7 +78,8 @@ adapters/
 ├── claude-code/   # *.md slash commands → ~/.claude/commands/
 ├── codex/         # *.md prompts        → ~/.codex/prompts/
 ├── gemini/        # *.toml commands     → ~/.gemini/commands/
-├── opencode/      # *.md commands       → ~/.config/opencode/command/
+├── opencode/      # *.md commands       → ~/.config/opencode/commands/
+├── hermes/        # skills              → ~/.hermes/skills/<name>/
 ├── cursor/        # project-level only — README + template
 └── aider/         # README explaining manual paste-role-prompts workflow
 ```
@@ -98,6 +106,7 @@ Detection probes:
 - Codex: `command -v codex` OR `[[ -d ~/.codex ]]`
 - Gemini: `command -v gemini` OR `[[ -d ~/.gemini ]]`
 - OpenCode: `command -v opencode` OR `[[ -d ~/.config/opencode ]]`
+- Hermes: `command -v hermes` OR `[[ -d ~/.hermes ]]`
 
 ### Migration path
 
