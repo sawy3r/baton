@@ -14,7 +14,7 @@ The package contains four kinds of artefact, in increasing order of operational 
 3. **Templates** (slice folder, release intake, release board) — fillable artefacts that become the durable record of a release.
 4. **Brainstorm patterns** (Option Matrix, Decision Card, Scope-Ceiling Bar, Dependency Graph, Deferral Card) — visual decision surfaces that make planning decisions discrete, visible, and capturable.
 
-Rules 1-5 can be adopted on their own; the rest of the package is needed only when Rules 6 and 7 (Proof Bundle + Adversarial Verification) are in play. See `INSTALL.md` for adoption paths.
+Rules 1-5 can be adopted on their own; the rest of the package is needed only when Rules 6–11 (Proof Bundle through Process-Global Mutation Guard — the harness-enforced rules) are in play. See `INSTALL.md` for adoption paths.
 
 ## Core principle — DRY applied bidirectionally to knowledge
 
@@ -83,7 +83,7 @@ Every failure mode is a violation of bidirectional DRY on knowledge. This packag
 
 ## Release Mode harness
 
-Rules 6 and 7 are operationalised through a small repo-native harness that ships with the package:
+Rules 6 through 11 are operationalised through a small repo-native harness that ships with the package:
 
 - **Slice folder template** — `release-mode-template/{spec,journal,proof}.md` + `status.json`, plus release-level `intake.md` + `index.md`. Copy to `docs/release/YYYY-MM-DD-<theme>/<slice-id>/` and fill in per slice.
 - **Role prompts** — `role-prompts/planner.md`, `role-prompts/implementer.md`, `role-prompts/verifier.md`, and `role-prompts/captain.md`. Paste verbatim into agent sessions. The verifier prompt must always go into a *fresh* context window. The captain prompt runs `/design-review` (Rule 9), surfacing design pins for the Coach to acknowledge or push back on.
@@ -91,7 +91,7 @@ Rules 6 and 7 are operationalised through a small repo-native harness that ships
 - **First-pass verifier script** — `scripts/release-verify.sh` in the source repo. Deterministic checks that gate access to LLM verifier time. Catches missing artefacts, dark-code markers, and structural issues at $0 cost.
 - **Track mode** — `track-mode.md`. The model for *safe parallelism*: slices are grouped into touchpoint-disjoint **tracks**, each implemented sequentially in its own `git worktree` on a `track/<release>/<track-id>` branch. Tracks run in parallel; `/merge-track` lands a finished track on the release branch and `/merge-release` lands the release on the version branch. Supersedes the earlier one-worktree-per-release model and its `release/slice/<slice-id>` recovery ref (the track branch is now its own durable anchor).
 
-The harness is intentionally minimal: four artefact files per slice (plus the release-level intake + index pair), four role prompts, five brainstorm patterns, one shell script. It is not an orchestration framework. It is the floor needed to make Rules 6 and 7 enforceable rather than advisory.
+The harness is intentionally minimal: four artefact files per slice (plus the release-level intake + index pair), four role prompts, five brainstorm patterns, one shell script. It is not an orchestration framework. It is the floor needed to make Rules 6 through 11 enforceable rather than advisory.
 
 ## Provenance
 

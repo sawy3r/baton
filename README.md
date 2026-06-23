@@ -83,7 +83,7 @@ Each rule has a one-line summary here and a full doc explaining the failure mode
 | 10 | Customer journey validation | Critical end-to-end journeys are a ratified, version-controlled artefact, re-walked against real boundaries — a journey walked over a mocked boundary proves nothing. | [customer-journey-validation.md](claude/baton/customer-journey-validation.md) |
 | 11 | Process-global mutation guard | Any change mutating process-global state (working directory, environment, or which worktree/branch a tool acts on) must guarantee restore, assert the target before git ops, and prove the guard with a reachability artefact. | [process-global-mutation.md](claude/baton/process-global-mutation.md) |
 
-Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 and 7 require the Release Mode harness (the slash commands and templates this repo installs) to be enforceable.
+Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 11 require the Release Mode harness (the slash commands and templates this repo installs) to be enforceable.
 
 ## Example artefacts
 
