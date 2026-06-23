@@ -1,11 +1,11 @@
 ---
 title: Rules history
-description: Evolution of the seven rules from their first draft through public release
+description: Evolution of the eleven rules from their first draft through public release
 ---
 
 # Rules history
 
-> **What this is:** the historical evolution of baton's seven rules as
+> **What this is:** the historical evolution of baton's eleven rules as
 > they were drafted and refined inside a source project, before this
 > repo was extracted for public release. Public package versioning lives
 > on the [Releases page](https://github.com/sawy3r/baton/releases) — this
@@ -23,6 +23,29 @@ removed rules, renamed role contracts. Minor bumps: new rules or new
 roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
+
+## 0.4.0 — 2026-06-24
+
+Minor: the fidelity layer + the parallel-safety guard + the Captain role go public. Rule count seven → eleven.
+
+### Added
+- `requirements-fidelity.md` — Rule 8 full doc (2-D requirements traceability matrix, EARS notation, spec-quality metric, human-owned validation, Definition of Ready).
+- `design-fidelity.md` — Rule 9 full doc (Type-1/Type-2 stakes classification, option surfacing, design-system declaration + conformance audit).
+- `customer-journey-validation.md` — Rule 10 full doc (journey artefact, elicitation + ratification gate, no-mock boundary enforcement).
+- `process-global-mutation.md` — Rule 11 full doc (guaranteed restore, fail-closed target assertion, reachability artefact for any process-global-state mutation; load-bearing under parallel/multi-worktree execution).
+- `role-prompts/captain.md` — the Captain role (design-review). Design-review (Rule 9) is a core protocol feature performed by the Captain, so the role is part of the protocol. (The Captain handbook is held back pending a protocol-level rewrite — it is still coupled to the private automation.)
+- `commands/design-review.md` — the design-review slash command.
+
+### Changed
+- `README.md` (root) + `claude/baton/README.md` — "seven rules" → "eleven rules"; Rules 8–11 rows added; rule-count phrases updated (the "seven slash commands" count is unchanged — it counts commands, not rules).
+- README (root + claude/baton) — "three roles" → "four roles"; the Captain role and the Coach (human-in-the-loop) introduced.
+- `AGENTS-fragment.md` — rule count seven → eleven; Rules 8–11 inline summaries added.
+- `session-discipline.md` — added the Baton release-mode anchor exception (a release-mode session is anchored to its `docs/release/<name>/` tree, not a separate issue).
+
+### Why
+Rules 8–10 close the front-half gap (verify the spec/design/journey, not just the code) surfaced in the v0.5.0 audit. Rule 11 codifies the process-global-mutation failure class (a git op in an unexpected directory silently flipping a worktree) seen under parallel execution. Publishing the Captain role makes design-review (Rule 9) runnable from the open protocol.
+
+---
 
 ## 0.3.4 — 2026-05-16
 
