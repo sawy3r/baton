@@ -19,7 +19,7 @@ shipped.
 - Track mode — slices grouped into touchpoint-disjoint tracks for safe
   parallelism, each track in its own worktree. See
   `claude/baton/track-mode.md`.
-- Seven rules + role prompts + release-mode templates installed at
+- Eleven rules + role prompts + release-mode templates installed at
   `~/.claude/baton/` (Claude Code) and `~/.codex/baton/` (Codex) via
   the two installers.
 - Deterministic first-pass verifier (`release-verify.sh`) at
@@ -120,5 +120,5 @@ gives a more ergonomic install path for the Claude subset.
 - IDE-only integrations (VS Code Copilot, JetBrains AI Assistant) that
   don't expose a user-level slash-command directory.
 - Hosted version / SaaS wrapping.
-- Custom rule authoring API. The seven rules are deliberately fixed; if
+- Custom rule authoring API. The eleven rules are deliberately fixed; if
   you want a different rule-set, fork the repo and amend.

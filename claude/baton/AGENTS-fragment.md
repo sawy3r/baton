@@ -11,7 +11,7 @@ Copy the block below into your project's agent-instructions file. Trim or extend
 
 ## Engineering Process — Baton
 
-This project follows the **Baton** rule-set (see `/docs/baton/` for full rule docs and provenance). Seven rules, listed in priority order:
+This project follows the **Baton** rule-set (see `/docs/baton/` for full rule docs and provenance). Eleven rules, listed in priority order:
 
 ### 1. Reachability Gate (CRITICAL)
 
@@ -105,6 +105,22 @@ No slice may transition to `verified` state without a PASS verdict from a **fres
 **Slice state machine:** `planned → in_progress → implemented → [fresh verifier] → verified | failed_verification`. The `implemented` checkpoint exists specifically so no agent can shortcut directly to `verified`.
 
 **Cheap-cost loop:** implementer writes the proof bundle, runs `scripts/release-verify.sh` for deterministic first-pass rejection, then a fresh session with `role-prompts/verifier.md` returns the verdict. One extra session per slice. On Max-plan tooling this is effectively free; on API usage it is still cheaper than the rework cost of an overclaimed slice.
+
+### 8. Requirements Fidelity (CRITICAL)
+
+The spec is not an axiom. Rules 1/6/7 verify delivery against the spec but treat the spec itself as correct; the front half of the chain — from intake need to acceptance criterion — goes unverified. Before a slice enters implementation its requirements must be **verified** (each acceptance criterion is singular, unambiguous, complete, consistent, feasible, and verifiable — the ISO/IEC/IEEE 29148 quality characteristics), **validated** (a human-owned positive-and-negative scenario sense-check confirms the spec serves the need), and **traced** (every need links to an acceptance criterion, every criterion back to a need and forward to a test, and every slice up a vertical golden thread to its release goal). A 2-D requirements traceability matrix, built fail-closed from `intake.md` / `spec.md` / `status.json` / `index.md`, makes a dropped need a hard, detectable trace break. Acceptance criteria use EARS notation; a Definition of Ready gate composes traced + verified + validated into one fail-closed verdict before `planned → in_progress`.
+
+### 9. Design Fidelity (CRITICAL)
+
+Meeting a requirement is not the same as the right solution for the whole — solution fit is a quality the delivery verifier (Rule 7) cannot see in the diff. Design stays **human-owned** and AI-augmented, with the amount of human judgement calibrated to each choice's stakes (reversibility × blast-radius). Type-1 choices (hard to reverse, wide/structural — and all architecturally-significant choices) require a full human decision with options + rationale recorded in `status.json`; Type-2 choices (easy to reverse, narrow/local) may proceed with a noted default. The model may propose options and classify stakes but may not record a Type-1 human decision itself. A deterministic gate fails closed on any Type-1 choice missing a human decision or any architecturally-significant choice not classified Type-1. UI-bearing projects must declare a design system (tokens + component library); a two-layer conformance audit catches hardcoded colours, off-scale spacing, and recreated components (machine-check), then requires a human on-brand cohesion verdict.
+
+### 10. Customer Journey Validation (CRITICAL)
+
+Critical customer journeys are a first-class artefact, not a per-release afterthought. A journey is an ordered, end-to-end path a user type takes across many slices to achieve an outcome — the unit of cross-slice evidence that per-slice verification (Rule 7) structurally cannot give. Before a release ships its journeys must be **elicited** (model-drafted), **ratified** (human-reviewed and edited), and **durable** (persisted to a version-controlled artefact maintained release over release). A fail-closed gate runs after all slices verify but before merge: exit 0 only when the artefact exists and is human-ratified. The **no-mock boundary** is the rule's enforcement teeth: a journey walked over a mocked boundary (DB, auth, entitlement) proves nothing, so an undeclared mock at a validated boundary fails the gate closed — a mock there is permitted only as a declared Rule 2 deferral. At release cutover the touched journeys are re-walked against real infra and human-attested.
+
+### 11. Process-Global Mutation Guard (CRITICAL)
+
+Any change — test or production — that mutates **process-global state** (the working directory, environment variables, or which worktree/branch a tool operates on) must satisfy three things before the owning slice can reach `verified`: **guaranteed restore** (prefer scoped mutation — an explicit working-directory argument or a framework helper that auto-restores — over mutating the ambient process), a **fail-closed target assertion** (any operation acting on a path/worktree, especially a `git` op carrying a directory argument, must first assert the target exists and is the expected directory), and a **reachability artefact** proving the guard fires. Load-bearing wherever sessions run concurrently against a shared base: an unrestored mutation is silently inherited by the next unit of work, and a git op in an unexpected directory can corrupt branch state.
 
 ---
 

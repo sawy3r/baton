@@ -2,12 +2,17 @@
 
 > A protocol for agent work that survives session boundaries — plan, implement, and verify in sealed contexts, with proof bundles as the only currency between them.
 
-**The baton is the proof bundle.** Four roles — three sealed authoring sessions (planner, implementer, verifier) and an integrator that lands the verified work — with one file on disk that crosses between them.
+**The baton is the proof bundle.** Four agent roles — planner, implementer, verifier, and the captain who runs design-review (Rule 9) — with one file on disk that crosses between them. An integrator hat lands the verified work, and the **Coach** — the human-in-the-loop who owns the team — holds authority over strategy and product/architecture: the agent roles surface decisions to the Coach but never self-authorise them.
 
 ```
                                     fresh-context boundary
                                           (Rule 7)
-                                               ║
+                               ┌────────────┐  ║
+                               │  captain   │  ║   design-review (Rule 9): at the
+                               │ /design-   │  ║   top of /implement-slice the
+                               │  review    │  ║   implementer drafts design.md and
+                               └────────────┘  ║   halts; the captain pins it, the
+                         design.md ▲ ▼ PROCEED ║   Coach acks, then code proceeds
     ┌──────────┐    spec.md    ┌────────────┐  ║   proof.md   ┌──────────┐
     │ planner  │ ─────────────►│ implementer│ ─╫─────────────►│ verifier │
     │ /plan-   │               │ /implement-│  ║              │ /verify- │
@@ -58,9 +63,9 @@ If you've shipped non-trivial work with an LLM coding agent, you may have hit on
 - **Context loss.** Substantial analysis lives only in chat transcript. `/clear` happens. The reasoning is gone. The next session starts from scratch.
 - **Plan / proof drift.** Planning docs say one thing, implementation does another, the divergence is never surfaced.
 
-baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Seven rules, three roles, seven slash commands. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
+baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Eleven rules, four roles, seven slash commands. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
 
-## The seven rules
+## The eleven rules
 
 Each rule has a one-line summary here and a full doc explaining the failure mode, the rule, and why looser variants don't work.
 
@@ -73,6 +78,10 @@ Each rule has a one-line summary here and a full doc explaining the failure mode
 | 5 | Session discipline | Sessions anchored to durable trackers (issues, plans); captures at every session boundary, not only at the end. | [session-discipline.md](claude/baton/session-discipline.md) |
 | 6 | Proof bundle | Completion claims require a structured proof file written from live repo state, not paraphrased from memory. | [proof-bundle.md](claude/baton/proof-bundle.md) |
 | 7 | Adversarial verification | Verification runs in a fresh-context session loaded only with the proof artefacts — never in the implementer's window. | [adversarial-verification.md](claude/baton/adversarial-verification.md) |
+| 8 | Requirements fidelity | The spec is not an axiom: needs are verified (29148 quality), validated (human sense-check), and traced (need → AC → test) so a need can't drop silently between intake and spec. | [requirements-fidelity.md](claude/baton/requirements-fidelity.md) |
+| 9 | Design fidelity | Design stays human-owned, with judgement calibrated to each choice's stakes (reversibility × blast-radius); Type-1 choices need a recorded human decision the model can't self-authorise. | [design-fidelity.md](claude/baton/design-fidelity.md) |
+| 10 | Customer journey validation | Critical end-to-end journeys are a ratified, version-controlled artefact, re-walked against real boundaries — a journey walked over a mocked boundary proves nothing. | [customer-journey-validation.md](claude/baton/customer-journey-validation.md) |
+| 11 | Process-global mutation guard | Any change mutating process-global state (working directory, environment, or which worktree/branch a tool acts on) must guarantee restore, assert the target before git ops, and prove the guard with a reachability artefact. | [process-global-mutation.md](claude/baton/process-global-mutation.md) |
 
 Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 and 7 require the Release Mode harness (the slash commands and templates this repo installs) to be enforceable.
 
@@ -188,6 +197,8 @@ flowchart TD
     replan["/replan-release &lt;name&gt;<br/><i>fresh window — planner</i><br/>(in-flight revision)"]:::cmd
     impl["/implement-slice &lt;slice&gt;<br/><i>fresh window — implementer</i>"]:::cmd
     verify["/verify-slice &lt;slice&gt;<br/><i>fresh window — verifier (Rule 7)</i>"]:::cmd
+    dreview["/design-review &lt;slice&gt;<br/><i>fresh window — captain (Rule 9)</i>"]:::cmd
+    coach{{"Coach — the human-in-the-loop<br/>holds authority; acks pins / decides"}}:::branch
     subgraph integrator["integrator role (no Rule 7 constraint — mechanical)"]
         mtrack["/merge-track &lt;track-id&gt;<br/><i>gate: every slice verified</i>"]:::cmd
         mrelease["/merge-release &lt;name&gt;<br/><i>gate: every track merged</i>"]:::cmd
@@ -208,7 +219,12 @@ flowchart TD
     plan --> planned
     replan -.->|adds/re-scopes slices<br/>or clears BLOCKED| planned
     planned --> impl
-    impl --> inprog --> implemented
+    impl -->|design.md, halt| dreview
+    dreview -->|PROCEED| inprog
+    dreview -->|IMPLEMENTER_FIX<br/>revise design| impl
+    dreview -->|NEEDS_COACH| coach
+    coach -.->|ack / decide| inprog
+    inprog --> implemented
     implemented --> verify
     verify -->|PASS| verified
     verify -->|FAIL| failed --> impl
@@ -270,7 +286,7 @@ baton today ships slash commands for Claude Code only. Cross-tool adapters for O
 
 ## Contributing
 
-The seven rules are deliberately minimal and deliberately fixed — they're the smallest intervention that addresses the specific failure modes catalogued in the rule docs' `## Provenance` sections. If you want a different rule-set, fork and amend.
+The eleven rules are deliberately minimal and deliberately fixed — they're the smallest intervention that addresses the specific failure modes catalogued in the rule docs' `## Provenance` sections. If you want a different rule-set, fork and amend.
 
 For everything else — bugs in the harness, slash-command improvements, adapter contributions for other tools, doc clarifications — issues and PRs are welcome.
 
