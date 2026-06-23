@@ -37,6 +37,8 @@ shipped.
 into a two-layer architecture so the same content drives slash-commands /
 skills / prompts across the remaining target CLIs.
 
+- **Native slash commands per tool.** Baton's commands are markdown today (native for Claude Code, Codex `~/.codex/prompts/`, and OpenCode `~/.config/opencode/commands/`). Gemini CLI uses TOML (`~/.gemini/commands/*.toml`), so native Gemini support needs a markdown→TOML transform (`prompt`/`description` fields, `$ARGUMENTS`→`{{args}}`). Goal: the installer (or your agent) emits native commands for whichever tool you use.
+
 ### Target tools
 
 | Tool                | Rules file              | User-level commands surface       | Format          | Status |

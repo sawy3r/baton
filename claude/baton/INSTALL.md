@@ -7,6 +7,25 @@ description: Step-by-step guide to adopting the Baton rules in a new project
 
 Adopting Baton in a new project is mostly a copy-paste exercise. The rules themselves are inert markdown; what makes them load-bearing is putting them where your agents see them.
 
+## Install with your agent (recommended)
+
+Baton is an agent protocol, so the fastest install is to let your agent do it. In Claude Code, Codex, Gemini CLI, OpenCode, Hermes Agent, or any coding agent, paste:
+
+> Clone https://github.com/sawy3r/baton, then install Baton for the tool I'm using: place the slash commands in this tool's commands directory (transforming them if the tool needs a different format), copy the rule docs + role prompts into my repo's `docs/baton/`, and wire `AGENTS-fragment.md` into my agent-instructions file. Show me the plan first.
+
+The agent uses the table below to put things in the right place for your tool — including the one case that isn't a straight file copy (Gemini commands are TOML, not markdown).
+
+| Tool | Slash commands → | Instructions file (wire the fragment) | Notes |
+|---|---|---|---|
+| **Claude Code** | `~/.claude/commands/*.md` | `~/.claude/CLAUDE.md` (user) or repo `AGENTS.md` | Native markdown. `install.sh` does this. |
+| **Codex** | `~/.codex/prompts/*.md` | `AGENTS.md` | Native markdown (`$ARGUMENTS`, `$1…$9`). `install-codex.sh` installs them as skills. |
+| **OpenCode** | `~/.config/opencode/commands/*.md` | `AGENTS.md` | Native markdown; the file body is the command template. |
+| **Gemini CLI** | `~/.gemini/commands/*.toml` | `GEMINI.md` | **Transform:** wrap the command body in `prompt = """…"""`, add `description`, change `$ARGUMENTS` → `{{args}}`. |
+| **Hermes Agent** | skill in `~/.hermes/skills/<name>/` (skill name → `/name`) | `AGENTS.md` | Skills-based — each command installs as a skill (the same direction Claude Code and Codex are moving). |
+| **Any other agent** | the tool's commands dir (or drive the command docs by hand) | the tool's instructions file | Rule docs + role prompts are tool-agnostic; only the slash-command wrapper is tool-specific. |
+
+In every case the rule docs + role prompts + templates go in your repo's `docs/baton/` (version-controlled, visible to collaborators and CI), and the `AGENTS-fragment.md` rules get wired into the tool's instructions file. The manual steps below describe exactly what the agent does — follow them yourself if you prefer.
+
 ## Quickest path (5 minutes)
 
 1. **Copy `AGENTS-fragment.md` into your project's agent-instructions file.** This is `AGENTS.md` at the repo root for most projects, or `CLAUDE.md` / `GEMINI.md` / `.cursorrules` depending on your stack.
@@ -15,7 +34,7 @@ Adopting Baton in a new project is mostly a copy-paste exercise. The rules thems
 
 That's it for Rules 1–5. The rules are now in scope for every agent session in that repo. Reference rule details by linking to this package or copying it whole into your `/docs`.
 
-For Rules 6 and 7 (Proof Bundle + Adversarial Verification) you also need the Release Mode harness — see "Release Mode adoption" below. Without the harness, those rules are advisory rather than enforceable.
+For Rules 6 through 11 (Proof Bundle, Adversarial Verification, and the fidelity + parallel-safety rules) you also need the Release Mode harness — see "Release Mode adoption" below. Without the harness, those rules are advisory rather than enforceable.
 
 ## Full path (~30 minutes — recommended for teams)
 
@@ -43,6 +62,10 @@ See `/docs/baton/` for the full rule-set. Highlights:
 - Rule 5 — Session Discipline: sessions anchored to GitHub Issues; captures at session boundaries. (`session-discipline.md`)
 - Rule 6 — Proof Bundle: completion claims require a structured proof file written from live repo state. (`proof-bundle.md`)
 - Rule 7 — Adversarial Verification: verification must come from a fresh-context session loaded only with slice artefacts. (`adversarial-verification.md`)
+- Rule 8 — Requirements Fidelity: needs verified (29148 quality), validated (human sense-check), and traced (need → AC → test). (`requirements-fidelity.md`)
+- Rule 9 — Design Fidelity: human-owned design calibrated to stakes (reversibility × blast-radius); Type-1 choices need a recorded human decision. (`design-fidelity.md`)
+- Rule 10 — Customer Journey Validation: critical journeys are a ratified artefact re-walked against real boundaries; the no-mock boundary is the enforcement teeth. (`customer-journey-validation.md`)
+- Rule 11 — Process-Global Mutation Guard: mutating cwd/env/worktree requires guaranteed restore + a fail-closed target assertion + a reachability artefact. (`process-global-mutation.md`)
 ```
 
 ### Step 3 — Optional: user-level fallback
@@ -70,7 +93,7 @@ PROJECT_MEMORY=~/.claude/projects/$(pwd | sed 's|/|-|g')/memory
 mkdir -p "$PROJECT_MEMORY"
 
 # Copy the rule files as feedback memory entries:
-for rule in reachability-gate no-silent-deferrals capture-discipline commit-messages-as-capture session-discipline proof-bundle adversarial-verification; do
+for rule in reachability-gate no-silent-deferrals capture-discipline commit-messages-as-capture session-discipline proof-bundle adversarial-verification requirements-fidelity design-fidelity customer-journey-validation process-global-mutation; do
   cp docs/baton/$rule.md "$PROJECT_MEMORY/feedback_$(echo $rule | tr - _).md"
 done
 
@@ -83,11 +106,11 @@ After seeding, the rules are loaded into context every session via the memory in
 
 In your next agent session, ask the agent: "What's our reachability gate rule?" If it answers with the rule's specifics, adoption worked. If it doesn't, check that AGENTS.md is actually being loaded (varies by tool).
 
-## Release Mode adoption (Rules 6 + 7)
+## Release Mode adoption (Rules 6–11)
 
-The Release Mode harness is what makes Rules 6 and 7 enforceable. Without it, the rules are aspirational — there's no artefact for the verifier to read and no fresh-context boundary preventing self-certification.
+The Release Mode harness is what makes Rules 6 through 11 enforceable. Without it, the rules are aspirational — there's no artefact for the verifier to read and no fresh-context boundary preventing self-certification.
 
-The harness is intentionally minimal: four artefact files per slice, three role prompts, one shell script. There is no orchestration framework.
+The harness is intentionally minimal: four artefact files per slice, four role prompts, one shell script. There is no orchestration framework.
 
 ### Step A — Create the release directory
 
@@ -131,15 +154,16 @@ The full loop, per release, is:
 
 ### Step E — Set per-project memory expectations
 
-Whichever AI tool you use, make sure its per-project memory or rules system knows about Release Mode. For Claude Code, the project-level `CLAUDE.md` or `AGENTS.md` should include the inline summary of Rules 6 and 7 from `AGENTS-fragment.md`, and the project memory should note the location of the harness templates and role prompts.
+Whichever AI tool you use, make sure its per-project memory or rules system knows about Release Mode. For Claude Code, the project-level `CLAUDE.md` or `AGENTS.md` should include the inline summary of Rules 6 through 11 from `AGENTS-fragment.md`, and the project memory should note the location of the harness templates and role prompts.
 
-### Why three role prompts (planner / implementer / verifier)
+### Why four role prompts (planner / implementer / verifier / captain)
 
-Each role exists in a different context window. They are not three personalities to switch between in one session — they are three discrete sessions that exchange information only through files.
+Each role exists in a different context window. They are not four personalities to switch between in one session — they are discrete sessions that exchange information only through files.
 
 - **Planner** runs in chat mode with the human; output is durable artefacts. The planner does not implement, because conversational context contaminates implementation focus.
 - **Implementer** runs in a fresh, artefact-loaded session; output is code + proof bundle. The implementer does not certify, because optimism contaminates self-review.
 - **Verifier** runs in a fresh, artefact-only session; output is a PASS/FAIL verdict. The verifier does not implement, because helping-mindset contaminates falsification.
+- **Captain** reviews the implementer's `design.md` in a fresh window (design-review, Rule 9) and routes each state transition; output is design pins + a verdict. The captain does not write specs or code — it decides what runs next and surfaces decisions to the Coach (the human-in-the-loop authority).
 
 The cost of running these as separate sessions is one extra session per slice. On a tool with a flat-rate plan that is effectively free. On API metered usage it is still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
 
