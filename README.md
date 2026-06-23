@@ -131,28 +131,24 @@ e2e/account-settings.spec.ts:24 simulates the full user gesture
 
 A `journal.md` accumulates state transitions and verifier verdicts over the slice's lifetime. The full templates live in [`claude/baton/release-mode-template/`](claude/baton/release-mode-template/).
 
-## Quick install
+## Install
+
+Baton is an agent protocol — the easiest way to install it is to let your coding agent do it. Open Claude Code, Codex, Gemini CLI, OpenCode, Hermes Agent, or any agent in a terminal and paste:
+
+> Clone https://github.com/sawy3r/baton, read its `claude/baton/INSTALL.md`, install Baton for the tool I'm using, and wire the Baton rules fragment into my agent instructions. Show me the plan first.
+
+The agent clones the repo, places the rule docs, role prompts, and templates where your tool reads them, and — the step a shell script can't do for you — wires the `AGENTS-fragment.md` rules into your `AGENTS.md` / `CLAUDE.md` / `GEMINI.md`. [`INSTALL.md`](claude/baton/INSTALL.md) lists the per-tool targets the agent follows; "Per-project setup" below covers what every repo needs regardless.
+
+### Prefer a script? (Claude Code / Codex)
 
 ```bash
 git clone https://github.com/sawy3r/baton.git ~/projects/baton
 cd ~/projects/baton
-./install.sh           # Claude Code      — installs ~/.claude/commands/, ~/.claude/baton/, ~/.claude/bin/
-./install-codex.sh     # OpenAI Codex     — installs ~/.agents/skills/baton-*/, ~/.codex/baton/, ~/.codex/bin/
+./install.sh           # Claude Code  — installs ~/.claude/commands/, ~/.claude/baton/, ~/.claude/bin/
+./install-codex.sh     # OpenAI Codex — installs ~/.agents/skills/baton-*/, ~/.codex/baton/, ~/.codex/bin/
 ```
 
-Run whichever installer matches the tool you use. Codex Mac App and Codex CLI share `~/.codex/` config, so the same install serves both. Either installer can run safely on the same machine — they touch disjoint directories.
-
-Or preview first:
-
-```bash
-./install.sh --dry-run        # show what would be installed without copying
-./install.sh --help           # full options
-./install-codex.sh --dry-run  # same, for the Codex installer
-```
-
-Set `CLAUDE_HOME=/custom/path` before `install.sh`, or `CODEX_HOME` / `AGENTS_HOME` before `install-codex.sh`, to install under a non-default location.
-
-Update later with `git pull && ./install.sh` (and/or `./install-codex.sh`) from the same directory.
+Preview with `./install.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / `CODEX_HOME` / `AGENTS_HOME` to relocate; update later with `git pull && ./install.sh`. Either installer is safe on the same machine — they touch disjoint directories. The scripts install the slash commands **natively for Claude Code and Codex**; on other tools the agent-driven path installs the rules and harness and you drive the command docs / role prompts directly (native command adapters for other tools are on the roadmap). Neither script touches your `CLAUDE.md` — that wiring is exactly what the agent-driven path automates.
 
 ## What lands where
 
