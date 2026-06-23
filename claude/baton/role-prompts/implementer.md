@@ -61,6 +61,19 @@ Before any code edit, read in this order:
 
 If `spec.md` is missing or ambiguous, stop and ask the human. Do not infer scope.
 
+## Worktree cleanliness gate (Gate -1)
+
+A dirty worktree at session start means the last session didn't land its work. **Start from a pristine worktree** — dirty bytes at startup are silent-deferral risk.
+
+1. `git -C <worktree_path> status --porcelain`. If empty, pass.
+2. If only untracked files: `git clean -fd`, re-check, pass if clean.
+3. If only `journal.md` is dirty: commit it, push, re-check, pass if clean.
+4. Any other combination: **PAGE** with the full `git status --porcelain` output — do not stash, reset, or clean autonomously. Dirty files may be in-progress work from a prior session.
+
+## Definition of Ready (Rule 8)
+
+Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Requirements Fidelity): each AC is singular, unambiguous, complete, consistent, feasible, and verifiable. The spec must carry traced acceptance criteria with a fail-closed DoR verdict. If the spec's `spec.md` has no acceptance checks or they read as free-form prose rather than verifiable conditions, stop and surface the gap — the planner must correct it.
+
 ## Workflow
 
 1. Update `status.json` → `in_progress`. Commit `docs(release/<release-name>/<slice-id>): start implementation`. Then capture that commit's SHA (`git rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and gives the verifier an exact, no-archaeology diff base (`start_commit..HEAD`).
@@ -97,6 +110,13 @@ The pattern is described in Playwright/TypeScript terms because that's the commo
 ### Disambiguation from planner-context screenshots
 
 `/plan-release` stores screenshots the human pastes during requirements discovery at `docs/release/<release-name>/screenshots/<YYYY-MM-DD>-<slug>.png` — **date-prefixed**. Reachability screenshots use **slice-id-prefix** (`<slice-id>-<descriptor>.png`). Same directory, different prefix family — they sort cleanly and never collide on a filename. Do not invent a `screenshots/reachability/` or `screenshots/planning/` subfolder split; the prefix is the discriminator and keeping the directory flat preserves "every screenshot related to the release lives in one place."
+
+## Non-gating findings must land as GitHub issues (Rule 3)
+
+Any observation that names follow-up work outside this slice's scope — a related defect, a bug your change masks, missing coverage — becomes a silent deferral the moment it exists only as prose. The agent that finds the issue files the issue:
+
+1. `gh issue create --title "<concise defect>" --body "<what you observed, file:line, why out of scope>"`
+2. Cite the returned number inline ("tracked in #NNN").
 
 ## What you must never do
 
