@@ -89,15 +89,21 @@ A two-layer conformance audit guards UI-bearing projects against design drift.
 
 ### Layer 1 — Deterministic first-pass (machine-check)
 
-Scans UI source files for three categories of drift:
+The mechanical gate is `bin/release-audit-design.sh` — run by the verifier as Gate 6 of the verification workflow. It scans UI files in the slice's diff for:
 
-| Category | Pattern | Example violation |
+| Category | Pattern | Detection |
 |---|---|---|
-| **Hardcoded colour** | `color: #ff0000` | Hex literal in a CSS property — use `var(--color-primary)` |
-| **Off-scale spacing** | `margin: 17px` | Hard-coded value off the spacing scale — use `var(--spacing-4)` |
-| **Recreated component** | `function Button()` in app code | Component re-defined outside the library when a library `Button` exists |
+| **Hardcoded colour** | Hex `#ff0000`, `rgb()`, `hsl()` | Regex scan of diff; compared against declared design tokens |
+| **Off-scale spacing** | Hardcoded `px`/`rem` values off the spacing scale | Requires token config with spacing scale |
+| **Recreated component** | Duplicate primitive impl outside component library | Requires component library path mapping |
 
-Each violation reports `file:line: [kind] message`. A sanctioned exception marker (an inline allow-comment) suppresses a single line's violation and records a deliberate, human-approved deviation.
+**Escape hatch.** Three levels of accepted deviation:
+
+1. **Per-line allowlist.** `design-allowlist.json` in the slice folder, maps `file:line` patterns to rationale. The script reads it automatically. For pre-existing violations an implementer cannot fix (e.g. legacy code outside slice scope).
+2. **Rule 2 deferral.** Listed in `proof.md` "Not delivered" with all three Rule 2 elements: why (pre-existing, out of scope), tracking (slice or issue), and **explicit human or captain acknowledgement**. The verifier reads `proof.md` and accepts the deferral.
+3. **Per-project token config.** Declared in `docs/baton/design-fidelity.json` with `token_source` pointing to the design-token file. Colours matching declared tokens pass automatically; only undeclared colours flag.
+
+The script exits 0 on clean pass, non-zero with `file:line [kind] value` violations. Projects without a design-fidelity config (`ui_bearing: false` or absent) pass automatically.
 
 ### Layer 2 — Human cohesion verdict (human-owned)
 

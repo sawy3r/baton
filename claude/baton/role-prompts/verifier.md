@@ -145,7 +145,17 @@ Grep the changed files for `TODO`, `FIXME`, `deferred`, `later`, `placeholder`, 
 - Any hit on a schema, contract, or user-reachable code path without a corresponding Rule 2 entry in `proof.md` "Not delivered": FAIL.
 - Empty function bodies, stub returns, hardcoded happy-path values in production code: FAIL.
 
-### Gate 6 — Claimed scope matches implemented scope
+### Gate 6 — Design conformance (Rule 9, Layer 1)
+
+Run `bin/release-audit-design.sh --slice <slice-id> --release <release-name> --worktree <worktree_path>`.
+
+- If the script exits non-zero, FAIL with the enumerated violations.
+- Violations listed in the slice's `design-allowlist.json` (escape hatch) are suppressed — the script reads the allowlist automatically.
+- Violations declared in `proof.md` "Not delivered" as Rule 2 deferrals with human or captain acknowledgement are also acceptable — note them but do not FAIL on them.
+- If the project has no design-fidelity config (`docs/baton/design-fidelity.json` absent or `ui_bearing: false`), the gate passes automatically (non-UI project).
+- Hardcoded colours in test files (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`) are excluded — tests may assert against literal values.
+
+### Gate 7 — Claimed scope matches implemented scope
 
 Read `proof.md` "Delivered" list. For each item, verify the evidence reference (file path, test name, artefact path) points to real, working state.
 
