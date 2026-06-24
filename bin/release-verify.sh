@@ -553,8 +553,14 @@ if [[ "$PLAYWRIGHT_OPTIN" == "true" ]]; then
   fi
 
   # Deduplicate in case a spec is listed in both planned_files and actual_files.
+  # Uses a while-read loop instead of mapfile for bash 3.x (macOS default) compat.
   if [[ ${#E2E_SPECS[@]} -gt 0 ]]; then
-    mapfile -t E2E_SPECS < <(printf '%s\n' "${E2E_SPECS[@]}" | grep -v '^$' | sort -u)
+    _dedup=("${E2E_SPECS[@]}")
+    E2E_SPECS=()
+    while IFS= read -r _line; do
+      [[ -n "$_line" ]] && E2E_SPECS+=("$_line")
+    done < <(printf '%s\n' "${_dedup[@]}" | grep -v '^$' | sort -u)
+    unset _dedup _line
   fi
   if [[ ${#E2E_SPECS[@]} -eq 0 && -d "tests/e2e/release" ]]; then
     while IFS= read -r f; do
@@ -570,7 +576,12 @@ if [[ "$PLAYWRIGHT_OPTIN" == "true" ]]; then
       gray "  checking: $spec_file"
 
       # (a) At least one expect() call.
-      expect_count=$(grep -c 'expect(' "$spec_file" 2>/dev/null || echo 0)
+      # Strip whitespace/newlines: grep -c exits 0 on macOS even with zero matches,
+      # and command substitution can capture a trailing newline that breaks bash 3.x
+      # arithmetic comparison.
+      expect_count=$(grep -c 'expect(' "$spec_file" 2>/dev/null || true)
+      expect_count="${expect_count//[$'\t\r\n ']}"
+      expect_count="${expect_count:-0}"
       if [[ "$expect_count" -eq 0 ]]; then
         check_fail "$spec_file: no expect() calls — spec exercises the UI but asserts nothing"
         gray "  Add at least one expect() on a rendered output element (FIRE age, net worth, projection text)"
@@ -579,7 +590,9 @@ if [[ "$PLAYWRIGHT_OPTIN" == "true" ]]; then
 
         # (b) At least one output-checking matcher (not only toHaveValue form assertions).
         OUTPUT_MATCHERS='toBeVisible|toContainText|toHaveText|toMatch|toBeGreaterThan|toEqual|toHaveCount|toHaveURL'
-        output_count=$(grep -cE "$OUTPUT_MATCHERS" "$spec_file" 2>/dev/null || echo 0)
+        output_count=$(grep -cE "$OUTPUT_MATCHERS" "$spec_file" 2>/dev/null || true)
+        output_count="${output_count//[$'\t\r\n ']}"
+        output_count="${output_count:-0}"
         if [[ "$output_count" -eq 0 ]]; then
           check_fail "$spec_file: all expect() calls use form-state matchers (toHaveValue/toBeChecked) — none assert rendered output"
           gray "  At least one assertion must target a rendered output element, e.g.:"
