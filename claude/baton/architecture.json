@@ -2,12 +2,12 @@
   "$schema": "https://baton.sawy3r.net/schemas/architecture-rules-v1.json",
   "_description": "Project-level architectural rules. Each rule is a named check run by release-audit-design.sh against the slice's diff. Rules can be suppressed per-release via architecture-overrides.json. Check types: grep (regex), touchpoints (planned-file audit), diff-size (growth limits), external (SAST/lint tool invocation).",
   "canonical_docs": {
-    "_description": "Canonical architectural source-of-truth documents. The planner consults these during discovery. The architecture audit checks conformance. A project without canonical docs is a project where every slice invents its own patterns — the accumulated divergence is exponentially expensive to fix.",
-    "data_model": "docs/data_models/SCHEMA.md",
+    "_description": "Canonical architectural source-of-truth documents. The planner consults these during discovery. The architecture audit checks conformance. Declare paths relative to the repo root. Empty arrays = not yet defined — the planner will flag this as a gap.",
+    "data_model": "",
     "api_contracts": [],
     "component_hierarchy": [],
-    "architectural_decisions": "docs/adrs/",
-    "design_tokens": "tokens.json"
+    "architectural_decisions": "",
+    "design_tokens": ""
   },
   "rules": [
     {
@@ -34,47 +34,11 @@
       "note": "Files over 500 lines should be decomposed"
     },
     {
-      "id": "no-ts-financial-math",
-      "description": "Financial calculations shall use Go/shopspring-decimal, not TypeScript Decimal.js",
-      "check": "grep",
-      "pattern": "import.*decimal\\.js|require.*decimal\\.js|new Decimal\\(|Decimal\\.set\\(",
-      "files": "apps/**/*.{ts,tsx}",
-      "severity": "error",
-      "note": "All financial math must happen in Go using shopspring/decimal. TypeScript displays results only."
-    },
-    {
-      "id": "go-must-use-decimal-for-money",
-      "description": "Financial values in Go shall use decimal.Decimal, not float64 for arithmetic",
-      "check": "grep",
-      "pattern": "InexactFloat64\\(\\)\\)|float64\\(.*decimal|math\\.Pow",
-      "files": "go/pkg/tools/**/*.go",
-      "severity": "warning",
-      "note": "float64 is acceptable for loop counters, array indices, and JSON serialization only. Verify context."
-    },
-    {
-      "id": "no-new-deps-without-adr",
-      "description": "New dependencies shall be accompanied by an ADR or justified in proof.md",
-      "check": "grep",
-      "pattern": "^\\+.*\"[a-z0-9@/-]+\":\\s*\"[^^]|^\\+.*import.*\"[^\"]+\"$",
-      "files": "go/go.mod,go/go.sum,package.json,apps/**/package.json,packages/**/package.json",
-      "severity": "warning",
-      "note": "New import or dependency detected. Confirm it is intentional and justified in the proof bundle."
-    },
-    {
-      "id": "no-anonymous-auth-bypass",
-      "description": "API handlers shall use auth middleware — no unauthenticated routes outside /health",
-      "check": "grep",
-      "pattern": "app\\.(Get|Post|Put|Delete|Patch)\\(|r\\.(Get|Post|Put|Delete|Patch)\\(",
-      "files": "go/cmd/api/**/*.go",
-      "severity": "error",
-      "note": "New route detected. Verify it uses the appropriate auth middleware (JWTAuth or AnonAuth)."
-    },
-    {
       "id": "no-hardcoded-secrets",
       "description": "No secrets, keys, or credentials shall appear in source code",
       "check": "grep",
       "pattern": "(api_key|apikey|secret|password|token|credential)\\s*[:=]\\s*['\"][^'\"]{8,}|-----BEGIN\\s+(RSA|EC|DSA|OPENSSH)\\s+PRIVATE\\s+KEY-----",
-      "files": "**/*.{ts,tsx,go,js,json,yml,yaml}",
+      "files": "**/*.{ts,tsx,go,js,py,rs,jsx,json,yml,yaml,toml}",
       "severity": "error",
       "note": "Secrets detected in diff. Use environment variables or a secrets manager."
     },
@@ -82,105 +46,36 @@
       "id": "no-unsafe-sql-concatenation",
       "description": "SQL queries shall use parameterised queries, not string concatenation",
       "check": "grep",
-      "pattern": "fmt\\.Sprintf\\(.*(SELECT|INSERT|UPDATE|DELETE|WHERE)|\\+.*(SELECT|INSERT|UPDATE|DELETE).*\\+|`.*SELECT.*`\\s*\\+",
-      "files": "go/**/*.go",
+      "pattern": "fmt\\.Sprintf\\(.*(SELECT|INSERT|UPDATE|DELETE|WHERE)|\\+.*(SELECT|INSERT|UPDATE|DELETE).*\\+|f[\"'].*SELECT.*[\"']",
+      "files": "**/*.{go,py,rs,js,ts,jsx,tsx,rb,php,java}",
       "severity": "error",
-      "note": "SQL injection risk. Use parameterised queries ($1, $2) with pgx."
-    },
-    {
-      "id": "no-goroutine-leak",
-      "description": "Goroutines shall have cancellation — missing defer cancel() may leak",
-      "check": "grep",
-      "pattern": "context\\.WithCancel\\(|context\\.WithTimeout\\(|context\\.WithDeadline\\(",
-      "files": "go/**/*.go",
-      "severity": "warning",
-      "note": "New context with cancel detected. Verify defer cancel() is present on the next line."
-    },
-    {
-      "id": "no-unbounded-map-growth",
-      "description": "Maps used as caches or accumulators shall have eviction or size limits",
-      "check": "grep",
-      "pattern": "make\\(map\\[",
-      "files": "go/pkg/**/*.go",
-      "severity": "warning",
-      "note": "New map allocation. If this map accumulates unbounded data (caches, request counters), ensure it has eviction or size limits."
-    },
-    {
-      "id": "no-bare-http-calls",
-      "description": "HTTP calls shall use context with timeout, not bare http.Get",
-      "check": "grep",
-      "pattern": "http\\.Get\\(|http\\.Post\\(|http\\.PostForm\\(|http\\.Head\\(",
-      "files": "go/**/*.go",
-      "severity": "error",
-      "note": "Bare HTTP call without context timeout detected. Use http.NewRequestWithContext with a reasonable timeout. Bare calls can block indefinitely."
-    },
-    {
-      "id": "encryption-must-use-pkg-crypto",
-      "description": "Encryption shall use pkg/crypto (AES-256-GCM), not raw crypto/aes calls",
-      "check": "grep",
-      "pattern": "crypto/aes|aes\\.NewCipher|cipher\\.NewGCM|encrypt|decrypt",
-      "files": "go/pkg/**/*.go",
-      "severity": "error",
-      "note": "Raw encryption call detected. Use pkg/crypto which provides AES-256-GCM with proper key management and envelope encryption. Raw crypto/aes usage may miss key rotation, IV handling, or authenticated encryption."
-    },
-    {
-      "id": "go-security-scan",
-      "description": "Go code shall pass gosec security scan",
-      "check": "external",
-      "command": "gosec -quiet -no-fail -fmt=json ./...",
-      "exit_code_means_fail": false,
-      "severity": "warning",
-      "note": "gosec found issues. Review findings and fix high/critical items. Install gosec: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest"
-    },
-    {
-      "id": "accessibility-scan",
-      "description": "UI components shall pass axe-core accessibility checks",
-      "check": "external",
-      "command": "npx axe-cli --exit --stdout 2>/dev/null || echo 'axe-cli not installed — install via: npm i -g @axe-core/cli'",
-      "severity": "warning",
-      "note": "Accessibility violations detected. Review axe output. Key checks: color contrast, ARIA labels, keyboard navigation, heading hierarchy."
+      "note": "SQL injection risk. Use parameterised queries ($1, ?, :name) instead of string interpolation."
     },
     {
       "id": "no-missing-aria-on-interactive",
       "description": "Interactive elements shall have accessible labels",
       "check": "grep",
       "pattern": "<(button|input|select|textarea|a)(?![^>]*aria-label)(?![^>]*aria-labelledby)(?![^>]*data-testid)",
-      "files": "apps/**/*.{tsx,jsx}",
+      "files": "**/*.{tsx,jsx,html,vue,svelte}",
       "severity": "warning",
-      "note": "Interactive element without aria-label or data-testid. Add an accessible label so screen readers can describe the control."
+      "note": "Interactive element without aria-label or data-testid. Add an accessible label."
     },
     {
       "id": "no-color-alone-for-meaning",
       "description": "Colour shall not be the only means of conveying information",
       "check": "grep",
       "pattern": "text-(red|green|blue|yellow|violet|orange)-\\d{3}(?!.*aria-)(?!.*sr-only)(?!.*role=)",
-      "files": "apps/**/*.{tsx,jsx}",
+      "files": "**/*.{tsx,jsx,html,vue,svelte}",
       "severity": "warning",
-      "note": "Colour-only status indicator. WCAG 1.4.1: ensure an additional indicator (icon, text, sr-only label) accompanies the colour."
-    },
-    {
-      "id": "no-god-function",
-      "description": "No function shall exceed 80 lines",
-      "check": "external",
-      "command": "echo 'Install gocyclo: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest'; gocyclo -over 15 {files} 2>/dev/null || echo 'gocyclo not installed'",
-      "severity": "warning",
-      "note": "Large functions are hard to understand, test, and modify. Decompose into smaller single-responsibility functions. gocyclo -over 15 flags functions with cyclomatic complexity > 15."
-    },
-    {
-      "id": "no-god-function-ts",
-      "description": "No function shall exceed 80 lines in TypeScript",
-      "check": "external",
-      "command": "npx eslint --rule 'max-lines-per-function: [warn, {max: 80, skipBlankLines: true, skipComments: true}]' {files} 2>/dev/null || echo 'eslint not configured'",
-      "severity": "warning",
-      "note": "Complex components should be decomposed. Consider extracting hooks, sub-components, or utility functions."
+      "note": "Colour-only status indicator. WCAG 1.4.1: ensure an additional indicator accompanies the colour."
     },
     {
       "id": "maintainability-review",
       "description": "Code shall be understandable to a new team member 12 months from now",
       "check": "external",
-      "command": "echo 'LLM check: run release-llm-check.sh --check maintainability-review'",
+      "command": "echo 'Run: release-llm-check.sh --check maintainability-review'",
       "severity": "warning",
-      "note": "Run the maintainability LLM check to assess naming clarity, separation of concerns, self-documenting design, and extension surface."
+      "note": "LLM check for naming clarity, separation of concerns, extension surface, duplication, god objects."
     }
   ]
 }
