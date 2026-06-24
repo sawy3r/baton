@@ -133,17 +133,16 @@ Once the slice list and track grouping are agreed, for each slice:
 1. Create `docs/release/<release-name>/<slice-id>/` (copy the template folder).
 2. Fill in `spec.md` from the conversation. Every section is mandatory. Acceptance checks must be falsifiable from artefacts the verifier can read.
 
-**CRITICAL: The spec must be self-contained and complete.** Decomposition is not summarisation — it is distributing every implementation-relevant detail from the intake into the slice that owns it. The implementer reads only the spec; the verifier grades against only the spec. Neither should ever need to open `intake.md` to understand what to build or verify. A slice whose spec merely gestures at intake detail ("see intake.md", "fix the windfall bug", "add the missing wiring") is a decomposition failure — the detail must be in the spec.
+**CRITICAL: The spec must further decompose intake detail to implementable precision.** Decomposition is not summarisation and not replication — it is refining intake-level description (epic: the user outcome, the general behaviour) into spec-level precision (files, labels, testids, status codes, data shapes, exact UX behaviour). Intake says "the user can search tickers"; the spec says "TickerSearch component in PortfolioEditor.tsx, wired to /api/portfolio/search, with Yahoo Finance typeahead, and a disabled read-only Name field populated from selection." The implementer reads only the spec; the verifier grades against only the spec. Neither should ever need to open `intake.md`. A slice whose spec restates intake prose at the same level of detail ("add the ticker search", "fix the windfall bug") is a decomposition failure — the detail must be in the spec, at finer granularity than the intake.
 
 Before the human can approve a spec, verify it against this checklist:
 
-- [ ] **Complete user outcome** — replicates every user-visible detail from the intake's "What the human wants" section for this slice. Names the user, the gesture, and the observable result with the same specificity as the intake.
-- [ ] **Complete in-scope list** — every file, component, label change, data-flow touch, and UX behaviour described in the intake is enumerated. No detail lives only in intake.
-- [ ] **Self-contained acceptance checks** — an implementer-reading-ACs-only can derive every implementation task. Vague ACs ("fix the bug") fail this check — only specific ACs ("the field label reads 'Expected return (%)' not 'Capital growth (% p.a.)'") pass.
+- [ ] **Intake → spec refinement** — every intake detail for this slice has been decomposed to spec-level precision. The intake says *what*; the spec says *where* and *how*. No spec item restates intake prose verbatim without adding precision.
+- [ ] **Complete user outcome** — decomposed from the intake's user-outcome prose into a single sentence that names the user, the gesture, and the observable result with concrete specificity.
+- [ ] **Complete in-scope list** — every file, component, label value, data-flow touch, and UX behaviour described in the intake is enumerated at implementation precision. No detail lives only in intake.
+- [ ] **Self-contained acceptance checks** — an implementer-reading-ACs-only can derive every implementation task. Vague ACs ("fix the bug") or intake-level restatements ("add ticker search") fail — only implementation-precision ACs pass ("the Ticker input renders <TickerSearch /> with accessToken prop", "the Name field has disabled={true}").
 - [ ] **Correct touchpoints** — every file that will be edited is listed. If the intake mentions a behaviour in a specific component, that component MUST appear in planned touchpoints.
-- [ ] **Explicit out-of-scope** — every adjacent concern from the intake that is NOT covered by this slice is listed, with the slice that owns it named. Prevents scope creep and makes deferred scope visible.
-
-The intersection of the RTM (need → AC) and this completeness check (AC → every implementation detail) forms the full fidelity chain: a need cannot drop silently between intake and spec, and a detail cannot drop silently within the spec itself.
+- [ ] **Explicit out-of-scope** — every adjacent concern from the intake that is NOT covered by this slice is listed, with the slice that owns it named.
 
 3. Initialise `status.json` with `state: planned` and the slice's `track` id.
 4. Leave `journal.md` and `proof.md` as empty templates — they get filled in during implementation.
