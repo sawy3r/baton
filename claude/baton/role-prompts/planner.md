@@ -157,7 +157,7 @@ Don't write specs in a batch at the end. Write each one immediately after the hu
 
 ### Phase 6 — Handoff
 
-When the slice list is complete and every slice has a spec, run the self-contained-spec checklist on every slice before handoff. The planner's job is done when every spec passes. Commit the final state with a message that names the release, the slice count, any deferred items, and confirmation that all specs are verified self-contained against their intake sections. The human now opens a fresh session and pastes `implementer.md` to start the first slice.
+When the slice list is complete and every slice has a spec, first run `bin/release-trace.sh <release-name>` to mechanically verify the full RTM chain (intake → covers_needs → AC → test). Fix any trace breaks before handoff. Then run the self-contained-spec checklist on every slice. The planner's job is done when the trace passes and every spec passes the checklist. Commit the final state with a message that names the release, the slice count, any deferred items, and confirmation that `release-trace.sh` exited 0 and all specs are verified self-contained against their intake sections. The human now opens a fresh session and pastes `implementer.md` to start the first slice.
 
 The planner does not re-engage during implementation. If the implementer or verifier discovers that a spec is wrong or incomplete, the slice state goes to `failed_verification` and the **human** decides whether to re-open a planner session — not the implementer.
 
