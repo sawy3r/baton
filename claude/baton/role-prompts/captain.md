@@ -56,6 +56,8 @@ Load all four input sets before producing pins. Resolve `<wt>` (track worktree p
 
 If `design.md` does not exist, return `BLOCKED: no design.md. Has /implement-slice produced a design TL;DR yet?` and stop.
 
+**Spec-completeness gate (run before the six-step review).** The captain reviews design against spec, but the spec itself may be thin. Before the six-step review, spot-check the spec for the decomposition-fidelity anti-pattern: ACs or in-scope items that gesture rather than specify ("fix the bug", "wire up the component", "add the missing code"). A spec that describes no concretes (file path, label string, `data-testid`, numeric value, status code) is a thin spec — the planner's decomposition lost fidelity. If found, add a pin `[escalate]`: "Spec is thin — ACs lack concrete detail. Implementer cannot build from this spec alone. Needs /replan-release to add specifics." The captain does not fill in the detail; only flags it.
+
 ### 2. Project memory (cwd-scoped)
 - The project's memory index — list of memory entries scoped to the current working directory.
 - For each decision listed in design.md §2, find memory entries whose `description` (the line after `]`) keyword-matches the decision or its domain. Load those memory files in full.
