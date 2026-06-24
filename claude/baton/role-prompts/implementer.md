@@ -95,6 +95,9 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
 3. Write tests at the integration point that owns the user-facing affordance (Rule 1).
 4. Maintain `journal.md` as you go — decisions, trade-offs, anything a verifier might need context on.
 5. When you believe the slice is done:
+   - Run `bin/release-coverage.sh --slice <slice-id> --release <release-name> --worktree <worktree_path>` — every AC must have a matching test. Fix uncovered ACs before proceeding.
+   - Run `bin/release-llm-check.sh --check ac-satisfaction --slice <slice-id> --release <release-name> --worktree <worktree_path>` — confirm every AC is genuinely satisfied by the implementation. Fix gaps before proceeding.
+   - If the project has security rules in `docs/baton/architecture.json`, run `bin/release-llm-check.sh --check security-review --slice <slice-id> --release <release-name> --worktree <worktree_path>` — address any findings.
    - Run all relevant test commands and capture output.
    - Run `$HOME/.claude/bin/release-verify.sh <slice-id>` and address any failures.
    - Generate `proof.md` from live repo state (see Rule 6 template).
