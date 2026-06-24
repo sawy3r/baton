@@ -193,6 +193,7 @@ Do not re-copy a file already present at the destination. If multiple screenshot
 - **Architecture**: for any new behaviour, surface: where does this fit in the existing component hierarchy? Does it duplicate existing functionality? Does it introduce a new pattern? Does it belong in a shared package or stay app-local?
 - **Security / privacy**: for any data capture or API change, surface: is this PII? Does APP 3 (data minimisation) apply? Does it need encryption at rest? Auth gating? Rate limiting? Input validation?
 - **Edge cases**: for every happy path the human describes, ask: what happens on network failure? Invalid input? Expired session? Concurrent edits? Empty data? Extremely long values? Browser back button?
+- **Maintainability**: for every change, ask: will a new team member understand this code in 12 months? Is the design self-documenting? What's the extension surface — if requirements change, which parts stay stable? Is there a clear separation of concerns, or does this change put unrelated logic in the same file/function? LLMs optimise for "works now"; you must optimise for "still works after 17 subsequent changes by different agents and humans."
 
 The human may accept, reject, or defer any of these. That's fine — the point is that they were surfaced, not that they were adopted. Unexamined best-practice gaps become silent deferrals that the verifier will surface as spec defects.
 

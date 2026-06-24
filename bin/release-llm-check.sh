@@ -45,7 +45,7 @@ done
 
 if [[ -z "$CHECK_TYPE" || -z "$SLICE_ID" || -z "$RELEASE_NAME" ]]; then
   echo "usage: release-llm-check.sh --check <type> --slice <id> --release <name>" >&2
-  echo "check types: ac-satisfaction, spec-ambiguity, design-review, security-review, semantic-coverage" >&2
+  echo "check types: ac-satisfaction, spec-ambiguity, design-review, security-review, semantic-coverage, maintainability-review" >&2
   exit 2
 fi
 
@@ -200,6 +200,45 @@ Return valid JSON:
 
 A verdict of FAIL means at least one design violation was found."
     ;;
+  maintainability-review)
+    PROMPT="You are reviewing code for long-term maintainability — can a new team member understand and modify this code 12 months from now?
+
+## SPECIFICATION
+$SPEC_CONTENT
+
+## CHANGED FILES
+$CHANGED_FILES
+
+## DIFF (first 5000 lines)
+$DIFF_CONTENT
+
+## TASK
+Review the diff for maintainability anti-patterns:
+1. Naming: are functions, variables, types named clearly and consistently? Does the name convey intent?
+2. Separation of concerns: does each function/module have a single responsibility? Is unrelated logic mixed together?
+3. Self-documenting design: can you understand what the code does without comments? Are complex algorithms explained?
+4. Extension surface: if requirements change, can this be extended without rewriting? Is there a clear interface/contract?
+5. Duplication: is any logic duplicated that should be extracted? Copy-paste code that differs by one parameter?
+6. God objects/functions: does one entity do too many things? Is a component both rendering UI AND managing state AND making API calls AND handling validation?
+7. Test clarity: are test names descriptive? Do assertions fail with useful messages? Can you understand the test intent without reading the implementation?
+
+## OUTPUT FORMAT
+Return valid JSON:
+{
+  \"verdict\": \"PASS\" or \"FAIL\",
+  \"findings\": [
+    {
+      \"severity\": \"blocker\" | \"major\" | \"minor\",
+      \"file\": \"<path>:<line>\",
+      \"category\": \"naming\" | \"separation_of_concerns\" | \"self_documenting\" | \"extension_surface\" | \"duplication\" | \"god_object\" | \"test_clarity\",
+      \"issue\": \"<what is hard to understand or maintain>\",
+      \"recommendation\": \"<how to improve>\"
+    }
+  ]
+}
+
+A verdict of FAIL means at least one blocker or major maintainability issue was found."
+    ;;
   semantic-coverage)
     PROMPT="You are verifying that tests actually exercise the behaviour the specification requires, not just name-match.
 
@@ -276,7 +315,7 @@ A verdict of FAIL means at least one security vulnerability was found."
     ;;
   *)
     echo "release-llm-check: unknown check type '$CHECK_TYPE'" >&2
-    echo "valid types: ac-satisfaction, spec-ambiguity, design-review, semantic-coverage, security-review" >&2
+    echo "valid types: ac-satisfaction, spec-ambiguity, design-review, semantic-coverage, security-review, maintainability-review" >&2
     exit 2
     ;;
 esac

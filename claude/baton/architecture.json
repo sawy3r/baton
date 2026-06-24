@@ -156,7 +156,31 @@
       "pattern": "text-(red|green|blue|yellow|violet|orange)-\\d{3}(?!.*aria-)(?!.*sr-only)(?!.*role=)",
       "files": "apps/**/*.{tsx,jsx}",
       "severity": "warning",
-      "note": "Colour-only status indicator. WCAG 1.4.1: ensure an additional indicator (icon, text, sr-only label) accompanies the colour. Add a screen-reader-only label or an icon alongside the colour."
+      "note": "Colour-only status indicator. WCAG 1.4.1: ensure an additional indicator (icon, text, sr-only label) accompanies the colour."
+    },
+    {
+      "id": "no-god-function",
+      "description": "No function shall exceed 80 lines",
+      "check": "external",
+      "command": "echo 'Install gocyclo: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest'; gocyclo -over 15 {files} 2>/dev/null || echo 'gocyclo not installed'",
+      "severity": "warning",
+      "note": "Large functions are hard to understand, test, and modify. Decompose into smaller single-responsibility functions. gocyclo -over 15 flags functions with cyclomatic complexity > 15."
+    },
+    {
+      "id": "no-god-function-ts",
+      "description": "No function shall exceed 80 lines in TypeScript",
+      "check": "external",
+      "command": "npx eslint --rule 'max-lines-per-function: [warn, {max: 80, skipBlankLines: true, skipComments: true}]' {files} 2>/dev/null || echo 'eslint not configured'",
+      "severity": "warning",
+      "note": "Complex components should be decomposed. Consider extracting hooks, sub-components, or utility functions."
+    },
+    {
+      "id": "maintainability-review",
+      "description": "Code shall be understandable to a new team member 12 months from now",
+      "check": "external",
+      "command": "echo 'LLM check: run release-llm-check.sh --check maintainability-review'",
+      "severity": "warning",
+      "note": "Run the maintainability LLM check to assess naming clarity, separation of concerns, self-documenting design, and extension surface."
     }
   ]
 }
