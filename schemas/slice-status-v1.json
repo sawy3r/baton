@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baton.sawy3r.net/schemas/slice-status-v1.json",
+  "title": "Baton Slice Status",
+  "description": "Machine-readable state for one Baton release-mode slice.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["slice_id", "release", "state", "verification"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://baton.sawy3r.net/schemas/slice-status-v1.json"
+    },
+    "slice_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "release": {
+      "type": "string",
+      "minLength": 1
+    },
+    "track": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "design_review",
+        "in_progress",
+        "implemented",
+        "verified",
+        "failed_verification",
+        "blocked",
+        "deferred",
+        "shipped"
+      ]
+    },
+    "owner": {
+      "type": "string"
+    },
+    "last_updated_by": {
+      "type": "string"
+    },
+    "last_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "start_commit": {
+      "type": ["string", "null"]
+    },
+    "spec_path": {
+      "type": "string"
+    },
+    "proof_path": {
+      "type": "string"
+    },
+    "journal_path": {
+      "type": "string"
+    },
+    "planned_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "actual_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "test_commands": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "reachability_artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "open_deferrals": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["result"],
+      "properties": {
+        "result": {
+          "type": ["string", "null"],
+          "enum": ["pending", "pass", "fail", "blocked", null]
+        },
+        "verifier_session_id": {
+          "type": ["string", "null"]
+        },
+        "verifier_verdict_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "verifier_was_fresh_context": {
+          "type": ["boolean", "null"]
+        },
+        "violations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "release_base": {
+      "type": "string"
+    },
+    "need_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "release_benefit": {
+      "type": "string"
+    },
+    "org_objective": {
+      "type": "string"
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "design_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  }
+}
