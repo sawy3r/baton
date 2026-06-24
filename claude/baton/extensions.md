@@ -66,3 +66,19 @@ Mirror the start step in `docs/baton/extensions/implementer.md` so screenshots
 - Extension files are read by whatever drives the role — a human running the slash
   commands, an automation loop, or a product that vendors these prompts — so the same
   file works across all of them.
+
+## Different setups per project
+
+Extensions live in each repo's `docs/baton/extensions/`, so every project gets its own setup,
+independently. One repo boots a Postgres + web server pair for end-to-end runs; another is a
+pure-unit library that runs `go test` with no infra; a third seeds a tenant fixture. The
+universal role prompts are identical everywhere — only the per-project extension files differ,
+and nothing is shared or global, so changing one project's setup never affects another.
+
+A tool that **vendors** Baton into a binary (rather than reading these files directly) can take
+this further: by honouring a project's `docs/baton/` over its built-in copy, it lets each
+project pin its own Baton version and prompt set. Such a tool **must version-guard** the
+override — Baton's top-level `VERSION` file + semver discipline (`RELEASING.md`) exist precisely
+for this. If the binary requires a newer Baton than the project provides (or a breaking-major
+mismatch), it should fail loudly with concrete resolution steps rather than run against a
+contract it doesn't satisfy. See your tool's docs.
