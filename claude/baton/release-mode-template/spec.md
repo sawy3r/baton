@@ -6,6 +6,12 @@ description: 'The contract the implementer is held to and the verifier checks ag
 # Slice: `<slice-id>`
 
 > Copy this file to `docs/release/<release-name>/<slice-id>/spec.md`. Fill in every section. Empty placeholders are NOT acceptable — explicit "N/A" is.
+> 
+> **This spec is the implementer's sole contract.** Every implementation-relevant
+> detail from the intake must be replicated here. An implementer who reads only
+> this spec (never `intake.md`) must have everything needed to build the slice
+> correctly. "See intake.md" is never a valid reference — the spec owns its
+> detail completely.
 
 ## User outcome
 

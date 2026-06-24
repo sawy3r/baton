@@ -132,6 +132,19 @@ Once the slice list and track grouping are agreed, for each slice:
 
 1. Create `docs/release/<release-name>/<slice-id>/` (copy the template folder).
 2. Fill in `spec.md` from the conversation. Every section is mandatory. Acceptance checks must be falsifiable from artefacts the verifier can read.
+
+**CRITICAL: The spec must be self-contained and complete.** Decomposition is not summarisation — it is distributing every implementation-relevant detail from the intake into the slice that owns it. The implementer reads only the spec; the verifier grades against only the spec. Neither should ever need to open `intake.md` to understand what to build or verify. A slice whose spec merely gestures at intake detail ("see intake.md", "fix the windfall bug", "add the missing wiring") is a decomposition failure — the detail must be in the spec.
+
+Before the human can approve a spec, verify it against this checklist:
+
+- [ ] **Complete user outcome** — replicates every user-visible detail from the intake's "What the human wants" section for this slice. Names the user, the gesture, and the observable result with the same specificity as the intake.
+- [ ] **Complete in-scope list** — every file, component, label change, data-flow touch, and UX behaviour described in the intake is enumerated. No detail lives only in intake.
+- [ ] **Self-contained acceptance checks** — an implementer-reading-ACs-only can derive every implementation task. Vague ACs ("fix the bug") fail this check — only specific ACs ("the field label reads 'Expected return (%)' not 'Capital growth (% p.a.)'") pass.
+- [ ] **Correct touchpoints** — every file that will be edited is listed. If the intake mentions a behaviour in a specific component, that component MUST appear in planned touchpoints.
+- [ ] **Explicit out-of-scope** — every adjacent concern from the intake that is NOT covered by this slice is listed, with the slice that owns it named. Prevents scope creep and makes deferred scope visible.
+
+The intersection of the RTM (need → AC) and this completeness check (AC → every implementation detail) forms the full fidelity chain: a need cannot drop silently between intake and spec, and a detail cannot drop silently within the spec itself.
+
 3. Initialise `status.json` with `state: planned` and the slice's `track` id.
 4. Leave `journal.md` and `proof.md` as empty templates — they get filled in during implementation.
 
@@ -145,7 +158,7 @@ Don't write specs in a batch at the end. Write each one immediately after the hu
 
 ### Phase 6 — Handoff
 
-When the slice list is complete and every slice has a spec, the planner's job is done. Commit the final state with a message that names the release, the slice count, and any deferred items. The human now opens a fresh session and pastes `implementer.md` to start the first slice.
+When the slice list is complete and every slice has a spec, run the self-contained-spec checklist on every slice before handoff. The planner's job is done when every spec passes. Commit the final state with a message that names the release, the slice count, any deferred items, and confirmation that all specs are verified self-contained against their intake sections. The human now opens a fresh session and pastes `implementer.md` to start the first slice.
 
 The planner does not re-engage during implementation. If the implementer or verifier discovers that a spec is wrong or incomplete, the slice state goes to `failed_verification` and the **human** decides whether to re-open a planner session — not the implementer.
 
