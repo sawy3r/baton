@@ -1,5 +1,5 @@
 {
-  "$schema": "https://baton.sawy3r.net/schemas/architecture-rules-v1.json",
+  "$schema": "https://",
   "_description": "Project-level architectural rules. Each rule is a named check run by release-audit-design.sh against the slice's diff. Rules can be suppressed per-release via architecture-overrides.json. Check types: grep (regex), touchpoints (planned-file audit), diff-size (growth limits), external (SAST/lint tool invocation).",
   "canonical_docs": {
     "_description": "Canonical architectural source-of-truth documents. The planner consults these during discovery. The architecture audit checks conformance. Declare paths relative to the repo root. Empty arrays = not yet defined — the planner will flag this as a gap.",

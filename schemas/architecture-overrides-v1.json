@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baton.sawy3r.net/schemas/architecture-overrides-v1.json",
+  "title": "Baton Architecture Overrides",
+  "description": "Per-release overrides for architecture rules. Suppress or amend rules for a specific release.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://baton.sawy3r.net/schemas/architecture-overrides-v1.json"
+    },
+    "suppress_rules": {
+      "type": "array",
+      "description": "Rule IDs to suppress for this release. The rule will not be checked against any slice in this release.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "amend_rules": {
+      "type": "object",
+      "description": "Per-rule amendments. Key is the rule ID, value is fields to override.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "severity": { "type": "string", "enum": ["error", "warning"] },
+          "max_lines_added": { "type": "integer" },
+          "max_file_lines": { "type": "integer" },
+          "pattern": { "type": "string" },
+          "files": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why these overrides are in effect for this release"
+    }
+  }
+}
