@@ -82,6 +82,20 @@ HEX_PATTERN='#[0-9a-fA-F]{3,8}'
 RGB_PATTERN='rgba?\s*\([^)]+\)'
 HSL_PATTERN='hsla?\s*\([^)]+\)'
 
+# ── architectural rule config ──
+ARCH_CONFIG="docs/baton/architecture.json"
+ARCH_RULES=""
+ARCH_OVERRIDES=""
+ARCH_HAS_RULES=false
+
+if [[ -n "$RELEASE_NAME" && -f "${RELEASE_DIR}/${RELEASE_NAME}/architecture-overrides.json" ]]; then
+  ARCH_OVERRIDES="${RELEASE_DIR}/${RELEASE_NAME}/architecture-overrides.json"
+fi
+if [[ -f "$ARCH_CONFIG" ]]; then
+  ARCH_RULES="$ARCH_CONFIG"
+  ARCH_HAS_RULES=true
+fi
+
 COLOUR_SCAN=$(cat <<'PYEOF'
 import sys, re, json, os
 
@@ -235,28 +249,208 @@ bold "DESIGN CONFORMANCE AUDIT"
 echo
 gray "UI-bearing: $PROJECT_UI_BEARING  files scanned: $files_scanned"
 
-if [[ "$verdict" == "PASS" ]]; then
-    green "PASS — no hardcoded colour violations"
+# ── Architecture check (separate pass) ──
+ARCH_VIOLATIONS=0
+ARCH_FAIL=false
+if $ARCH_HAS_RULES; then
+  OVERRIDES_FLAG=""
+  [[ -n "$ARCH_OVERRIDES" ]] && OVERRIDES_FLAG="$ARCH_OVERRIDES"
+  arch_result=$(python3 -c "
+import sys, json, os, re, subprocess
+
+arch_config_path = sys.argv[1]
+overrides_path = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else ''
+worktree = sys.argv[3] if len(sys.argv) > 3 else '.'
+
+with open(arch_config_path) as f:
+    config = json.load(f)
+
+rules = config.get('rules', [])
+# Apply overrides: suppress rules by id
+suppressed = set()
+if overrides_path and os.path.exists(overrides_path):
+    with open(overrides_path) as f:
+        ov = json.load(f)
+    suppressed.update(ov.get('suppress_rules', []))
+
+try:
+    output = subprocess.check_output(
+        f'git -C {worktree} diff --name-only', shell=True, text=True, cwd=worktree
+    )
+    changed = [f.strip() for f in output.splitlines() if f.strip()]
+except:
+    changed = []
+
+violations = []
+for rule in rules:
+    rid = rule.get('id', '')
+    if rid in suppressed:
+        continue
+    check = rule.get('check', 'grep')
+    pattern = rule.get('pattern', '')
+    file_pat = rule.get('files', '**')
+    severity = rule.get('severity', 'error')
+    desc = rule.get('description', rid)
+    note = rule.get('note', '')
+
+    if not pattern:
+        continue
+
+    # Filter changed files by the rule's file pattern (globby)
+    import fnmatch
+    matched_files = []
+    for cf in changed:
+        # Match against glob pattern(s)
+        for fp in file_pat.split(','):
+            fp = fp.strip()
+            if fnmatch.fnmatch(cf, fp):
+                matched_files.append(cf)
+                break
+
+    if not matched_files:
+        continue
+
+    # For grep checks: search pattern in matched files
+    if check == 'grep':
+        pat = re.compile(pattern)
+        for mf in matched_files:
+            path = os.path.join(worktree, mf) if worktree != '.' else mf
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path) as fh:
+                    for li, line in enumerate(fh, 1):
+                        if pat.search(line):
+                            violations.append({
+                                'rule': rid,
+                                'file': mf,
+                                'line': li,
+                                'severity': severity,
+                                'msg': f\"{desc} — {line.strip()[:100]}\",
+                                'note': note,
+                            })
+            except:
+                pass
+
+    # touchpoints check: every changed file must be in planned touchpoints
+    elif check == 'touchpoints':
+        touchpoint_source = rule.get('touchpoint_source', 'spec')
+        # Read planned files from spec.md or status.json
+        planned = set()
+        slice_id = rule.get('slice_id', '')
+        if slice_id:
+            status_path = os.path.join(worktree, 'docs/release', release_name, slice_id, 'status.json') if release_name else ''
+            if status_path and os.path.exists(status_path):
+                with open(status_path) as f:
+                    st = json.load(f)
+                for pf in st.get('planned_files', []):
+                    planned.add(pf)
+                for pf in st.get('actual_files', []):
+                    planned.add(pf)
+        for mf in matched_files:
+            # Skip docs, screenshots, config files
+            if mf.startswith(('docs/', 'screenshots/', '.baton/', '.env')):
+                continue
+            if mf not in planned:
+                violations.append({
+                    'rule': rid,
+                    'file': mf,
+                    'line': 0,
+                    'severity': severity,
+                    'msg': f\"{desc} — file '{mf}' not in planned touchpoints\",
+                    'note': note or 'If intentional, add to spec.md planned touchpoints or declare in proof.md divergence',
+                })
+
+    # diff-size check: file growth in lines
+    elif check == 'diff-size':
+        max_added = rule.get('max_lines_added', 200)
+        max_file = rule.get('max_file_lines', 500)
+        for mf in matched_files:
+            # Get diff stat for this file
+            try:
+                stat = subprocess.check_output(
+                    f'git -C {worktree} diff --numstat HEAD^ -- {mf}',
+                    shell=True, text=True, cwd=worktree
+                )
+                parts = stat.strip().split()
+                if len(parts) >= 2:
+                    added = int(parts[0]) if parts[0].isdigit() else 0
+                    if added > max_added:
+                        violations.append({
+                            'rule': rid,
+                            'file': mf,
+                            'line': 0,
+                            'severity': severity,
+                            'msg': f\"{desc} — {mf} grew by {added} lines (max {max_added})\",
+                            'note': note or 'Large additions may indicate monolithic code dumps — consider splitting',
+                        })
+            except:
+                pass
+            # Check absolute file size
+            path = os.path.join(worktree, mf) if worktree != '.' else mf
+            if os.path.exists(path):
+                try:
+                    with open(path) as fh:
+                        line_count = sum(1 for _ in fh)
+                    if line_count > max_file:
+                        violations.append({
+                            'rule': rid,
+                            'file': mf,
+                            'line': 0,
+                            'severity': severity,
+                            'msg': f\"{desc} — {mf} is {line_count} lines (max {max_file})\",
+                            'note': note or 'Large files should be decomposed',
+                        })
+                except:
+                    pass
+
+summary = {
+    'rules_checked': len([r for r in rules if r['id'] not in suppressed]),
+    'rules_suppressed': len(suppressed),
+    'violations': len(violations),
+    'verdict': 'PASS' if not violations else 'FAIL',
+}
+
+print(json.dumps({'summary': summary, 'violations': violations}))
+" "$ARCH_RULES" "$ARCH_OVERRIDES" "$WORKTREE" 2>&1)
+
+  arch_summary=$(echo "$arch_result" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['summary']))")
+  arch_violations_json=$(echo "$arch_result" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['violations']))")
+  arch_rules_checked=$(echo "$arch_summary" | jq -r '.rules_checked')
+  arch_suppressed=$(echo "$arch_summary" | jq -r '.rules_suppressed')
+  ARCH_VIOLATIONS=$(echo "$arch_summary" | jq -r '.violations')
+  arch_verdict=$(echo "$arch_summary" | jq -r '.verdict')
+
+  gray "architecture rules checked: $arch_rules_checked  suppressed: $arch_suppressed  violations: $ARCH_VIOLATIONS"
+
+  if [[ "$arch_verdict" != "PASS" ]]; then
+    ARCH_FAIL=true
+    echo
+    red "$ARCH_VIOLATIONS architecture violation(s)"
+    echo
+    i=1
+    while IFS=$'\t' read -r rule file line msg note; do
+      printf "  %d. [%s] " "$i" "$rule"
+      red "$msg"
+      gray "    $file:$line"
+      [[ -n "$note" ]] && yellow "    note: $note"
+      ((i++))
+    done < <(echo "$arch_violations_json" | jq -r '.[] | "\(.rule)\t\(.file)\t\(.line)\t\(.msg)\t\(.note // "")"')
+  fi
+fi
+
+if [[ "$verdict" == "PASS" ]] && ! $ARCH_FAIL; then
+    green "PASS — no design or architecture violations"
     echo
     exit 0
 fi
 
+total_violations=$((violation_count + ARCH_VIOLATIONS))
 echo
-red "$violation_count hardcoded colour violation(s)"
-echo
-
-i=1
-while IFS=$'\t' read -r file line value msg; do
-    printf "  %d. " "$i"
-    red "$msg"
-    gray "    $file:$line — $value"
-    ((i++))
-done < <(echo "$violations_json" | jq -r '.[] | "\(.file)\t\(.line)\t\(.value)\t\(.msg)"')
-
-echo
-red "DESIGN NOT CONFORMANT"
+red "NOT CONFORMANT — $total_violations total violation(s)"
 echo
 echo "Replace hardcoded colours with design tokens or CSS variables."
+echo "Fix architecture violations per the rules in $ARCH_CONFIG."
 if [[ -n "$SLICE_ID" ]]; then
     echo "To accept a violation, add it to $ALLOWLIST with rationale."
     echo "Or declare in status.json open_deferrals with human/captain acknowledgement."

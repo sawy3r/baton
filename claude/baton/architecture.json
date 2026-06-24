@@ -1,0 +1,74 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/architecture-rules-v1.json",
+  "_description": "Project-level architectural rules. Each rule is a named check run by release-audit-design.sh against the slice's diff. Rules can be suppressed per-release via architecture-overrides.json.",
+  "rules": [
+    {
+      "id": "no-touchpoints-outside-plan",
+      "description": "Files changed must be declared in spec.md planned touchpoints",
+      "check": "touchpoints",
+      "severity": "error",
+      "note": "If intentional, add to spec.md planned touchpoints or declare in proof.md divergence"
+    },
+    {
+      "id": "file-size-growth-limit",
+      "description": "No single file shall grow by more than 200 lines in one slice",
+      "check": "diff-size",
+      "max_lines_added": 200,
+      "severity": "warning",
+      "note": "Large additions may indicate monolithic code dumps — split into smaller composable units"
+    },
+    {
+      "id": "file-absolute-size-limit",
+      "description": "No file shall exceed 500 lines",
+      "check": "diff-size",
+      "max_file_lines": 500,
+      "severity": "warning",
+      "note": "Files over 500 lines should be decomposed"
+    },
+    {
+      "id": "no-ts-financial-math",
+      "description": "Financial calculations shall use Go/shopspring-decimal, not TypeScript Decimal.js",
+      "check": "grep",
+      "pattern": "import.*decimal\\.js|require.*decimal\\.js|new Decimal\\(|Decimal\\.set\\(",
+      "files": "apps/**/*.{ts,tsx}",
+      "severity": "error",
+      "note": "All financial math must happen in Go using shopspring/decimal. TypeScript displays results only."
+    },
+    {
+      "id": "go-must-use-decimal-for-money",
+      "description": "Financial values in Go shall use decimal.Decimal, not float64 for arithmetic",
+      "check": "grep",
+      "pattern": "InexactFloat64\\(\\)\\)|float64\\(.*decimal|math\\.Pow",
+      "files": "go/pkg/tools/**/*.go",
+      "severity": "warning",
+      "note": "float64 is acceptable for loop counters, array indices, and JSON serialization only. Verify context."
+    },
+    {
+      "id": "no-new-deps-without-adr",
+      "description": "New dependencies shall be accompanied by an ADR or justified in proof.md",
+      "check": "grep",
+      "pattern": "^\\+.*\"[a-z0-9@/-]+\":\\s*\"[^^]|^\\+.*import.*\"[^\"]+\"$",
+      "files": "go/go.mod,go/go.sum,package.json,apps/**/package.json,packages/**/package.json",
+      "severity": "warning",
+      "note": "New import or dependency detected. Confirm it is intentional and justified in the proof bundle."
+    },
+    {
+      "id": "no-anonymous-auth-bypass",
+      "description": "API handlers shall use auth middleware — no unauthenticated routes outside /health",
+      "check": "grep",
+      "pattern": "app\\.(Get|Post|Put|Delete|Patch)\\(|r\\.(Get|Post|Put|Delete|Patch)\\(",
+      "files": "go/cmd/api/**/*.go",
+      "severity": "error",
+      "note": "New route detected. Verify it uses the appropriate auth middleware (JWTAuth or AnonAuth)."
+    },
+    {
+      "id": "no-hardcoded-secrets",
+      "description": "No secrets, keys, or credentials in source code",
+      "check": "grep",
+      "pattern": "(api_key|apikey|secret|password|token|credential)\\s*[:=]\\s*['\"][^'\"]{8,}|-----BEGIN\\s+(RSA|EC|DSA|OPENSSH)\\s+PRIVATE\\s+KEY-----",
+      "files": "**/*.{ts,tsx,go,js,json,yml,yaml}",
+      "severity": "error",
+      "note": "Secrets detected in diff. Use environment variables or a secrets manager."
+    }
+  ]
+}
