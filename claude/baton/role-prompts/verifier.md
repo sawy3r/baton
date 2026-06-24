@@ -138,6 +138,14 @@ Read `proof.md` "Reachability artefact" section.
 - Artefact is "tests pass" with no user-gesture description: FAIL — Rule 1 explicitly rejects this.
 - Artefact is a Playwright trace that doesn't include the named user gesture: FAIL.
 
+### Gate 4b — Semantic test coverage (LLM, optional when LLM provider configured)
+
+Run `bin/release-llm-check.sh --check semantic-coverage --slice <slice-id> --release <release-name> --worktree <worktree_path>`.
+
+- If the LLM provider is not configured, this gate passes automatically (non-blocking).
+- If the check returns FAIL: at least one test does not genuinely verify its AC. Add the findings to the FAIL verdict.
+- Tests that are tautologies (always-pass assertions) or exercise different behaviour than the AC describes are NOT genuine coverage.
+
 ### Gate 5 — No silent deferrals or placeholder logic
 
 Grep the changed files for `TODO`, `FIXME`, `deferred`, `later`, `placeholder`, `XXX`, `HACK`.
