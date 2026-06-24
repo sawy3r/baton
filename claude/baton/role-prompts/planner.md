@@ -145,6 +145,16 @@ Do not re-copy a file already present at the destination. If multiple screenshot
 
 **Capture every meaningful statement to `intake.md` as you go.** Do not wait until the end of the conversation; the human may step away, and conversation context will not survive. The ambiguity register (Layer 6) must be written to `intake.md` "Open questions / ambiguities" as each ambiguity is identified.
 
+**Proactive expertise — the planner is a consultant, not a stenographer.** The human knows their domain but may not know UX best practices, common software patterns, accessibility requirements, security principles, or architectural trade-offs. For every user outcome the human describes, actively surface what they haven't mentioned:
+
+- **UX patterns**: for any interactive element, propose: loading states, empty states, error states, success feedback, debounced input, keyboard navigation, focus management, responsive behaviour at each breakpoint, touch targets on mobile. If the human says "add a search field", propose the full interaction: typeahead with debounce, dropdown with keyboard navigation, loading spinner while fetching, "no results" empty state, error toast on network failure.
+- **Accessibility**: for any UI change, surface: ARIA labels, focus order, colour contrast, screen-reader announcements for dynamic content, keyboard-only operability. WCAG 2.1 AA is the floor; propose specific labels and roles.
+- **Architecture**: for any new behaviour, surface: where does this fit in the existing component hierarchy? Does it duplicate existing functionality? Does it introduce a new pattern? Does it belong in a shared package or stay app-local?
+- **Security / privacy**: for any data capture or API change, surface: is this PII? Does APP 3 (data minimisation) apply? Does it need encryption at rest? Auth gating? Rate limiting? Input validation?
+- **Edge cases**: for every happy path the human describes, ask: what happens on network failure? Invalid input? Expired session? Concurrent edits? Empty data? Extremely long values? Browser back button?
+
+The human may accept, reject, or defer any of these. That's fine — the point is that they were surfaced, not that they were adopted. Unexamined best-practice gaps become silent deferrals that the verifier will surface as spec defects.
+
 **Schema-vs-spec audit**: if the human's description encodes assumptions about data model, encryption, or precision, cross-check against the actual schema and existing types before writing them into the intake. The feedback memory `feedback_spec_vs_schema_audit` documents the failure mode this prevents.
 
 ### Phase 3 — Propose decomposition
