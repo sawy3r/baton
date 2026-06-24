@@ -63,12 +63,13 @@ If `spec.md` is missing or ambiguous, stop and ask the human. Do not infer scope
 
 ## Worktree cleanliness gate (Gate -1)
 
-A dirty worktree at session start means the last session didn't land its work. **Start from a pristine worktree** — dirty bytes at startup are silent-deferral risk.
+A dirty worktree at session start means the last session didn't land its work, or files shifted from a `release-wt` forward-merge. **Start from a pristine worktree** — dirty bytes at startup are silent-deferral risk.
 
 1. `git -C <worktree_path> status --porcelain`. If empty, pass.
-2. If only untracked files: `git clean -fd`, re-check, pass if clean.
-3. If only `journal.md` is dirty: commit it, push, re-check, pass if clean.
-4. Any other combination: **PAGE** with the full `git status --porcelain` output — do not stash, reset, or clean autonomously. Dirty files may be in-progress work from a prior session.
+2. If only `design.md` is staged and `status.json` shows `design_review`: phantom state — a prior session staged the design but didn't commit it. Recover (commit + push), then proceed.
+3. If only untracked files: `git clean -fd`, re-check, pass if clean.
+4. If only `journal.md` is dirty: commit it, push, re-check, pass if clean.
+5. Any other combination: **PAGE** with the full `git status --porcelain` output — do not stash, reset, or clean autonomously. Dirty files may be in-progress work from a prior session.
 
 ## Definition of Ready (Rule 8)
 
