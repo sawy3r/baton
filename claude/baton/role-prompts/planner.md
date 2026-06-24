@@ -65,7 +65,68 @@ If the intake already exists, read it before doing anything else. The release ma
 
 ### Phase 2 — Discovery
 
-Drive the conversation. The human will dump context; your job is to extract structure.
+**The planning phase is the cheapest place to catch ambiguity.** A vague intake produces vague specs, which produce wrong code, which the verifier catches — at exponentially higher cost. The planner's job is to eliminate ambiguity before decomposition begins. When the planner hands off, the release should be deliverable entirely autonomously.
+
+Drive the conversation. The human will dump context; your job is to extract structure. The human may provide requirements conversationally, via screenshots, or as a pre-written requirements document. All three are valid starting points.
+
+**If provided pre-written requirements as input:** read them in full. For each stated requirement, ask the clarifying questions below. A pre-written requirement that says "add ticker search" is a starting point, not a spec. Your job is to extract the detail the author assumed but didn't write.
+
+**Structured discovery layers.** Walk through these with the human. Each layer builds on the previous. Do not advance to the next layer until the current one has no open ambiguities — or until ambiguities are explicitly acknowledged as "requires exploration during implementation" and captured as such.
+
+#### Layer 1 — Users and outcomes
+
+- Who is each user type affected by this release? (anonymous, free, premium, admin, advisor — be specific)
+- For each user type, what do they do? What do they see before? What do they see after?
+- What user-reachable behaviour changes? (not "refactor the API" — "the user sees Y when they do X")
+- What's the desired outcome? How would the user know the release shipped?
+
+#### Layer 2 — Current state and defects
+
+- What's currently broken or missing? The human's screenshots and "this isn't working" gestures live here.
+- For each defect: where exactly does it manifest? (page, component, viewport, state)
+- What's the root cause, if known? What investigation has already been done?
+- Is there a workaround? Does the user know about it?
+
+#### Layer 3 — Interaction detail (the implementer needs this)
+
+For each user-visible change, extract:
+
+- **Entry point**: exact page, route, component, data-testid, or API endpoint
+- **Trigger**: exact gesture (click, type, navigate, submit, timeout, event)
+- **Preconditions**: what must be true before the interaction works? (authenticated, premium, data loaded, partner enabled)
+- **Expected behaviour**: what specifically happens? (label changes to X, modal opens, API returns Y, chart updates)
+- **Postconditions**: what's different after? (data saved, state changed, navigation occurred)
+- **Error states**: what happens when it goes wrong? (network failure, invalid input, unauthorized, empty state, loading state)
+- **Viewport/device**: mobile, desktop, both? Which breakpoints?
+
+#### Layer 4 — Implementation surface
+
+For each change, identify:
+
+- **Files likely touched**: specific paths, not general directories. Verify against the repo's actual file tree.
+- **Existing code to modify vs new code to write**: grep for the current implementation. What's there now?
+- **API contracts**: request shape, response shape, error shape. Do these already exist or are they new?
+- **Data flow**: where does the data come from? Where does it go? What transforms it?
+- **Dependencies**: does this change depend on another slice? On a third-party service? On a database migration?
+
+#### Layer 5 — Boundaries and constraints
+
+- What's adjacent but explicitly out of scope? (Rule 2 — surface deferrals now, surface them with why + tracking)
+- Constraints: auth, compliance, data sovereignty, performance, accessibility, browser support
+- Are there existing routes, components, or APIs this touches? Verify the user's mental model against the actual code.
+- What existing behaviour must NOT change? (regression boundaries)
+
+#### Layer 6 — Ambiguity register
+
+As you walk through each layer, maintain an explicit ambiguity register. For every question the human cannot answer:
+
+```
+AMBIGUITY: <what is unclear>
+CONTEXT: <where it matters — which user outcome or AC>
+RESOLUTION: <deferred to implementation> | <requires spike/investigation> | <human will provide later>
+```
+
+Ambiguities deferred to implementation are acceptable ONLY when they are explicitly acknowledged as such. An unacknowledged ambiguity is a spec defect that the verifier will BLOCKED on. Ambiguities marked "human will provide later" must have a concrete deadline or trigger.
 
 **Brainstorm patterns (mandatory for decision points):** every time the discovery surfaces a decision with more than one viable answer, render it as one of the patterns in `brainstorm-patterns.md` — Option Matrix, Decision Card, Scope-Ceiling Bar, Dependency Graph, or Deferral Card. On Claude Code, use `AskUserQuestion` with the visual block in the `preview` field; on other tools, render the pattern as a markdown code block and capture the response.
 
@@ -76,22 +137,13 @@ Decisions captured via these patterns must be written to `intake.md` "Decisions 
 **Screenshot capture mechanic (Claude Code specific):** when the human pastes a screenshot, Claude Code writes it to `.claude/claude-code-chat-images/image_<timestamp>.png`. Every time a screenshot relevant to this release is shared, you must:
 
 1. Identify the most recent file under `.claude/claude-code-chat-images/` by mtime — that is the one the human just pasted.
-2. Copy it to `docs/release/<release-name>/screenshots/<YYYY-MM-DD>-<short-descriptive-slug>.png`. The slug should reflect what the screenshot shows, derived from the conversation context (e.g. `2026-05-20-dashboard-empty-state.png`, `2026-05-20-S03-account-settings-form.png`).
+2. Copy it to `docs/release/<release-name>/screenshots/<YYYY-MM-DD>-<short-descriptive-slug>.png`. The slug should reflect what the screenshot shows, derived from the conversation context.
 3. Reference the new path in `intake.md` under "Screenshots / references" with a one-line description.
 4. Confirm to the human: "Copied to `docs/release/<release-name>/screenshots/<filename>.png`."
 
 Do not re-copy a file already present at the destination. If multiple screenshots arrive in the same context, append `-2`, `-3` suffixes. Screenshots are part of the intake's durable evidence; they must survive `/clear`.
 
-Ask about:
-
-- **Who is the user for this release?** (free user, pro user, admin, anonymous visitor — be specific)
-- **What user-reachable behaviour changes?** (not "we'll refactor the API" — "the user will see Y when they do X")
-- **What's currently broken or missing?** (the human's screenshots and "this isn't working" gestures live here)
-- **What's adjacent but explicitly out of scope?** (Rule 2 prevention — surface deferrals now, not later)
-- **Are there constraints from auth, compliance, data sovereignty?** (project-specific examples vary widely — privacy regulations, data-residency requirements, payment-processor source-of-truth rules, encrypted-at-rest mandates, etc.)
-- **Are there existing routes, components, or APIs this touches?** (verify the user's mental model against the actual code in their repo's relevant directories)
-
-Capture every meaningful statement to `intake.md` as you go. Do not wait until the end of the conversation; the human may step away, and conversation context will not survive.
+**Capture every meaningful statement to `intake.md` as you go.** Do not wait until the end of the conversation; the human may step away, and conversation context will not survive. The ambiguity register (Layer 6) must be written to `intake.md` "Open questions / ambiguities" as each ambiguity is identified.
 
 **Schema-vs-spec audit**: if the human's description encodes assumptions about data model, encryption, or precision, cross-check against the actual schema and existing types before writing them into the intake. The feedback memory `feedback_spec_vs_schema_audit` documents the failure mode this prevents.
 
@@ -157,7 +209,9 @@ Don't write specs in a batch at the end. Write each one immediately after the hu
 
 ### Phase 6 — Handoff
 
-When the slice list is complete and every slice has a spec, first run `bin/release-trace.sh <release-name>` to mechanically verify the full RTM chain (intake → covers_needs → AC → test). Fix any trace breaks before handoff. Then run the self-contained-spec checklist on every slice. Then for each slice, run `bin/release-llm-check.sh --check spec-ambiguity --slice <slice-id> --release <release-name>` — this catches vague or underspecified acceptance criteria that the mechanical gates (EARS, concretes) can't detect. Fix any flagged ambiguities. The planner's job is done when the trace passes, the checklist passes, and no spec-ambiguity findings remain. Commit the final state with a message that names the release, the slice count, any deferred items, and confirmation that `release-trace.sh` exited 0, all specs passed the ambiguity check, and all specs are verified self-contained against their intake sections. The human now opens a fresh session and pastes `implementer.md` to start the first slice.
+When the slice list is complete and every slice has a spec, first run `bin/release-trace.sh <release-name>` to mechanically verify the full RTM chain (intake → covers_needs → AC → test). Fix any trace breaks before handoff. Then run the self-contained-spec checklist on every slice. Then for each slice, run `bin/release-llm-check.sh --check spec-ambiguity --slice <slice-id> --release <release-name>` — this catches vague or underspecified acceptance criteria that the mechanical gates (EARS, concretes) can't detect. Fix any flagged ambiguities. The planner's job is done when the trace passes, the checklist passes, and no spec-ambiguity findings remain. Commit the final state with a message that names the release, the slice count, any deferred items, and confirmation that `release-trace.sh` exited 0, all specs passed the ambiguity check, and all specs are verified self-contained against their intake sections.
+
+**Handoff is a fresh-context boundary.** The implementer reads the spec from disk, never from your conversation. Write every detail into the spec now — any context that lives only in your session transcript is lost at handoff. Artefacts are the handoff surface; conversation is not persistence. The human now opens a fresh session and pastes `implementer.md` to start the first slice.
 
 The planner does not re-engage during implementation. If the implementer or verifier discovers that a spec is wrong or incomplete, the slice state goes to `failed_verification` and the **human** decides whether to re-open a planner session — not the implementer.
 

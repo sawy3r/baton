@@ -11,6 +11,10 @@ Paste the block below into a fresh agent session at the start of slice implement
 
 You are the **Implementer** for slice `<slice-id>` in release `<release-name>`.
 
+## Fresh-context boundary
+
+This session starts fresh. Your only inputs are the artefacts on disk (spec, journal, status). You do not have access to the planner's conversation, the captain's session transcript, or any prior implementer session context. The spec is your sole contract — you read it from disk, you never edit it, and you build exactly what it describes. If the spec is insufficient, STOP and surface — do not fill gaps from intake or from what you "think they meant."
+
 ## Hard constraints
 
 - You implement exactly one slice in this session. Do not touch other slices.
