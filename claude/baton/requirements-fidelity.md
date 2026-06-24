@@ -27,21 +27,22 @@ This is the same insight the README frames around requirements failure: decades 
 
 The RTM is the enforcement mechanism. It has two axes and threads through the existing artefacts — no separate datastore.
 
-### Horizontal: need → acceptance criterion → test → proof
+### Horizontal: intake need → slice → acceptance criterion → test → proof
 
 ```
-intake.md          spec.md               spec.md             proof.md
---------           --------               --------            --------
-N-01: need  --->   - [ ] AC cites N-01    Required tests  ->  test results
-                   - [ ] AC cites N-01                        reachability
+intake.md          status.json         spec.md               spec.md             proof.md
+--------           ------------        --------               --------            --------
+N-01: need  --->   covers_needs:  -->   - [ ] AC cites N-01    Required tests  ->  test results
+                   [N-01, N-03]         - [ ] AC cites N-01                        reachability
 ```
 
 - **Needs** are enumerated with stable ids (`N-01`, `N-02`, …) in `intake.md`. The planner assigns ids at planning time; they are never reused.
+- **Slice coverage** — every slice declares which intake needs it delivers in `status.json` `covers_needs` (array of need IDs). This is the intake→slice link: a deterministic gate can verify every N-NN appears in at least one slice, and no slice claims a need it doesn't cite in its ACs.
 - **Acceptance criteria** in each `spec.md` cite the need id(s) they satisfy, inline in the AC text (e.g. "WHEN … THE SYSTEM SHALL … (N-01)").
 - **Required tests** in `spec.md` cite the acceptance check they exercise.
 - **Proof** in `proof.md` closes `AC → test → proof` (already required by Rule 6).
 
-The RTM adds the front half: `need → AC`. An orphaned need (no linked AC) or an orphaned AC (cites no need, or cites a need but has no test) is a broken trace.
+The RTM now closes the full chain: `intake need → slice → AC → test → proof`. An orphaned need (no slice covers it, or no AC cites it), an orphaned AC (cites no need, or cites a need but has no test), or a slice that claims a need it doesn't cite in its ACs (mismatch) is a broken trace.
 
 ### Vertical: org objective → release benefit → slice
 
@@ -60,11 +61,15 @@ The vertical trace is the golden thread: line-of-sight from strategy (if declare
 
 A deterministic, fail-closed traceability gate builds the matrix from `intake.md` / `spec.md` / `status.json` / `index.md` alone — no separate datastore. It exits non-zero on:
 
-- An orphaned need (need with no linked acceptance criterion).
-- An orphaned acceptance criterion (cites no need id, or cites a need but has no linked test).
-- A slice with no vertical link (no release goal in intake and no release benefit or org objective on the slice).
+- **Orphaned need** — an intake need ID (N-NN) that appears in no slice's `covers_needs`. This is the intake→slice gap: a need was captured but never assigned to a slice.
+- **Unclaimed coverage** — a slice's `covers_needs` references a need ID, but that need ID is not cited in any of its spec's acceptance checks. The slice claims to deliver a need its own ACs don't describe.
+- **Orphaned acceptance criterion** — cites no need id, or cites a need but has no linked test.
+- **Uncovered need** — an intake need ID assigned to a slice (`covers_needs`) but with no AC in that slice citing it (caught by the unclaimed-coverage check above). This is the slice→spec gap.
+- **Slice with no vertical link** — no release goal in intake and no release benefit or org objective on the slice.
 
-A fully-traced release prints the matrix and exits 0. The source reference implementation is a `lint trace`-style command; adopters port the check to their own tooling, the same way Rule 7's `release-verify.sh` is ported.
+The gate is bidirectional: intake→slice (`covers_needs`) + slice→spec (AC citations). Without `covers_needs`, the gate can only scan all specs for need IDs — implicit, one-directional, and it can't detect a slice that *should* cover a need but doesn't. With it, the gate has structural proof that every intake need intentionally landed in a slice, and every slice's claimed needs are backed by concrete ACs.
+
+A fully-traced release prints the matrix and exits 0.
 
 ## EARS notation — structured acceptance criteria
 

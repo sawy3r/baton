@@ -144,7 +144,7 @@ Before the human can approve a spec, verify it against this checklist:
 - [ ] **Correct touchpoints** — every file that will be edited is listed. If the intake mentions a behaviour in a specific component, that component MUST appear in planned touchpoints.
 - [ ] **Explicit out-of-scope** — every adjacent concern from the intake that is NOT covered by this slice is listed, with the slice that owns it named.
 
-3. Initialise `status.json` with `state: planned` and the slice's `track` id.
+3. Initialise `status.json` with `state: planned`, the slice's `track` id, and the `covers_needs` array listing every intake need ID (N-NN) this slice delivers. The needs link is the intake→slice arm of the RTM; the gate verifies every N-NN in intake appears in at least one slice's `covers_needs`.
 4. Leave `journal.md` and `proof.md` as empty templates — they get filled in during implementation.
 
 **Frontmatter must be strict-YAML safe.** Write the `title:` and `description:` values in `spec.md` and `index.md` as **single-quoted** scalars, doubling any internal single quote (`'` → `''`). A bare (unquoted) value breaks strict YAML parsers — notably js-yaml, which Fumadocs uses to build the docs site from these specs — whenever the text contains a `: ` (colon-space) or begins with a YAML indicator char (`[`, `{`, `>`, `|`, `@`, `#`, `&`, `*`, `!`, or a backtick). Real breakages this prevents: `description: …Fix: debounce…`, `description: …adds release_index: to…`, `description: …Reads the track's e2e_specs: list…` — each an unquoted description that strict YAML reads as a nested mapping. `bin/release-verify.sh` enforces this at the first-pass gate; a hazardous unquoted scalar fails the run.
