@@ -1,8 +1,8 @@
 # baton
 
-> A protocol for agent work that survives session boundaries — plan, implement, and verify in sealed contexts, with proof bundles as the only currency between them.
+> A protocol for verifiable AI-assisted software delivery — discover, plan, implement, and verify with mechanical gates, LLM-based checks, and adversarial fresh-context review.
 
-**The baton is the proof bundle.** Four agent roles — planner, implementer, verifier, and the captain who runs design-review (Rule 9) — with one file on disk that crosses between them. An integrator hat lands the verified work, and the **Coach** — the human-in-the-loop who owns the team — holds authority over strategy and product/architecture: the agent roles surface decisions to the Coach but never self-authorise them.
+**The baton is the proof bundle.** Four agent roles — planner (16 hats), implementer, verifier, and captain — with one file on disk that crosses between them. Every claim is verified by seven mechanical gate scripts, six deterministic LLM check types, and adversarial fresh-context review where no role can certify its own work. An integrator hat lands the verified work, and the **Coach** — the human-in-the-loop who owns the team — holds authority over strategy and product/architecture: the agent roles surface decisions to the Coach but never self-authorise them.
 
 ```
                                     fresh-context boundary
@@ -63,7 +63,7 @@ If you've shipped non-trivial work with an LLM coding agent, you may have hit on
 - **Context loss.** Substantial analysis lives only in chat transcript. `/clear` happens. The reasoning is gone. The next session starts from scratch.
 - **Plan / proof drift.** Planning docs say one thing, implementation does another, the divergence is never surfaced.
 
-baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Eleven rules, four roles, seven slash commands. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
+baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Eleven rules, four role prompts, seven gate scripts, six LLM check types. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
 
 ## The eleven rules
 
@@ -83,7 +83,7 @@ Each rule has a one-line summary here and a full doc explaining the failure mode
 | 10 | Customer journey validation | Critical end-to-end journeys are a ratified, version-controlled artefact, re-walked against real boundaries — a journey walked over a mocked boundary proves nothing. | [customer-journey-validation.md](claude/baton/customer-journey-validation.md) |
 | 11 | Process-global mutation guard | Any change mutating process-global state (working directory, environment, or which worktree/branch a tool acts on) must guarantee restore, assert the target before git ops, and prove the guard with a reachability artefact. | [process-global-mutation.md](claude/baton/process-global-mutation.md) |
 
-Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 11 require the Release Mode harness (the slash commands and templates this repo installs) to be enforceable.
+Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 11 are mechanically enforceable — each backed by a gate script that exits non-zero on violation. The full gate suite: `release-trace.sh` (RTM + EARS + sniff-test), `release-coverage.sh` (AC → test mapping), `release-audit-design.sh` (colours + architecture rules), `release-mock-check.sh` (undeclared mock boundaries), `release-regression.sh` (post-merge full suite), `release-verify.sh` (proof bundle structure), `release-board-status.sh` (slice/track state machine). Six LLM check types provide content verification beyond mechanical gates: spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review.
 
 ## Example artefacts
 
@@ -95,10 +95,19 @@ A `status.json` (the state machine for a single slice):
 {
   "slice_id": "S03-account-settings-page",
   "state": "implemented",
+  "covers_needs": ["N-03", "N-07"],
   "planned_files": ["src/components/AccountProfileSection.tsx", "e2e/account-settings.spec.ts"],
   "actual_files": ["src/components/AccountProfileSection.tsx", "src/components/useAccountStore.ts", "e2e/account-settings.spec.ts"],
   "test_commands": ["pnpm playwright test e2e/account-settings.spec.ts"],
   "reachability_artifacts": ["e2e/account-settings.spec.ts:24 — user gesture + assertion"],
+  "open_deferrals": [
+    {
+      "item": "Multi-currency support",
+      "why": "Complex cross-cutting concern — needs its own slice",
+      "tracking": "S05-multi-currency",
+      "acknowledgement": "Coach accepted 2026-05-12"
+    }
+  ],
   "verification": { "result": null, "verifier_was_fresh_context": null, "violations": [] }
 }
 ```
@@ -156,10 +165,17 @@ Preview with `./install.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / `CODEX_
 | -------------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
 | `claude/commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
 | `claude/baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, release-mode templates     |
-| `bin/release-verify.sh`                | `~/.claude/bin/release-verify.sh`             | Deterministic first-pass verifier, invoked by abs path |
-| `bin/release-board-status.sh`          | `~/.claude/bin/release-board-status.sh`       | Release board — terminal go/no-go verdict (exit 0/1)   |
-| `bin/release-board-ui.mjs`             | `~/.claude/bin/release-board-ui.mjs`          | Release board — auto-refreshing HTML dashboard         |
-| `bin/lib/release-board.mjs`            | `~/.claude/bin/lib/release-board.mjs`         | Shared branch-aware board reader (used by both above)  |
+| `bin/release-verify.sh`                | `~/.claude/bin/release-verify.sh`             | Proof bundle structure gate                          |
+| `bin/release-trace.sh`                 | `~/.claude/bin/release-trace.sh`              | RTM, EARS, sniff-test gate (Rule 8)                  |
+| `bin/release-coverage.sh`              | `~/.claude/bin/release-coverage.sh`           | AC → test traceability gate                          |
+| `bin/release-audit-design.sh`          | `~/.claude/bin/release-audit-design.sh`       | Design conformance + architecture rules (Rule 9)     |
+| `bin/release-mock-check.sh`            | `~/.claude/bin/release-mock-check.sh`         | Undeclared mock boundary gate (Rule 10)              |
+| `bin/release-regression.sh`            | `~/.claude/bin/release-regression.sh`         | Post-merge regression gate                           |
+| `bin/release-llm-check.sh`             | `~/.claude/bin/release-llm-check.sh`          | 6 LLM check types (deterministic, temp=0)            |
+| `bin/release-board-status.sh`          | `~/.claude/bin/release-board-status.sh`       | Release board — terminal go/no-go verdict (exit 0/1) |
+| `bin/release-board-ui.mjs`             | `~/.claude/bin/release-board-ui.mjs`          | Release board — auto-refreshing HTML dashboard       |
+| `bin/lib/release-board.mjs`            | `~/.claude/bin/lib/release-board.mjs`         | Shared branch-aware board reader                     |
+| `schemas/*.json`                       | Hosted at baton.sawy3r.net/schemas/           | 5 JSON Schemas (slice status, architecture rules, design fidelity, allowlist, overrides) |
 
 Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment rules into your global instructions is a deliberate manual step — see the post-install message printed by `install.sh`.
 
@@ -274,7 +290,7 @@ The slash commands use two runtime tokens the agent resolves on first Bash call:
 - **Claude Code and OpenAI Codex today.** The slash commands target Claude Code's `~/.claude/commands/` (via `install.sh`) and Codex's `~/.agents/skills/` (via `install-codex.sh`, covering Codex CLI and the Codex Mac App, which share `~/.codex/` config). Gemini CLI and OpenCode adapters are on the [roadmap](ROADMAP.md).
 - **Codex skills are mechanically derived** from the Claude Code command bodies at install time, with paths rewritten to `~/.codex/` and a header explaining Codex's free-form argument resolution prepended. Behaviour is preserved; a few presentation differences remain (e.g. `AskUserQuestion` reads fine as "prompt the human" but doesn't render as a Codex-native picker).
 - **Per-project memory is optional.** If your tool maintains per-project persistent memory (Claude Code stores it under `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md`), the planner reads it at session start. On a clean install it doesn't exist; the step skips silently.
-- **`release-verify.sh` is opinionated.** It checks for required artefact files, valid JSON in `status.json`, non-empty diff vs the base branch, dark-code markers in changed files, and required `proof.md` sections. It does *not* make subjective calls about whether the diff actually implements the spec — that's the LLM verifier's job.
+- **`release-verify.sh` is the proof-bundle gate.** It checks for required artefact files, valid JSON in `status.json`, non-empty diff vs the base branch, dark-code markers in changed files, and required `proof.md` sections. It does *not* make subjective calls about whether the diff actually implements the spec — that's the LLM verifier's job. The broader gate suite (`release-trace.sh`, `release-coverage.sh`, `release-audit-design.sh`, `release-mock-check.sh`, `release-regression.sh`) provides additional mechanical and architecture enforcement.
 
 ## Roadmap
 
