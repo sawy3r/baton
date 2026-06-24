@@ -1,5 +1,5 @@
 {
-  "$schema": "https://example.com/schemas/baton/slice-status-v1.json",
+  "$schema": "https://baton.sawy3r.net/schemas/slice-status-v1.json",
   "slice_id": "<slice-id>",
   "release": "<release-name>",
   "track": "<track-id, e.g. T1-identity-account — set by planner>",
