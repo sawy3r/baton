@@ -1,6 +1,14 @@
 {
   "$schema": "https://baton.sawy3r.net/schemas/architecture-rules-v1.json",
   "_description": "Project-level architectural rules. Each rule is a named check run by release-audit-design.sh against the slice's diff. Rules can be suppressed per-release via architecture-overrides.json. Check types: grep (regex), touchpoints (planned-file audit), diff-size (growth limits), external (SAST/lint tool invocation).",
+  "canonical_docs": {
+    "_description": "Canonical architectural source-of-truth documents. The planner consults these during discovery. The architecture audit checks conformance. A project without canonical docs is a project where every slice invents its own patterns — the accumulated divergence is exponentially expensive to fix.",
+    "data_model": "docs/data_models/SCHEMA.md",
+    "api_contracts": [],
+    "component_hierarchy": [],
+    "architectural_decisions": "docs/adrs/",
+    "design_tokens": "tokens.json"
+  },
   "rules": [
     {
       "id": "no-touchpoints-outside-plan",

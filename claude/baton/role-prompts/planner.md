@@ -134,6 +134,22 @@ For each change, identify:
 - **Data flow**: where does the data come from? Where does it go? What transforms it?
 - **Dependencies**: does this change depend on another slice? On a third-party service? On a database migration?
 
+**Canonical architecture check.** LLMs are optimisers — they produce working code but not necessarily well-architected code. Without explicit architectural constraints, every slice reinvents patterns and the system accumulates technical debt. The planner must reference the project's canonical architectural documents at this layer. Ask the human:
+
+- Where is the canonical data model / schema? (ERD, DBML, type definitions, entity relationship docs)
+- Where are the API contracts? (OpenAPI, protobuf, shared type packages)
+- Where is the component hierarchy? (design system docs, component library README)
+- Where are the architectural decision records? (ADRs for key trade-offs)
+- Where are the design tokens? (colours, spacing, typography)
+
+For each change, verify:
+1. Does this change conform to the canonical data model? If it introduces a new entity or relationship, is it consistent with the existing design?
+2. Does it follow established API patterns? Same error envelope shape? Same auth pattern? Same versioning?
+3. Does it use existing components or does it duplicate functionality?
+4. Does it respect existing architectural boundaries? (which packages/services own which concerns)
+
+If the project lacks any of these canonical documents, the planner MUST flag it. A project without a canonical schema is a project where every slice invents its own data model — the accumulated divergence is exponentially expensive to fix. Recommend creating the missing canonical artefacts as a pre-release slice or as a parallel planning activity. The getfired project's SCHEMA.md is the exemplar: it was the turning point from "LLM writes something that works" to "LLM writes something that fits the architecture."
+
 #### Layer 5 — Boundaries and constraints
 
 - What's adjacent but explicitly out of scope? (Rule 2 — surface deferrals now, surface them with why + tracking)

@@ -60,6 +60,30 @@ This is the design-time counterpart to the delivery first-pass: cheap, determini
 
 ## Design-system input (UI-bearing projects)
 
+### Canonical architecture — the source of truth
+
+LLMs are optimisers: they produce working code but not necessarily well-architected code. Without explicit constraints, every slice reinvents patterns. The antidote is canonical architectural documents — the source of truth that every slice conforms to.
+
+A project declares its canonical docs in `docs/baton/architecture.json` `canonical_docs`:
+
+```json
+{
+  "canonical_docs": {
+    "data_model": "docs/data_models/SCHEMA.md",
+    "api_contracts": ["docs/api/openapi.yaml"],
+    "component_hierarchy": ["packages/ui/README.md"],
+    "architectural_decisions": "docs/adrs/",
+    "design_tokens": "tokens.json"
+  }
+}
+```
+
+The planner consults these during Layer 4 discovery and flags gaps. The architecture audit script checks slice diffs for conformance: new entities must match the canonical schema patterns, new components must extend (not duplicate) the component hierarchy, API changes must follow the established contract shapes.
+
+If a project lacks any of these documents, the planner MUST flag it. A project with no canonical data model is a project where every slice invents its own — the accumulated divergence is exponentially more expensive to fix than the upfront cost of defining the schema. Recommend creating missing canonical artefacts as a pre-release or parallel planning activity.
+
+### Design-system input (UI-bearing projects)
+
 Design fidelity for a UI requires a declared source of truth. Every UI-bearing project declares its design system before design conformance can be audited. The design system is a three-tier concept:
 
 | Tier | Name | Role |
