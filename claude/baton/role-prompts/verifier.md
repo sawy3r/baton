@@ -68,6 +68,8 @@ If `<wt>/docs/baton/extensions/verifier.md` exists, read it and follow it — it
 
 Walk these in order. Stop at the first FAIL and emit the verdict.
 
+The verifier does NOT re-run planner or captain checks (traceability, spec-ambiguity, design-review). Those are upstream gates whose artefacts are committed and passed. The verifier trusts the planner and captain. The verifier independently verifies the **implementer's** work — the one role Rule 7 forbids from self-certifying. Mechanical gates (1-7) catch structural failures; LLM gates (3b, 4b, 6b) catch content failures the implementer cannot self-assess.
+
 ### Gate 1 — User-reachable outcome exists
 
 Read `spec.md` "User outcome" and "Entry point" sections. Manually walk through the diff and identify whether the entry point named in the spec actually renders / responds / processes the user gesture described.
@@ -93,6 +95,15 @@ Cross-reference `spec.md` "Required tests" against the actual test files in the 
 - Test command captured in `proof.md` was not actually run (no output, or output is paraphrased): FAIL.
 
 Re-run the test commands yourself. If they fail in your fresh window: FAIL.
+
+### Gate 3b — Implementation satisfies acceptance criteria (LLM)
+
+Run `bin/release-llm-check.sh --check ac-satisfaction --slice <slice-id> --release <release-name> --worktree <worktree_path>`.
+
+This is the verifier's core adversarial check: the implementer self-assessed ac-satisfaction before claiming "implemented", but Rule 7 forbids self-certification. The verifier re-runs this check independently.
+- If the LLM provider is not configured, note it and skip (non-blocking).
+- If the check returns FAIL: at least one AC is not satisfied by the implementation. FAIL with the specific ACs and gaps.
+- If PARTIALLY_SATISFIED: investigate. If the gap is in spec ambiguity (AC unclear), BLOCKED. If the gap is in implementation (code missing features), FAIL.
 
 **Before running E2E (browser-driven) tests, start the canonical dev stack from the worktree
 being verified, using whatever invocation the project documents (`pnpm run start:dev`,
