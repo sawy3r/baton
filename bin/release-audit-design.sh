@@ -404,6 +404,37 @@ for rule in rules:
                 except:
                     pass
 
+    # external check: invoke an external tool and parse its exit code/output
+    elif check == 'external':
+        cmd = rule.get('command', '')
+        exit_code_means_fail = rule.get('exit_code_means_fail', True)
+        if not cmd:
+            continue
+        # Substitute {files} placeholder with matched files
+        if '{files}' in cmd:
+            cmd = cmd.replace('{files}', ' '.join(matched_files))
+        try:
+            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=worktree)
+            failed = (proc.returncode != 0) if exit_code_means_fail else (proc.returncode == 0)
+            if failed:
+                violations.append({
+                    'rule': rid,
+                    'file': '',
+                    'line': 0,
+                    'severity': severity,
+                    'msg': f\"{desc} — {cmd} exited {proc.returncode}\",
+                    'note': note or f'stdout: {proc.stdout[:200]} stderr: {proc.stderr[:200]}',
+                })
+        except Exception as e:
+            violations.append({
+                'rule': rid,
+                'file': '',
+                'line': 0,
+                'severity': 'warning',
+                'msg': f\"{desc} — failed to run: {e}\",
+                'note': note or 'Tool not installed or unavailable. Install it or suppress this rule.',
+            })
+
 summary = {
     'rules_checked': len([r for r in rules if r['id'] not in suppressed]),
     'rules_suppressed': len(suppressed),

@@ -1,10 +1,10 @@
 {
   "$schema": "https://baton.sawy3r.net/schemas/architecture-rules-v1.json",
-  "_description": "Project-level architectural rules. Each rule is a named check run by release-audit-design.sh against the slice's diff. Rules can be suppressed per-release via architecture-overrides.json.",
+  "_description": "Project-level architectural rules. Each rule is a named check run by release-audit-design.sh against the slice's diff. Rules can be suppressed per-release via architecture-overrides.json. Check types: grep (regex), touchpoints (planned-file audit), diff-size (growth limits), external (SAST/lint tool invocation).",
   "rules": [
     {
       "id": "no-touchpoints-outside-plan",
-      "description": "Files changed must be declared in spec.md planned touchpoints",
+      "description": "Files changed shall be declared in spec.md planned touchpoints",
       "check": "touchpoints",
       "severity": "error",
       "note": "If intentional, add to spec.md planned touchpoints or declare in proof.md divergence"
@@ -63,12 +63,92 @@
     },
     {
       "id": "no-hardcoded-secrets",
-      "description": "No secrets, keys, or credentials in source code",
+      "description": "No secrets, keys, or credentials shall appear in source code",
       "check": "grep",
       "pattern": "(api_key|apikey|secret|password|token|credential)\\s*[:=]\\s*['\"][^'\"]{8,}|-----BEGIN\\s+(RSA|EC|DSA|OPENSSH)\\s+PRIVATE\\s+KEY-----",
       "files": "**/*.{ts,tsx,go,js,json,yml,yaml}",
       "severity": "error",
       "note": "Secrets detected in diff. Use environment variables or a secrets manager."
+    },
+    {
+      "id": "no-unsafe-sql-concatenation",
+      "description": "SQL queries shall use parameterised queries, not string concatenation",
+      "check": "grep",
+      "pattern": "fmt\\.Sprintf\\(.*(SELECT|INSERT|UPDATE|DELETE|WHERE)|\\+.*(SELECT|INSERT|UPDATE|DELETE).*\\+|`.*SELECT.*`\\s*\\+",
+      "files": "go/**/*.go",
+      "severity": "error",
+      "note": "SQL injection risk. Use parameterised queries ($1, $2) with pgx."
+    },
+    {
+      "id": "no-goroutine-leak",
+      "description": "Goroutines shall have cancellation — missing defer cancel() may leak",
+      "check": "grep",
+      "pattern": "context\\.WithCancel\\(|context\\.WithTimeout\\(|context\\.WithDeadline\\(",
+      "files": "go/**/*.go",
+      "severity": "warning",
+      "note": "New context with cancel detected. Verify defer cancel() is present on the next line."
+    },
+    {
+      "id": "no-unbounded-map-growth",
+      "description": "Maps used as caches or accumulators shall have eviction or size limits",
+      "check": "grep",
+      "pattern": "make\\(map\\[",
+      "files": "go/pkg/**/*.go",
+      "severity": "warning",
+      "note": "New map allocation. If this map accumulates unbounded data (caches, request counters), ensure it has eviction or size limits."
+    },
+    {
+      "id": "no-bare-http-calls",
+      "description": "HTTP calls shall use context with timeout, not bare http.Get",
+      "check": "grep",
+      "pattern": "http\\.Get\\(|http\\.Post\\(|http\\.PostForm\\(|http\\.Head\\(",
+      "files": "go/**/*.go",
+      "severity": "error",
+      "note": "Bare HTTP call without context timeout detected. Use http.NewRequestWithContext with a reasonable timeout. Bare calls can block indefinitely."
+    },
+    {
+      "id": "encryption-must-use-pkg-crypto",
+      "description": "Encryption shall use pkg/crypto (AES-256-GCM), not raw crypto/aes calls",
+      "check": "grep",
+      "pattern": "crypto/aes|aes\\.NewCipher|cipher\\.NewGCM|encrypt|decrypt",
+      "files": "go/pkg/**/*.go",
+      "severity": "error",
+      "note": "Raw encryption call detected. Use pkg/crypto which provides AES-256-GCM with proper key management and envelope encryption. Raw crypto/aes usage may miss key rotation, IV handling, or authenticated encryption."
+    },
+    {
+      "id": "go-security-scan",
+      "description": "Go code shall pass gosec security scan",
+      "check": "external",
+      "command": "gosec -quiet -no-fail -fmt=json ./...",
+      "exit_code_means_fail": false,
+      "severity": "warning",
+      "note": "gosec found issues. Review findings and fix high/critical items. Install gosec: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest"
+    },
+    {
+      "id": "accessibility-scan",
+      "description": "UI components shall pass axe-core accessibility checks",
+      "check": "external",
+      "command": "npx axe-cli --exit --stdout 2>/dev/null || echo 'axe-cli not installed — install via: npm i -g @axe-core/cli'",
+      "severity": "warning",
+      "note": "Accessibility violations detected. Review axe output. Key checks: color contrast, ARIA labels, keyboard navigation, heading hierarchy."
+    },
+    {
+      "id": "no-missing-aria-on-interactive",
+      "description": "Interactive elements shall have accessible labels",
+      "check": "grep",
+      "pattern": "<(button|input|select|textarea|a)(?![^>]*aria-label)(?![^>]*aria-labelledby)(?![^>]*data-testid)",
+      "files": "apps/**/*.{tsx,jsx}",
+      "severity": "warning",
+      "note": "Interactive element without aria-label or data-testid. Add an accessible label so screen readers can describe the control."
+    },
+    {
+      "id": "no-color-alone-for-meaning",
+      "description": "Colour shall not be the only means of conveying information",
+      "check": "grep",
+      "pattern": "text-(red|green|blue|yellow|violet|orange)-\\d{3}(?!.*aria-)(?!.*sr-only)(?!.*role=)",
+      "files": "apps/**/*.{tsx,jsx}",
+      "severity": "warning",
+      "note": "Colour-only status indicator. WCAG 1.4.1: ensure an additional indicator (icon, text, sr-only label) accompanies the colour. Add a screen-reader-only label or an icon alongside the colour."
     }
   ]
 }
