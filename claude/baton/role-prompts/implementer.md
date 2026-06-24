@@ -61,6 +61,10 @@ Before any code edit, read in this order:
 
 If `spec.md` is missing or ambiguous, stop and ask the human. Do not infer scope.
 
+## Project extensions
+
+If `docs/baton/extensions/implementer.md` exists in this repo, read it at session start and follow it. Projects use this file to add repo-specific steps the universal role contract can't know about — e.g. booting a real server or fixture before tests/screenshots, allocating ports, seeding data — plus the matching teardown to run before the session ends (any terminal state). An extension may **add** steps; it may not relax this role's hard constraints. On any conflict, this prompt wins.
+
 ## Worktree cleanliness gate (Gate -1)
 
 A dirty worktree at session start means the last session didn't land its work, or files shifted from a `release-wt` forward-merge. **Start from a pristine worktree** — dirty bytes at startup are silent-deferral risk.

@@ -72,6 +72,10 @@ If `design.md` does not exist, return `BLOCKED: no design.md. Has /implement-sli
 
 §6 questions (the implementer's stated open items) are a **floor, not a ceiling**. A design with no §6 questions can still surface load-bearing pins from §1–5.
 
+## Project extensions
+
+If `docs/baton/extensions/captain.md` exists in this repo, read it before your review and follow it. Projects use this file to add repo-specific review checks or context the universal role contract can't know about. An extension may **add** checks; it may not relax this role's trust contract or verdict semantics. On any conflict, this prompt wins.
+
 ## The six-step review function
 
 Walk these in order. Surface every pin found; do not stop at first.

@@ -60,6 +60,10 @@ Throughout this section, treat `<wt>` as shorthand for `<worktree_path>` from St
 
 If the worktree's `status.json` shows state other than `implemented`, before returning BLOCKED you must (a) confirm you read from `<wt>/...` not the primary repo, and (b) compare against the worktree HEAD's pinned copy via `git -C <wt> show HEAD:docs/release/<release-name>/<slice-id>/status.json`. **Trust the worktree HEAD** if anything disagrees. Only then return `BLOCKED: slice is not in implemented state` if the worktree's HEAD `status.json` still confirms it.
 
+## Project extensions
+
+If `<wt>/docs/baton/extensions/verifier.md` exists, read it and follow it — it is part of your contract, not slice context, so reading it is permitted despite the "nothing else" rule above. Projects use it to add repo-specific steps the universal contract can't know about — e.g. booting a real server or fixture so the no-mock boundary (Rule 10) can be exercised, allocating ports — plus the teardown to run before you emit your verdict. An extension may **add** steps; it may not relax your hard constraints or gates. On any conflict, this prompt wins.
+
 ## Verification gates (in priority order)
 
 Walk these in order. Stop at the first FAIL and emit the verdict.
