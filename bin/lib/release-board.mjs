@@ -243,8 +243,21 @@ function parseTracks(text) {
   const sliceTrack = {};
   const trackIds = new Set();
   const tracks = [];
-  const fm = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!fm) return { sliceTrack, trackIds, tracks };
+  let fm = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!fm) {
+    if (!/^---\r?\n/.test(text)) return { sliceTrack, trackIds, tracks };
+    // Opening fence but no clean `\n---` close: a newline-eating edit fused the
+    // closing fence (e.g. `state: merged---`) or a track entry. Returning zero
+    // tracks here reads downstream as "no work / all merged" and silently fires a
+    // false merge-release-ready. Recover the frontmatter region (up to the first
+    // body heading) and parse best-effort, but flag it LOUDLY so the index is fixed.
+    console.error('release-board: WARNING — malformed index.md frontmatter: opening ' +
+      '`---` has no clean closing `---` fence (likely a newline-eating edit such as ' +
+      '`state: merged---`). Parsing best-effort; FIX the index.md frontmatter.');
+    const bodyAt = text.search(/\n#{1,6}\s/);
+    const region = (bodyAt > 0 ? text.slice(0, bodyAt) : text).replace(/^---\r?\n/, '');
+    fm = [text, region];
+  }
 
   const SCALAR_KEYS = { state: 'state',
                         worktree_path: 'worktreePath',
@@ -267,13 +280,23 @@ function parseTracks(text) {
     const line = lines[i];
 
     // `- id:` always starts a new track entry, regardless of any open list.
-    const idM = line.match(/^\s*-\s+id:\s*(\S+)/);
+    const idM = line.match(/^\s*-\s+id:\s*(\S+)(.*)$/);
     if (idM) {
       cur = { id: idM[1], state: null, dependsOn: [], slices: [],
               worktreePath: null, worktreeBranch: null };
       trackIds.add(cur.id);
       tracks.push(cur);
       openKey = null;
+      // Fused entry: `- id: X   slices: [...]` (a newline-eating edit merged the
+      // id line with the next key). Re-inject the trailing `key: value` as the
+      // next line so the fused key isn't lost, and flag it loudly.
+      const trailing = idM[2].trim();
+      if (trailing) {
+        console.error(`release-board: WARNING — fused index.md frontmatter line for ` +
+          `track ${cur.id} (\`- id: … ${trailing.slice(0, 40)}\`); a newline-eating edit ` +
+          `merged two lines. Recovering; FIX the index.md frontmatter.`);
+        lines.splice(i + 1, 0, '    ' + trailing);
+      }
       continue;
     }
     if (!cur) continue;
