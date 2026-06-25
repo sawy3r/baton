@@ -298,15 +298,15 @@ How to write it (this is load-bearing — the loop reads it):
 
 ## Status block (mandatory)
 
-After your PASS/FAIL/BLOCKED verdict, emit this as the absolute last content of the turn:
+After your PASS/FAIL/BLOCKED verdict, emit this as the absolute last content of the turn.
 
-For PASS, the STATE depends on the next step computed in "Determining the next step" above.
+For PASS — use the next step computed in "Determining the next step" above:
 
-If the track still has a further incomplete slice (auto-advance to implement it):
+If the track still has a further incomplete slice (auto-advance to implement):
 ```
 STATE: verified_implement_next
 SLICE: `<slice-id>`
-NEXT: `<next-incomplete-slice-id in this track>`
+NEXT: /implement-slice <next-incomplete-slice-id> <release-name>
 REASON: All six gates passed. `<next-incomplete-slice-id>` is the next slice in track `<track-id>`.
 ```
 
@@ -314,8 +314,8 @@ If every slice in the track is now verified (track ready to merge):
 ```
 STATE: verified_awaiting_approval
 SLICE: `<slice-id>`
-NEXT: NONE
-REASON: All six gates passed. Track `<track-id>` is complete — run /merge-track `<track-id>`, then /merge-release `<release-name>` once every track is merged.
+NEXT: /merge-track <track-id> <release-name>
+REASON: All six gates passed. Track `<track-id>` is complete — run /merge-track `<track-id>`.
 ```
 
 For FAIL:
@@ -330,7 +330,7 @@ For BLOCKED (contract defect → planner):
 ```
 STATE: blocked_needs_planner
 SLICE: `<slice-id>`
-NEXT: NONE
+NEXT: /replan-release <release-name>
 REASON: `<specific contract defect or spec gap, one sentence>`
 ```
 
@@ -338,8 +338,8 @@ For INCONCLUSIVE (environmental fault → re-verify in a clean session, NOT a re
 ```
 STATE: inconclusive_reverify
 SLICE: `<slice-id>`
-NEXT: `/verify-slice <slice-id> <release-name>`
-REASON: `<what made the session untrustworthy, one sentence — e.g. tool channel returned fabricated/contradictory output>`
+NEXT: /verify-slice <slice-id> <release-name>
+REASON: `<what made the session untrustworthy, one sentence>`
 ```
 
-The block must be last.
+The NEXT line must contain the literal slash command to run next. The block must be last.

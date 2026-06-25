@@ -161,10 +161,26 @@ That message is the entire wrap-up. Do not summarise the implementation, do not 
 After all the above, emit this as the absolute last content of the turn:
 
 ```
-STATE: verified_validate
+STATE: implemented
+SLICE: `<slice-id>`
+NEXT: /verify-slice <slice-id> <release-name>
+REASON: `<one sentence — what was delivered or what blocks>`
+```
+
+If the slice is blocked instead of implemented, use:
+```
+STATE: blocked_needs_planner
+SLICE: `<slice-id>`
+NEXT: /replan-release <release-name>
+REASON: `<one sentence — what is blocking>`
+```
+
+Or for human-needed blocks:
+```
+STATE: blocked_needs_human
 SLICE: `<slice-id>`
 NEXT: NONE
 REASON: `<one sentence>`
 ```
 
-If the slice is blocked instead of implemented, use STATE: blocked_needs_planner or blocked_needs_human as appropriate. The block must be last — after all prose, after all tool output.
+The NEXT line must contain the literal slash command to run next. The block must be last — after all prose, after all tool output.
