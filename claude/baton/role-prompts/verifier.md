@@ -68,6 +68,8 @@ If `<wt>/docs/baton/extensions/verifier.md` exists, read it and follow it — it
 
 Walk these in order. Stop at the first FAIL and emit the verdict.
 
+The verifier does NOT re-run planner or captain checks (traceability, spec-ambiguity, design-review). Those are upstream gates whose artefacts are committed and passed. The verifier trusts the planner and captain. The verifier independently verifies the **implementer's** work — the one role Rule 7 forbids from self-certifying. Mechanical gates (1-7) catch structural failures; LLM gates (3b, 4b, 6b) catch content failures the implementer cannot self-assess.
+
 ### Gate 1 — User-reachable outcome exists
 
 Read `spec.md` "User outcome" and "Entry point" sections. Manually walk through the diff and identify whether the entry point named in the spec actually renders / responds / processes the user gesture described.
@@ -93,6 +95,15 @@ Cross-reference `spec.md` "Required tests" against the actual test files in the 
 - Test command captured in `proof.md` was not actually run (no output, or output is paraphrased): FAIL.
 
 Re-run the test commands yourself. If they fail in your fresh window: FAIL.
+
+### Gate 3b — Implementation satisfies acceptance criteria (LLM)
+
+Run `bin/release-llm-check.sh --check ac-satisfaction --slice <slice-id> --release <release-name> --worktree <worktree_path>`.
+
+This is the verifier's core adversarial check: the implementer self-assessed ac-satisfaction before claiming "implemented", but Rule 7 forbids self-certification. The verifier re-runs this check independently.
+- If the LLM provider is not configured, note it and skip (non-blocking).
+- If the check returns FAIL: at least one AC is not satisfied by the implementation. FAIL with the specific ACs and gaps.
+- If PARTIALLY_SATISFIED: investigate. If the gap is in spec ambiguity (AC unclear), BLOCKED. If the gap is in implementation (code missing features), FAIL.
 
 **Before running E2E (browser-driven) tests, start the canonical dev stack from the worktree
 being verified, using whatever invocation the project documents (`pnpm run start:dev`,
@@ -138,6 +149,14 @@ Read `proof.md` "Reachability artefact" section.
 - Artefact is "tests pass" with no user-gesture description: FAIL — Rule 1 explicitly rejects this.
 - Artefact is a Playwright trace that doesn't include the named user gesture: FAIL.
 
+### Gate 4b — Semantic test coverage (LLM, optional when LLM provider configured)
+
+Run `bin/release-llm-check.sh --check semantic-coverage --slice <slice-id> --release <release-name> --worktree <worktree_path>`.
+
+- If the LLM provider is not configured, this gate passes automatically (non-blocking).
+- If the check returns FAIL: at least one test does not genuinely verify its AC. Add the findings to the FAIL verdict.
+- Tests that are tautologies (always-pass assertions) or exercise different behaviour than the AC describes are NOT genuine coverage.
+
 ### Gate 5 — No silent deferrals or placeholder logic
 
 Grep the changed files for `TODO`, `FIXME`, `deferred`, `later`, `placeholder`, `XXX`, `HACK`.
@@ -145,7 +164,17 @@ Grep the changed files for `TODO`, `FIXME`, `deferred`, `later`, `placeholder`, 
 - Any hit on a schema, contract, or user-reachable code path without a corresponding Rule 2 entry in `proof.md` "Not delivered": FAIL.
 - Empty function bodies, stub returns, hardcoded happy-path values in production code: FAIL.
 
-### Gate 6 — Claimed scope matches implemented scope
+### Gate 6 — Design conformance (Rule 9, Layer 1)
+
+Run `bin/release-audit-design.sh --slice <slice-id> --release <release-name> --worktree <worktree_path>`.
+
+- If the script exits non-zero, FAIL with the enumerated violations.
+- Violations listed in the slice's `design-allowlist.json` (escape hatch) are suppressed — the script reads the allowlist automatically.
+- Violations declared in `proof.md` "Not delivered" as Rule 2 deferrals with human or captain acknowledgement are also acceptable — note them but do not FAIL on them.
+- If the project has no design-fidelity config (`docs/baton/design-fidelity.json` absent or `ui_bearing: false`), the gate passes automatically (non-UI project).
+- Hardcoded colours in test files (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`) are excluded — tests may assert against literal values.
+
+### Gate 7 — Claimed scope matches implemented scope
 
 Read `proof.md` "Delivered" list. For each item, verify the evidence reference (file path, test name, artefact path) points to real, working state.
 

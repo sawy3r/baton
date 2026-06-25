@@ -22,6 +22,11 @@
     "track": {
       "type": "string"
     },
+    "covers_needs": {
+      "type": "array",
+      "description": "Intake need IDs (N-01, N-02, ...) this slice delivers. The RTM gate verifies every intake need appears in at least one slice's covers_needs.",
+      "items": { "type": "string", "pattern": "^N-\\d+$" }
+    },
     "state": {
       "type": "string",
       "enum": [
@@ -76,7 +81,18 @@
     },
     "open_deferrals": {
       "type": "array",
-      "items": { "type": "string" }
+      "description": "Rule 2 deferral objects. Each must have why, tracking, and acknowledgement per the No Silent Deferrals rule.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["why", "tracking", "acknowledgement"],
+        "properties": {
+          "item": { "type": "string" },
+          "why": { "type": "string", "minLength": 1 },
+          "tracking": { "type": "string", "minLength": 1 },
+          "acknowledgement": { "type": "string", "minLength": 1 }
+        }
+      }
     },
     "verification": {
       "type": "object",
@@ -99,16 +115,21 @@
         },
         "violations": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "gate": { "type": "string" },
+              "description": { "type": "string" },
+              "evidence": { "type": "string" },
+              "proposed_amendment": { "type": "string" }
+            }
+          }
         }
       }
     },
     "release_base": {
       "type": "string"
-    },
-    "need_ids": {
-      "type": "array",
-      "items": { "type": "string" }
     },
     "release_benefit": {
       "type": "string"
@@ -118,13 +139,30 @@
     },
     "validation": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "human_ratified": { "type": "boolean" },
+        "ratified_by": { "type": "string" },
+        "ratified_at": { "type": "string", "format": "date-time" },
+        "positive_scenarios": { "type": "array", "items": { "type": "string" } },
+        "negative_scenarios": { "type": "array", "items": { "type": "string" } },
+        "benefit_hypothesis": { "type": "string" }
+      }
     },
     "design_decisions": {
       "type": "array",
       "items": {
         "type": "object",
-        "additionalProperties": true
+        "additionalProperties": true,
+        "required": ["choice", "stake_class"],
+        "properties": {
+          "choice": { "type": "string" },
+          "stake_class": { "type": "string", "enum": ["Type-1", "Type-2"] },
+          "options": { "type": "array", "items": { "type": "string" } },
+          "human_decision": { "type": "string" },
+          "rationale": { "type": "string" },
+          "architecturally_significant": { "type": "boolean" }
+        }
       }
     }
   }

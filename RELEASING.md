@@ -18,10 +18,10 @@ tag** (never a raw commit SHA) and report the pinned version truthfully — e.g.
 ## What bumps what
 
 | Change | Bump | Example |
-|---|---|---|
-| Breaking restructure — a removed or renamed rule, a changed role contract, or a reworded rule that changes adoption behaviour | **major** | drop a rule; rename a role; redefine a slice state |
-| A new rule or a new role | **minor** | Rules 8–11 + the Captain role (`v0.4.0`) |
-| Wording, clarifications, docs, new templates, new brainstorm patterns, new examples — anything additive that does not change an existing rule or role contract | **patch** | agent-driven install + roadmap refresh (`v0.4.1`); operational gates promoted into the role prompts (`v0.4.2`) |
+|---|---|---|---|
+| Breaking restructure — a removed or renamed rule, a changed role contract, a reworded rule that changes adoption behaviour, a removed gate script | **major** | drop a rule; rename a role; redefine a slice state |
+| A new rule, a new role, a new gate script, a new LLM check type | **minor** | Rules 8–11 + Captain role + gate suite (`v0.5.0`) |
+| Wording, clarifications, docs, new templates, new brainstorm patterns, new examples, new architecture rules — anything additive that does not change an existing rule, role, or script contract | **patch** | agent-driven install + roadmap refresh (`v0.4.1`); operational gates promoted into role prompts (`v0.4.2`) |
 
 Tie-breaker between minor and patch: **does an existing adopter have to _do_
 anything to stay correct?** If yes, it is at least a minor. If the change only

@@ -26,8 +26,13 @@ shipped.
 - Eleven rules + four role prompts (planner, implementer, verifier, captain) +
   release-mode templates installed at `~/.claude/baton/` (Claude Code) and
   `~/.codex/baton/` (Codex) via the two installers.
-- Deterministic first-pass verifier (`release-verify.sh`) at
-  `~/.claude/bin/` and `~/.codex/bin/`.
+- **Mechanical gate suite (7 scripts)** — `release-trace.sh` (RTM + EARS + sniff-test), `release-coverage.sh` (AC → test mapping), `release-audit-design.sh` (colours + architecture rules), `release-mock-check.sh` (undeclared mock boundaries), `release-regression.sh` (post-merge full suite), `release-verify.sh` (proof bundle structure), `release-board-status.sh` (state machine verifier). All installed at `~/.claude/bin/` and `~/.codex/bin/`.
+- **LLM check types (6)** — `spec-ambiguity`, `design-review`, `ac-satisfaction`, `security-review`, `semantic-coverage`, `maintainability-review`. Deterministic (temp=0), structured prompts, structured JSON output, fail-closed. Run via `release-llm-check.sh`.
+- **Architecture rules engine** — `architecture.json` with four check types (grep, touchpoints, diff-size, external). Canonical docs declaration. Per-release overrides via `architecture-overrides.json`. Per-slice escape hatches via `design-allowlist.json`.
+- **Planner — 16-hat consultant** — six-layer structured discovery (users → defects → interaction detail → implementation surface → boundaries → ambiguity register). Proactive expertise surfacing (UX, a11y, architecture, security, maintainability). Canonical architecture consultation.
+- **Fresh-context boundaries** — all four roles (planner, implementer, captain, verifier) read artefacts from disk, never from prior conversation. Spec decomposition fidelity gates (self-contained spec checklist, sniff-test, "see intake" banned).
+- **Requirements traceability** — `covers_needs` field in `status.json` closes the intake→slice link. `release-trace.sh` mechanically verifies the full RTM chain: intake need → slice → AC → test → proof.
+- **JSON Schemas (5)** — `slice-status-v1.json` (updated with covers_needs, structured deferrals), `architecture-rules-v1.json`, `design-fidelity-v1.json`, `design-allowlist-v1.json`, `architecture-overrides-v1.json`. Hosted at `baton.sawy3r.net/schemas/`.
 - Release-board tooling at `~/.claude/bin/` and `~/.codex/bin/` —
   `release-board-status.sh` (terminal go/no-go verdict) and
   `release-board-ui.mjs` (auto-refreshing HTML dashboard), both

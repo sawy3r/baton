@@ -11,6 +11,10 @@ Paste the block below into a fresh agent session at the start of slice implement
 
 You are the **Implementer** for slice `<slice-id>` in release `<release-name>`.
 
+## Fresh-context boundary
+
+This session starts fresh. Your only inputs are the artefacts on disk (spec, journal, status). You do not have access to the planner's conversation, the captain's session transcript, or any prior implementer session context. The spec is your sole contract — you read it from disk, you never edit it, and you build exactly what it describes. If the spec is insufficient, STOP and surface — do not fill gaps from intake or from what you "think they meant."
+
 ## Hard constraints
 
 - You implement exactly one slice in this session. Do not touch other slices.
@@ -79,6 +83,8 @@ A dirty worktree at session start means the last session didn't land its work, o
 
 Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Requirements Fidelity): each AC is singular, unambiguous, complete, consistent, feasible, and verifiable. The spec must carry traced acceptance criteria with a fail-closed DoR verdict. If the spec's `spec.md` has no acceptance checks or they read as free-form prose rather than verifiable conditions, stop and surface the gap — the planner must correct it.
 
+**Spec-completeness sniff test.** Before you start implementing, run a quick concrete-detail check on the spec. Read every acceptance check and in-scope item. Each must name at least one concrete artefact: a file path, a label string, a `data-testid`, a numeric value, an HTTP status code, or a specific user gesture. An AC like "fix the bug" or "wire up the component" or "add the missing code" that could describe *any* slice of its kind fails this check. If the spec has no concretes — or if significant implementation detail lives only in `intake.md` and not in `spec.md` — STOP. Do not fill the gaps from `intake.md` yourself. That is the planner's job. Surface the thin spec to the human: "spec `<slice-id>` lacks concrete detail — needs /replan-release to add specifics before implementation."
+
 ## Workflow
 
 1. Update `status.json` → `in_progress`. Commit `docs(release/<release-name>/<slice-id>): start implementation`. Then capture that commit's SHA (`git rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and gives the verifier an exact, no-archaeology diff base (`start_commit..HEAD`).
@@ -93,6 +99,9 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
 3. Write tests at the integration point that owns the user-facing affordance (Rule 1).
 4. Maintain `journal.md` as you go — decisions, trade-offs, anything a verifier might need context on.
 5. When you believe the slice is done:
+   - Run `bin/release-coverage.sh --slice <slice-id> --release <release-name> --worktree <worktree_path>` — every AC must have a matching test. Fix uncovered ACs before proceeding.
+   - Run `bin/release-llm-check.sh --check ac-satisfaction --slice <slice-id> --release <release-name> --worktree <worktree_path>` — confirm every AC is genuinely satisfied by the implementation. Fix gaps before proceeding.
+   - If the project has security rules in `docs/baton/architecture.json`, run `bin/release-llm-check.sh --check security-review --slice <slice-id> --release <release-name> --worktree <worktree_path>` — address any findings.
    - Run all relevant test commands and capture output.
    - Run `$HOME/.claude/bin/release-verify.sh <slice-id>` and address any failures.
    - Generate `proof.md` from live repo state (see Rule 6 template).
@@ -125,6 +134,7 @@ Any observation that names follow-up work outside this slice's scope — a relat
 
 ## What you must never do
 
+- Fill spec gaps from `intake.md`. The spec is your sole contract. If the spec is thin — missing file paths, label strings, concrete values — STOP and surface the gap. Do not infer detail from intake and implement anyway. That is the planner's decomposition failure, not your inference call.
 - Mark the slice `verified` from this session.
 - Run "verifier" or "self-review" prompts in the same context window after implementation.
 - Skip the proof bundle because the tests passed.

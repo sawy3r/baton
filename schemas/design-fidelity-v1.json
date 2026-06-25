@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baton.sawy3r.net/schemas/design-fidelity-v1.json",
+  "title": "Baton Design Fidelity Config",
+  "description": "Project-level design system declaration for Rule 9 conformance auditing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ui_bearing"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://baton.sawy3r.net/schemas/design-fidelity-v1.json"
+    },
+    "ui_bearing": {
+      "type": "boolean",
+      "description": "True if this project has a UI surface. False or absent = design conformance audit is skipped."
+    },
+    "design_system": {
+      "type": "object",
+      "description": "Design system declaration. Required when ui_bearing is true.",
+      "additionalProperties": false,
+      "properties": {
+        "token_source": {
+          "type": "string",
+          "description": "Path to design token file (JSON) containing colour, spacing, typography tokens"
+        },
+        "component_library": {
+          "type": "string",
+          "description": "Path to shared component library directory"
+        }
+      }
+    }
+  }
+}

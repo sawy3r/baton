@@ -124,4 +124,4 @@ Any change — test or production — that mutates **process-global state** (the
 
 ---
 
-Full rule docs with provenance and detailed examples: `/docs/baton/`. Release Mode harness (slice template + role prompts + first-pass script): `/docs/baton/release-mode-template/`, `/docs/baton/role-prompts/`, `scripts/release-verify.sh`.
+Full rule docs with provenance and detailed examples: `/docs/baton/`. Release Mode harness (slice template + role prompts + gate scripts): `/docs/baton/release-mode-template/`, `/docs/baton/role-prompts/`, `scripts/release-trace.sh`, `scripts/release-coverage.sh`, `scripts/release-audit-design.sh`, `scripts/release-mock-check.sh`, `scripts/release-regression.sh`, `scripts/release-verify.sh`. LLM checks: `release-llm-check.sh`. Architecture rules: `docs/baton/architecture.json`. Schemas: `https://baton.sawy3r.net/schemas/`.

@@ -79,11 +79,15 @@ description: The discovery output document. Captures what the human described, w
 - `S02-<name>` — `<one-sentence user outcome>`
 - ...
 
-## Open questions
+## Ambiguity register
 
-\<Anything the planner couldn't resolve from the conversation. Each must be answered before its dependent slice can move past `planned`.\>
+`<Every ambiguity surfaced during structured discovery. Each entry identifies what is unclear, where it matters (which user outcome or AC), and how it will be resolved. An unacknowledged ambiguity at decomposition time becomes a spec defect the verifier will BLOCKED on.>`
 
-- ...
+| # | Ambiguity | Affects | Resolution |
+|---|-----------|---------|------------|
+| A-01 | `<what is unclear>` | `<which outcome / AC>` | `deferred to implementation` or `requires spike` or `human will provide by <date>` |
+
+`<Ambiguities deferred to implementation are acceptable only when explicitly acknowledged here. Those marked "human will provide" must have a concrete deadline.>`
 
 ## Screenshots / references
 

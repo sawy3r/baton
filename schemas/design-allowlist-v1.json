@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baton.sawy3r.net/schemas/design-allowlist-v1.json",
+  "title": "Baton Design Allowlist",
+  "description": "Per-slice escape hatch for design conformance violations. Patterns listed here are suppressed from the audit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["allowlist"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://baton.sawy3r.net/schemas/design-allowlist-v1.json"
+    },
+    "allowlist": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pattern", "reason"],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pattern to suppress. For colour checks: hex value or file:line. For architecture checks: file path or rule-id:file."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why this violation is accepted. Must include justification per Rule 2."
+          },
+          "acknowledged_by": {
+            "type": "string",
+            "description": "Who acknowledged this deferral (human or captain identifier)"
+          },
+          "acknowledged_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this deferral was acknowledged"
+          }
+        }
+      }
+    }
+  }
+}
