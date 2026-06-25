@@ -51,11 +51,15 @@ The **integrator** role below the slice loop runs the merge pipeline on gates, n
 
 **License:** [MIT](LICENSE) — permissive, attribution-only. Use it in any project, commercial or otherwise.
 
+**Used in production:** 500+ slices verified across two active projects — GetFired and Swornagent (the loop orchestrator built on Baton, itself built using Baton). Fully model-agnostic; switch vendors at will. Eval built in.
+
 ---
 
 ## Why baton
 
-If you've shipped non-trivial work with an LLM coding agent, you may have hit one or more of these:
+The [loop engineering](https://addyosmani.com/blog/loop-engineering/) conversation names the pattern: *done is a claim*. The agent stops, the diff lands, comprehension debt accumulates. Every post says "add a verifier sub-agent." None specifies what that verifier actually needs to do. Baton is the specification.
+
+The structural failures it addresses — things you may have already hit:
 
 - **Overclaiming.** Session ends with "implementation complete" and a 90% confidence score. Next session opens the repo and finds half the work missing, the other half wired up wrong, with tests that pass because they only exercise leaf components.
 - **Dark code.** A primitive is built, tested with TDD, and never wired into a user-reachable surface. Component renders zero times in production. Discovered weeks later during an audit.
