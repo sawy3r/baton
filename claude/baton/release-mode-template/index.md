@@ -6,7 +6,6 @@ description: 'The release board — the single source of truth for slice states 
 # - First /implement-slice in the release fills `release_worktree_path` / `release_worktree_branch`.
 # - First /implement-slice in a track fills that track's `worktree_path`.
 # See `docs/baton/track-mode.md` for the model these fields encode.
-release_index: # <REQUIRED — assign a unique integer >= 1; no two simultaneous releases may share the same value. Drives baton-server-start.sh port allocation: web=3000+(index*100)+track_offset, api=8081+(index*100)+track_offset. Missing this field blocks every verifier/implementer that needs the dev stack.>
 release_worktree_path: # <set by first /implement-slice in the release — absolute path, e.g. <HOME>/projects/<repo-basename>-worktrees/release-2026-05-20-billing-redesign>
 release_worktree_branch: # release-wt/<release-name>
 tracks: []
