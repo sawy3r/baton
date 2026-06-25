@@ -496,8 +496,17 @@ function readRelease(rel, releaseWtBranches) {
   for (const s of slices) sliceById[s.id] = s;
   const mergedTrackIds = new Set(
     tracks.filter(t => t.state === 'merged').map(t => t.id));
+  // isDepSatisfied: accepts both full IDs ('T7-engine-windfall-wiring') and
+  // short-form prefix IDs ('T7') that planners commonly write. A short dep like
+  // 'T7' matches any merged track whose ID starts with 'T7-'.
+  const isDepSatisfied = d => {
+    if (mergedTrackIds.has(d)) return true;
+    const prefix = d + '-';
+    for (const id of mergedTrackIds) { if (id.startsWith(prefix)) return true; }
+    return false;
+  };
   for (const tr of tracks) {
-    tr.blockedBy = tr.dependsOn.filter(d => !mergedTrackIds.has(d));
+    tr.blockedBy = tr.dependsOn.filter(d => !isDepSatisfied(d));
     const own = tr.slices.map(id => sliceById[id]).filter(Boolean);
     const allTerminal = own.length > 0 && own.every(s => TERMINAL_STATES.has(s.state));
     tr.readyToMerge = allTerminal && tr.state !== 'merged' && tr.blockedBy.length === 0;
