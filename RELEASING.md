@@ -28,7 +28,7 @@ anything to stay correct?** If yes, it is at least a minor. If the change only
 adds or clarifies without altering an existing contract, it is a patch.
 
 The historical evolution of the rules themselves is recorded in
-[`claude/baton/RULES-HISTORY.md`](claude/baton/RULES-HISTORY.md).
+[`baton/RULES-HISTORY.md`](baton/RULES-HISTORY.md).
 
 ## Cutting a release
 
@@ -52,6 +52,6 @@ The historical evolution of the rules themselves is recorded in
 - `main` runs **ahead of the latest tag** between releases. `VERSION` reflects
   the last cut tag, not `main`'s tip — so vendor from a **tag**, not from
   `main`, when you need a stable pin.
-- Adopters who install rather than vendor (`git pull && ./install.sh`) always
+- Adopters who install rather than vendor (`git pull && ./install-claude.sh`) always
   track `main`; the tag/release is a version marker and changelog boundary, not
   the delivery mechanism.

@@ -24,6 +24,43 @@ roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
 
+## 0.5.1 — 2026-06-27
+
+Tool-neutral repo layout. Packaging/layout change, not a rules-content change —
+the eleven rules, role prompts, and templates are byte-identical, just relocated.
+The `claude/` top-level directory was a category error: it implied
+Claude-specificity for content (rule docs, role prompts, schemas, templates,
+protocol docs) that is tool-agnostic. The per-LLM flavour is applied at the
+boundary — by the named install scripts or the agent-driven README install — not
+baked into the source tree.
+
+### Changed
+- `claude/baton/` → top-level `baton/`; `claude/commands/` → top-level
+  `commands/`; the `claude/` directory is removed. `schemas/` was already neutral.
+- `install.sh` → `install-claude.sh` — a bare `install.sh` implicitly privileged
+  Claude; named per-tool installers (`install-claude.sh`, `install-codex.sh`) are
+  symmetric. Both scripts' **source** paths updated to the new layout; their
+  **install-destination** paths (`~/.claude/`, `~/.codex/`) and the
+  `.claude/`→`.codex/` runtime-ref rewrite are unchanged.
+- Repo-relative references updated across `README.md`, `ROADMAP.md`,
+  `RELEASING.md`, `INSTALL.md`, and `release-mode-slice-ref.md`.
+
+### Adopter impact
+- Vendor consumers (e.g. SwornAgent) read from `baton/…` instead of
+  `claude/baton/…`; the Sworn vendor source map was updated in lockstep.
+- Installers run `./install-claude.sh` (or `./install-codex.sh`); the old
+  `install.sh` name is gone.
+
+### Not changed (deliberate Rule 2 deferrals)
+- The `$HOME/.claude/baton/…` **runtime** references inside the role prompts and
+  commands — those are install-*location* paths (tool-specific by design; the
+  install scripts rewrite them per tool), a separate concern from the source
+  layout.
+- ROADMAP's "Next — cross-tool adapters" section still describes a future unified
+  tool-aware `install.sh` (auto-detect, `--tools=`). That vision is now in tension
+  with the per-tool-installer naming; left for a strategy decision rather than
+  silently rewritten.
+
 ## 0.5.0 — 2026-06-27
 
 Records-as-JSON + pure spec. The loop's artefacts become **emitted JSON records** validated against published schemas, and Baton stops shipping binaries — converging the gate + oracle *implementation* on the open `sworn` reference binary. The eleven rules are unchanged: this is a format-and-implementation transition, not a rules change. (ADR-0009, ADR-0010.)

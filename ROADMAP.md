@@ -9,7 +9,7 @@ shipped.
 - **Agent-driven install** — point your coding agent (Claude Code, Codex,
   Gemini CLI, OpenCode, Hermes, …) at the repo and it installs Baton for your
   tool and wires the rules fragment into your instructions file. See
-  `claude/baton/INSTALL.md`.
+  `baton/INSTALL.md`.
 - Slash commands for Claude Code: `/plan-release`, `/replan-release`,
   `/design-review`, `/implement-slice`, `/verify-slice`, `/merge-track`,
   `/merge-release`, `/mark-shipped`.
@@ -22,7 +22,7 @@ shipped.
   `~/.codex/` and a Codex-specific argument-resolution header prepended.
 - Track mode — slices grouped into touchpoint-disjoint tracks for safe
   parallelism, each track in its own worktree. See
-  `claude/baton/track-mode.md`.
+  `baton/track-mode.md`.
 - Eleven rules + four role prompts (planner, implementer, verifier, captain) +
   release-mode templates installed at `~/.claude/baton/` (Claude Code) and
   `~/.codex/baton/` (Codex) via the two installers.
@@ -39,7 +39,7 @@ shipped.
 
 The agent-driven install (above) already covers any tool today — your agent
 places the files and wires the fragment. This pass makes it *scripted and native*:
-`install.sh` targets Claude Code and `install-codex.sh` targets OpenAI Codex
+`install-claude.sh` targets Claude Code and `install-codex.sh` targets OpenAI Codex
 (CLI + Mac App, which share `~/.codex/` config); the refactor moves to a
 two-layer architecture so the same content drives slash-commands / skills /
 prompts across the remaining target CLIs without an agent in the loop.
@@ -50,7 +50,7 @@ prompts across the remaining target CLIs without an agent in the loop.
 
 | Tool                | Rules file              | User-level commands surface       | Format          | Status |
 |---------------------|-------------------------|-----------------------------------|-----------------|--------|
-| Claude Code         | `~/.claude/CLAUDE.md`   | `~/.claude/commands/*.md`         | markdown + frontmatter | shipped (`install.sh`) |
+| Claude Code         | `~/.claude/CLAUDE.md`   | `~/.claude/commands/*.md`         | markdown + frontmatter | shipped (`install-claude.sh`) |
 | OpenAI Codex (CLI + Mac App) | `~/.codex/AGENTS.md` | `~/.agents/skills/<name>/SKILL.md` | markdown + frontmatter | shipped (`install-codex.sh`) |
 | Gemini CLI          | `GEMINI.md` or AGENTS.md| `~/.gemini/commands/*.toml`       | TOML | planned |
 | OpenCode (SST)      | `AGENTS.md`             | `~/.config/opencode/commands/`    | markdown | planned |
@@ -69,7 +69,7 @@ prompts across the remaining target CLIs without an agent in the loop.
 ```
 
 The role prompts and rule docs are already tool-agnostic prose. Layer 1
-is essentially the current `claude/baton/` directory (no binaries — Baton is
+is essentially the current `baton/` directory (no binaries — Baton is
 pure spec; the gates are run by the open `sworn` reference implementation),
 moved to a tool-neutral home.
 
@@ -114,8 +114,8 @@ Detection probes:
 
 Anyone who installed the Claude-Code-only release will need to either:
 
-- (a) `rm -rf ~/.claude/baton ~/.claude/bin ~/.claude/commands/{plan,replan,implement,verify,merge}-*` then re-run the new `install.sh`, OR
-- (b) Just re-run the new `install.sh` — it should be idempotent enough to overwrite the Claude-Code shims in place and additionally drop Layer 1 at its new `~/.baton/` home. Adapters update their reads from `$HOME/.claude/baton/...` to `$HOME/.baton/...`.
+- (a) `rm -rf ~/.claude/baton ~/.claude/bin ~/.claude/commands/{plan,replan,implement,verify,merge}-*` then re-run the new `install-claude.sh`, OR
+- (b) Just re-run the new `install-claude.sh` — it should be idempotent enough to overwrite the Claude-Code shims in place and additionally drop Layer 1 at its new `~/.baton/` home. Adapters update their reads from `$HOME/.claude/baton/...` to `$HOME/.baton/...`.
 
 Rule content does not change across this transition — only the file
 layout, install location, and per-tool adapter formats.
@@ -124,7 +124,7 @@ layout, install location, and per-tool adapter formats.
 
 Wrap Layer 1 + the Claude Code adapter in a `.claude-plugin/plugin.json`
 manifest so adopters can install via `/plugin marketplace add sawy3r/baton`.
-Sketched in `claude/baton/INSTALL.md`'s Appendix. Lower priority than the
+Sketched in `baton/INSTALL.md`'s Appendix. Lower priority than the
 cross-tool refactor — that pass already gives broader coverage; this just
 gives a more ergonomic install path for the Claude subset.
 
