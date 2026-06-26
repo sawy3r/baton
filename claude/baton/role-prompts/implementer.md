@@ -87,11 +87,11 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
 3. Write tests at the integration point that owns the user-facing affordance (Rule 1).
 4. Maintain `journal.md` as you go — decisions, trade-offs, anything a verifier might need context on.
 5. When you believe the slice is done:
-   - Run `bin/release-coverage.sh --slice <slice-id> --release <release-name> --worktree <worktree_path>` — every AC must have a matching test. Fix uncovered ACs before proceeding.
-   - Run `bin/release-llm-check.sh --check ac-satisfaction --slice <slice-id> --release <release-name> --worktree <worktree_path>` — confirm every AC is genuinely satisfied by the implementation. Fix gaps before proceeding.
-   - If the project has security rules in `docs/baton/architecture.json`, run `bin/release-llm-check.sh --check security-review --slice <slice-id> --release <release-name> --worktree <worktree_path>` — address any findings.
+   - Run the **coverage gate** (reference implementation: `sworn coverage`) — every AC must have a matching test. Fix uncovered ACs before proceeding.
+   - Run the **ac-satisfaction LLM check** (reference implementation: `sworn llm-check --check ac-satisfaction`) — confirm every AC is genuinely satisfied by the implementation. Fix gaps before proceeding.
+   - If the project has security rules in `docs/baton/architecture.json`, run the **security-review LLM check** (`sworn llm-check --check security-review`) — address any findings.
    - Run all relevant test commands and capture output.
-   - Run `$HOME/.claude/bin/release-verify.sh <slice-id>` and address any failures.
+   - Run the **proof-bundle verification gate** (reference implementation: `sworn verify`) and address any failures.
    - Emit `proof.json` from live repo state, valid against `proof-v1` (files changed, test results, reachability artefact, delivered, not_delivered, divergence). The human-readable `proof.md` is rendered from it.
    - Update `status.json` → `implemented`.
    - **Stop.** Do not run a verifier prompt in this session. Do not declare PASS.
@@ -139,7 +139,7 @@ When the slice reaches `implemented`, respond with:
 
 - Slice id and current state.
 - Path to `proof.json` (and the rendered `proof.md`).
-- Output of `$HOME/.claude/bin/release-verify.sh <slice-id>`.
+- Output of the **proof-bundle verification gate** (`sworn verify`).
 - One sentence: "Ready for fresh-context verification."
 
 That message is the entire wrap-up. Do not summarise the implementation, do not enumerate "what was delivered" in prose. The proof bundle is the wrap-up. Anything you write in prose has no evidentiary weight.
