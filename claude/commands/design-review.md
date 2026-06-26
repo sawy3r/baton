@@ -25,7 +25,7 @@ You are now operating in the **Captain role** for slice `$1` in release `$2`.
 
 Release work runs under **track mode** (`baton/track-mode.md`). Each slice belongs to a track; the track has its own worktree on branch `track/$2/<track-id>`. Captain reads but does not create worktrees.
 
-1. **Discover the slice's track via the board oracle.** Run the release-board status reader (the tool that reads every `status.json` and `index.md` straight from the `track/$2/*` and `release-wt/$2` git refs and emits JSON). If it is missing or exits non-zero, return `BLOCKED: release board oracle unavailable — install the baton tooling before reviewing.` Parse `.releases["$2"]` and, in `.tracks[]`, find the entry whose `.slices` array contains `$1`. If `$1` is in no track, return `BLOCKED: slice '$1' is not assigned to a track in index.md.`
+1. **Discover the slice's track via the board oracle** (reference implementation: `sworn board --json`). Run the oracle — it reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` git refs and emits JSON. If it is unavailable or exits non-zero, return `BLOCKED: release board oracle unavailable — install the reference implementation (the open sworn binary) before reviewing.` Parse `.releases["$2"]` and, in `.tracks[]`, find the entry whose `.slices` array contains `$1`. If `$1` is in no track, return `BLOCKED: slice '$1' is not assigned to a track in board.json.`
 
 2. From that track entry capture `<track-id>` (`.id`), `<worktree_path>` (`.worktreePath`), `<worktree_branch>` (`.worktreeBranch`). If `<worktree_path>` is null, return `BLOCKED: track '<track-id>' has no recorded worktree. The implementer must materialise it via /implement-slice first.`
 
@@ -45,7 +45,7 @@ Read `baton/role-prompts/captain.md` and follow it as your governing instruction
 
 Per the role-prompt's "Inputs you load" section, load all four input sets **before producing any output**:
 
-1. Slice artefacts (spec.md, design.md, status.json)
+1. Slice artefacts (spec.json, design.md, status.json)
 2. Project memory (the memory index, plus feedback files matching §2 decisions)
 3. In-release siblings (other slice status.json files)
 4. Cross-release ancestry (`git -C <wt> log <release-base>..HEAD -- <file>` for each file in §3)
@@ -140,7 +140,7 @@ REASON: <one line — why this verdict>
 ## Strict role boundaries (do not violate)
 
 - You read only the artefacts listed in the role prompt and live repo state. You may not read journal.md, intake.md, the implementer's session transcript, or any "wrap-up" prose.
-- You do not edit production code, tests, or spec.md.
+- You do not edit production code, tests, or spec.json.
 - You do not transition status.json. The Implementer does this after the Coach acknowledges.
 - You emit a triage verdict (Step 3.5) recommending PROCEED / IMPLEMENTER_FIX / NEEDS_COACH, but you never transition status.json and you never acknowledge yourself. A release loop configured to apply the acknowledgement automatically acts on your verdict on a PROCEED; otherwise it is advisory and the Coach is the authority. When in doubt, recommend NEEDS_COACH.
 - You do not run `/merge-track`, `/verify-slice`, `/implement-slice`, or any other release-state-changing command.

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/proof-v1.json",
+  "slice_id": "S01-example-slice",
+  "release": "YYYY-MM-DD-theme",
+  "scope": "One sentence: what this slice was meant to deliver.",
+  "files_changed": ["path/to/file.ext"],
+  "test_results": [
+    { "command": "go test ./...", "passed": true, "exit_code": 0 }
+  ],
+  "reachability": {
+    "type": "cli-run",
+    "evidence": "Command + output, screenshot path, or an explicit 'do X, observe Y' smoke step."
+  },
+  "delivered": [
+    { "item": "What was delivered.", "evidence": "file path / test name / artefact path" }
+  ],
+  "not_delivered": [],
+  "divergence": []
+}

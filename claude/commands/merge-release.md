@@ -3,7 +3,7 @@ description: Merge a completed release's release-wt/<name> branch back into the 
 argument-hint: <release-name> (e.g. 2026-05-20-billing-redesign)
 ---
 
-You are now operating in the **Release Integrator role** for release `$1`. This command merges `release-wt/$1` back into the integration branch named in the release `index.md`. It is a deliberate, gated step — not "shipping" (shipping means code in prod; this only integrates verified work onto the base branch awaiting the next prod deploy).
+You are now operating in the **Release Integrator role** for release `$1`. This command merges `release-wt/$1` back into the integration branch named in the release `board.json`. It is a deliberate, gated step — not "shipping" (shipping means code in prod; this only integrates verified work onto the base branch awaiting the next prod deploy).
 
 **Vocabulary, locked:**
 - "merge a track" = `track/$1/<track-id>` → `release-wt/$1` (via `/merge-track` — a prerequisite for this command; every track must be merged before the release can be).
@@ -25,14 +25,14 @@ This command runs in the **primary worktree** (`<REPO_ROOT>`), not the release w
 Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktree_branch>` and `<worktree_path>` by pattern-matching the release name against git's worktree registry. The defined format is **`release-wt/$1`** for the branch and a sibling worktree path checked out on that branch.
 
 1. Run `git worktree list --porcelain` and scan for a stanza whose `branch` line ends in `refs/heads/release-wt/$1`. Capture its `worktree <path>` line as `<worktree_path>` and `release-wt/$1` as `<worktree_branch>`.
-2. If no matching stanza, fall back to `docs/release/$1/index.md` frontmatter (`release_worktree_path` + `release_worktree_branch`). Treat any mismatch between the two sources as docs drift — git wins; record the divergence in your Step 4 board update.
-3. If neither source produces a result, BLOCK with: "Release `$1` has no `release-wt/$1` worktree registered with git and no recorded worktree in `docs/release/$1/index.md`. Nothing to merge — either no implementation happened, or this release was abandoned."
-4. Confirm current branch is the release's integration branch. The integration branch is parsed from `docs/release/$1/index.md` "Release summary" → `Target version / integration branch`. If on a different branch, BLOCK with: "/merge-release must run on the integration branch `<integration>`. Switch to it and re-run."
+2. If no matching stanza, fall back to `docs/release/$1/board.json` `release.worktree` (`.path` + `.branch`). Treat any mismatch between the two sources as docs drift — git wins; record the divergence in your Step 4 board update.
+3. If neither source produces a result, BLOCK with: "Release `$1` has no `release-wt/$1` worktree registered with git and no recorded worktree in `docs/release/$1/board.json`. Nothing to merge — either no implementation happened, or this release was abandoned."
+4. Confirm current branch is the release's integration branch. The integration branch is read from `docs/release/$1/board.json` `release.integration_branch`. If on a different branch, BLOCK with: "/merge-release must run on the integration branch `<integration>`. Switch to it and re-run."
 5. `git fetch origin` and confirm the integration branch is at or ahead of `origin/<integration>`. If behind, BLOCK with: "Local `<integration>` is behind origin. Run `git pull --ff-only origin <integration>` and re-run."
 
 ## Step 1 — Read release state via the board oracle
 
-Run `$HOME/.claude/bin/release-board-status.sh --json` from the primary worktree. It resolves every slice's `status.json` and the `tracks:` board straight from the `release-wt/$1` and `track/$1/*` **git refs** — the per-slice `state` transitions that `/verify-slice` and `/implement-slice` commit onto the track branches, which the integration-branch copies do not yet carry. This is exactly the "read from the worktree branch, not the stale primary checkout" rule, done mechanically — the most common false-BLOCK (reading stale integration-branch `status.json`) is structurally impossible. It also discovers slice folders that exist only on a track branch (e.g. an `S06 → S06a/b/c` split not yet on the integration branch). Do not read `status.json` or `index.md` by hand. If the script is missing or exits non-zero, BLOCK: "release board oracle unavailable — install baton (`~/.claude/bin/`) before merging."
+Run the **board oracle** (reference implementation: `sworn board --json`) from the primary worktree. It resolves every slice's `status.json` and the `tracks` board straight from the `release-wt/$1` and `track/$1/*` **git refs** — the per-slice `state` transitions that `/verify-slice` and `/implement-slice` commit onto the track branches, which the integration-branch copies do not yet carry. This is exactly the "read from the worktree branch, not the stale primary checkout" rule, done mechanically — the most common false-BLOCK (reading stale integration-branch `status.json`) is structurally impossible. It also discovers slice folders that exist only on a track branch (e.g. an `S06 → S06a/b/c` split not yet on the integration branch). Do not read `status.json` or `board.json` by hand. If the oracle is unavailable or exits non-zero, BLOCK: "release board oracle unavailable — install the reference implementation (the open `sworn` binary) before merging."
 
 1. **Slice gate.** From `.releases["$1"].slices[]`, build a state table. Every slice must be in one of these terminal-or-acceptable states:
    - `verified` — OK to merge
@@ -43,7 +43,7 @@ Run `$HOME/.claude/bin/release-board-status.sh --json` from the primary worktree
 
    If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed.
 2. **Track merge gate.** From `.releases["$1"].tracks[]`, every track must have `state == "merged"` — i.e. its `/merge-track` has run and its slices are already on `release-wt/$1`. A track whose slices are all `verified` but whose `state` is still `planned` / `in_progress` has **not** had its commits merged into `release-wt` and would be silently omitted from this release merge. If any track is not `merged`, BLOCK: `cannot merge release '$1' — these tracks are verified but not yet merged to release-wt: <list>. Run /merge-track <track-id> $1 for each before /merge-release.`
-3. **Planning-record integrity.** If the oracle's top-level `.ghostSlices` or `.pendingSpecs` name release `$1` (an `index.md` row with no `status.json` on any branch, or a live slice with no `spec.md`), surface them to the human in the Step 2 scope summary. They indicate the board names work the committed branches cannot back — warnings, not a hard BLOCK, but the human should see them before approving the final merge.
+3. **Planning-record integrity.** If the oracle's top-level `.ghostSlices` or `.pendingSpecs` name release `$1` (an `board.json` row with no `status.json` on any branch, or a live slice with no `spec.json`), surface them to the human in the Step 2 scope summary. They indicate the board names work the committed branches cannot back — warnings, not a hard BLOCK, but the human should see them before approving the final merge.
 
 ## Step 1.5 — Forward-merge the integration branch into the release worktree
 
@@ -95,10 +95,10 @@ Question: "Merge `<worktree_branch>` into `<integration>` now?" Options: "Yes, m
    ```
    chore(<integration>): merge release/$1 — N slices verified, M deferred
 
-   Release goal (from intake): <one-line from index.md "Goal" bullet>
+   Release goal (from intake): <one-line release goal from board.json>
 
    Slices merged:
-   - <slice-id-1>: <one-line user outcome from spec.md>
+   - <slice-id-1>: <one-line user outcome from spec.json>
    - <slice-id-2>: ...
    (one line per verified slice, with their user outcome)
 
@@ -115,16 +115,13 @@ Question: "Merge `<worktree_branch>` into `<integration>` now?" Options: "Yes, m
 
 ## Step 4 — Update the release board
 
-Append to `docs/release/$1/index.md` "Recent activity" section:
-
-```markdown
-### YYYY-MM-DD — release merged to <integration> (commit <SHA>)
+Append an activity entry to `docs/release/$1/board.json` recording the merge:
 
 - **Actor**: release integrator (/merge-release)
-- **Note**: N verified slices merged. Slices remain in `verified` state until <integration> ships to production; at that point each slice's `status.json` flips to `shipped`. Branch `<worktree_branch>` retained; remove with `git branch -D <worktree_branch>` once you're sure no more work belongs to this release.
-```
+- **Note**: `N verified slices merged. Slices remain in 'verified' state until <integration> ships to production; at that point each slice's status.json flips to 'shipped'. Branch <worktree_branch> retained; remove with 'git branch -D <worktree_branch>' once you're sure no more work belongs to this release.`
+- Dated, and tagged with the merge commit `<SHA>`.
 
-Commit on the integration branch: `docs(release/$1): record merge to <integration>`.
+Validate `board.json` against `board-v1`, then re-render `index.md` from it (the Recent activity section is a view). Commit both on the integration branch: `docs(release/$1): record merge to <integration>`.
 
 ## Step 5 — Hand off
 

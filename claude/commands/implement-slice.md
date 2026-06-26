@@ -1,5 +1,5 @@
 ---
-description: Enter Implementer role for a specific slice. Reads spec.md, implements against acceptance checks, writes proof.md. Stops at state 'implemented' — never claims verified. Usage: /implement-slice <slice-id> [<release-name>]
+description: Enter Implementer role for a specific slice. Reads spec.json, implements against acceptance checks, writes proof.json. Stops at state 'implemented' — never claims verified. Usage: /implement-slice <slice-id> [<release-name>]
 argument-hint: <slice-id> [<release-name>] (e.g. S03-portfolio-add-flow 2026-05-20-billing-redesign)
 ---
 
@@ -39,13 +39,13 @@ Release work runs under **track mode** — read `$HOME/.claude/baton/track-mode.
 
 **Launch-directory discipline — read this first.** This session is launched from whatever directory the human's terminal happens to be in — almost always the primary repo (`<REPO_ROOT>`), checked out on the integration branch. **That is not where this slice's work belongs.** Do not build, test, edit files, or run `git` writes in the launch directory. Step 0 discovers the correct **track worktree**; from that point on every Bash command is `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`) and every Read/Write/Edit uses an absolute path under `<worktree_path>`. If you ever run a mutating command without a `<worktree_path>` anchor, stop — you are in the wrong tree. You never ask the human to `cd`; discovery is silent and automatic.
 
-**Read the board through the oracle — never by hand.** Every fact Step 0 needs (which track owns the slice, the track's state, its dependency gate, the sequential order of its slices, the worktree to operate in) comes from one branch-aware read:
+**Read the board through the oracle — never by hand.** Every fact Step 0 needs (which track owns the slice, the track's state, its dependency gate, the sequential order of its slices, the worktree to operate in) comes from one branch-aware read. Invoke the **board oracle** (reference implementation: `sworn board --json`):
 
 ```
-$HOME/.claude/bin/release-board-status.sh --json
+sworn board --json
 ```
 
-Run it from anywhere inside the repo — it resolves the repo from cwd and reads every `status.json` and `index.md` straight from the `track/$2/*` and `release-wt/$2` **git refs**, so it is correct regardless of which branch the launch directory sits on. Parse `.releases["$2"]` from its output. **Do not read `docs/release/$2/index.md` frontmatter or any `status.json` by hand in this step** — a launch-directory read silently misses every track and slice a `/replan-release` added after the release was cut (the recurring stale-branch trap). If the script is missing or exits non-zero, BLOCK: "release board oracle unavailable — install baton (`~/.claude/bin/`) before running release commands."
+Run it from anywhere inside the repo — it resolves the repo from cwd and reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` **git refs**, so it is correct regardless of which branch the launch directory sits on. Parse `.releases["$2"]` from its output. **Do not read `docs/release/$2/board.json` or any `status.json` by hand in this step** — a launch-directory read silently misses every track and slice a `/replan-release` added after the release was cut (the recurring stale-branch trap). The branch-aware state resolution is the oracle's contract (board-v1 + the `release-wt`/`track/*` ref read); the reference implementation is the open `sworn` binary. If the oracle is unavailable or exits non-zero, BLOCK: "release board oracle unavailable — install the reference implementation (the open `sworn` binary) before running release commands."
 
 1. **Find the slice's track.** In the oracle JSON, take `.releases["$2"].tracks[]` and find the entry whose `.slices` array contains `$1`. If `$1` is in no track (or has no slice object under `.releases["$2"].slices[]`), BLOCK: "Slice `$1` is not assigned to a track — re-run `/plan-release $2` (or `/replan-release $2`) to group it." From the track entry capture `<track-id>` (`.id`), `<worktree_path>` (`.worktreePath`), `<worktree_branch>` (`.worktreeBranch`), `<blocked_by>` (`.blockedBy`), and the ordered `<slices>` (`.slices`).
 2. **Enforce sequential order within the track.** For every slice listed *before* `$1` in the track's `.slices`, read its `.state` from `.releases["$2"].slices[]`. If any is not `verified` (nor `deferred` / `shipped`), BLOCK: "Slice `<earlier>` precedes `$1` in track `<track-id>` (state `<state>`). Slices in a track are implemented in order — finish and verify `<earlier>` first."
@@ -54,9 +54,9 @@ Run it from anywhere inside the repo — it resolves the repo from cwd and reads
    - Capture `<worktree_path>`. **For the rest of this session, every Bash command runs `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`); every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`.** Skip to Step 0b (the BLOCKED-verdict guard) below.
 4. **If `<worktree_path>` is null** (first `/implement-slice` for this track): materialise it.
    - **Dependency gate.** If the oracle reports a non-empty `.blockedBy` for this track, BLOCK: "Track `<track-id>` depends on `<blocked_by>` — not yet merged to `release-wt`. A dependent track may only start once its predecessors have merged." (`blockedBy` is exactly the subset of the track's `depends_on` whose tracks are not in state `merged`; an empty list means the gate is clear.)
-   - **Release worktree first.** If `.releases["$2"].releaseWorktreePath` is null, this is also the first `/implement-slice` in the release: parse the integration branch from `index.md` "Release summary" → `Target version / integration branch` (e.g. `release/v0.5.0`), then `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2 -b release-wt/$2 <integration-branch>`.
+   - **Release worktree first.** If `.releases["$2"].releaseWorktreePath` is null, this is also the first `/implement-slice` in the release: read the integration branch from `board.json` `release.integration_branch` (e.g. `release/v0.5.0`), then `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2 -b release-wt/$2 <integration-branch>`.
    - **Materialise the track worktree** from the release branch: `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2-<track-id> -b <worktree_branch> release-wt/$2`.
-   - **Record the worktree on the board — on `release-wt/$2`, not the integration branch.** The oracle reads `index.md` from `release-wt/$2`; the worktree_path must be written there or the next `/implement-slice` will not see it (and will try to re-materialise). In the **release worktree** (cwd `<release_worktree_path>`, branch `release-wt/$2`), update `docs/release/$2/index.md` frontmatter — set this track's `worktree_path` and `state: in_progress`, and `release_worktree_path` / `release_worktree_branch` if you just created the release worktree. Commit on `release-wt/$2`: `chore(release/$2): materialise worktree for track <track-id>`, then push. The integration branch stays untouched — it receives the release only via `/merge-release`.
+   - **Record the worktree on the board — on `release-wt/$2`, not the integration branch.** The oracle reads `board.json` from `release-wt/$2`; the worktree path must be written there or the next `/implement-slice` will not see it (and will try to re-materialise). In the **release worktree** (cwd `<release_worktree_path>`, branch `release-wt/$2`), update `docs/release/$2/board.json` — set this track's `worktree` (`{ path, branch }`) and `state: "in_progress"`, and `release.worktree` (`{ path, branch }`) if you just created the release worktree — then re-render `index.md` from it. Parse → modify → write the JSON (or use `jq`) and validate against `board-v1`; the record cannot fuse a sibling track the way the old `index.md` frontmatter could, so no line-oriented `awk` edit or abort-on-corruption guard is needed. Commit on `release-wt/$2`: `chore(release/$2): materialise worktree for track <track-id>`, then push. The integration branch stays untouched — it receives the release only via `/merge-release`.
    - Treat the new worktree as `<worktree_path>` per step 3. Continue silently — no human handoff.
 
 Briefly tell the human in one sentence what you did ("Using track worktree at `<worktree_path>`" or "Materialised track worktree at `<worktree_path>` for track `<track-id>`"). Then continue.
@@ -85,12 +85,12 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
 
 1. If `$2` is empty, find the slice folder: `ls <wt>/docs/release/*/$1/ 2>/dev/null`. If multiple matches, stop and ask the human.
 2. Read in this order, before any code edit — every path absolute and anchored at `<wt>`:
-   - `<wt>/docs/release/$2/$1/spec.md`
+   - `<wt>/docs/release/$2/$1/spec.json`
    - `<wt>/docs/release/$2/$1/journal.md` (if previous sessions exist)
    - `<wt>/docs/release/$2/$1/status.json`
-   - `<wt>/docs/release/$2/$1/proof.md` (may be empty template)
+   - `<wt>/docs/release/$2/$1/proof.json` (may be empty template)
    - `git -C <wt> status` and `git -C <wt> diff <base> --stat`, where `<base>` is this slice's `start_commit` from `status.json` if already set, else `release-wt/$2` (the point the track branch was cut from). Never diff against `main` or the version branch — that inflates the diff with every prior track and slice.
-3. Confirm the slice's `User outcome` from spec.md back to the human in one sentence: "Implementing **$1**: `<outcome>`. Acceptance checks: N. Out of scope: <summary>."
+3. Confirm the slice's `User outcome` from spec.json back to the human in one sentence: "Implementing **$1**: `<outcome>`. Acceptance checks: N. Out of scope: <summary>."
 4. Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. Capture that commit's SHA (`git -C <wt> rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and is the verifier's exact diff base. **Then push the track branch so the work is durable:**
    ```
    git -C <wt> push origin HEAD:refs/heads/track/$2/<track-id>
@@ -107,10 +107,10 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
 
 ## At completion
 
-1. Run all test commands cited in `spec.md` "Required tests". Capture full output.
-2. Generate `proof.md` from live repo state using `$HOME/.claude/baton/release-mode-template/proof.md` as the template. Every section must be from a live command run.
-3. Run `$HOME/.claude/bin/release-verify.sh $1 $2` and capture output into `proof.md` "First-pass script output" section.
-4. If the script returns FAIL, address the failures and re-run. Do not proceed until first-pass is green.
+1. Run all test commands cited in `spec.json` "Required tests". Capture full output.
+2. Emit `proof.json` from live repo state, valid against `proof-v1`, using `$HOME/.claude/baton/release-mode-template/proof.json` as the template. Every section must be from a live command run. The human-readable `proof.md` is rendered from it.
+3. Run the **proof-bundle verification gate** (reference implementation: `sworn verify $1 $2`) and capture its output into the proof bundle's first-pass verdict.
+4. If the gate returns FAIL, address the failures and re-run. Do not proceed until first-pass is green.
 5. Update `status.json` → `state: implemented`, fill in `actual_files`, `test_commands`, `reachability_artifacts`.
 6. Append to `journal.md`: state transition entry with decisions, trade-offs, and any subagent dispatches.
 7. Commit: `feat(<slice-area>): land $1 — <user outcome>` with a Rule 4 body restating the decisions made during implementation.
@@ -120,8 +120,8 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
 A short message containing only:
 
 - Slice `$1` state: `implemented`.
-- Path to `proof.md`.
-- Output of `$HOME/.claude/bin/release-verify.sh $1 $2` (first-pass: PASS).
+- Path to `proof.json` (and the rendered `proof.md`).
+- Output of the **proof-bundle verification gate** (`sworn verify $1 $2`) (first-pass: PASS).
 - Explicit handoff: "Open a **fresh** terminal session and use `/verify-slice $1 $2` for adversarial verification."
 
 Do not write a prose wrap-up of what was implemented. The proof bundle is the wrap-up.

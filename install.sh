@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 #
-# install.sh — install baton at the user level (~/.claude/).
+# install.sh — install baton (the spec) at the user level (~/.claude/).
 #
-# Idempotent: re-running overwrites the seven slash commands, the
-# baton docs package, and the bin/ scripts (release-verify.sh + the
-# release-board tooling). It does NOT touch ~/.claude/CLAUDE.md or any other
-# user config — wiring the AGENTS rules fragment into your CLAUDE.md is a
-# manual step printed at the end.
+# Baton is pure specification: slash commands, rule docs, role prompts, record
+# schemas, and templates. It installs NO binaries. The mechanical gates are
+# provided by the open `sworn` binary — the reference implementation. Install
+# that separately if you want the gates automated; the by-hand loop needs nothing
+# but these files and your LLM.
+#
+# Idempotent: re-running overwrites the slash commands and the baton docs
+# package (rules, role prompts, schemas, templates). It does NOT touch
+# ~/.claude/CLAUDE.md — wiring the AGENTS rules fragment in is a manual step
+# printed at the end.
 
 set -euo pipefail
 
 usage() {
   cat <<EOF
-baton installer
+baton installer (pure spec — no binaries)
 
 Usage: ./install.sh [--dry-run] [-y|--yes] [--help]
 
@@ -27,10 +32,10 @@ Environment:
 Installs:
   ~/.claude/commands/{plan-release,replan-release,implement-slice,verify-slice,merge-track,merge-release,mark-shipped}.md
   ~/.claude/baton/                  (rule docs, role prompts, templates)
-  ~/.claude/bin/release-verify.sh              (first-pass verifier script)
-  ~/.claude/bin/release-board-status.sh        (release board — terminal verdict)
-  ~/.claude/bin/release-board-ui.mjs           (release board — HTML dashboard)
-  ~/.claude/bin/lib/release-board.mjs          (shared branch-aware board reader)
+  ~/.claude/baton/schemas/          (record schemas: board / spec / proof / status / journeys / attestations)
+
+Does NOT install:
+  any binary. Gates are run by the open \`sworn\` binary (reference implementation).
 
 Does NOT modify:
   ~/.claude/CLAUDE.md                          (wire AGENTS-fragment.md in manually)
@@ -52,7 +57,7 @@ done
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 
-echo "baton installer"
+echo "baton installer (pure spec)"
 echo "  bundle:      $BUNDLE_DIR"
 echo "  install to:  $CLAUDE_HOME"
 [[ "$DRY_RUN" -eq 1 ]] && echo "  mode:        DRY RUN (no files will be copied)"
@@ -73,11 +78,11 @@ run() {
 # prompt. This script writes only inside $CLAUDE_HOME and touches no shell rc.
 cat <<EOF
 About to install baton into $CLAUDE_HOME:
-  commands/   baton slash commands               (existing baton ones overwritten)
-  baton/      rule docs, role prompts, templates  (overwritten)
-  bin/        release-verify.sh + release-board tooling  (overwritten)
+  commands/        baton slash commands                 (existing baton ones overwritten)
+  baton/           rule docs, role prompts, templates    (overwritten)
+  baton/schemas/   record schemas                        (overwritten)
 
-Not touched: your shell rc, $CLAUDE_HOME/CLAUDE.md, any other config.
+No binaries are installed. Not touched: your shell rc, $CLAUDE_HOME/CLAUDE.md.
 EOF
 
 if [[ "$DRY_RUN" -eq 0 && "$ASSUME_YES" -eq 0 ]]; then
@@ -95,7 +100,7 @@ if [[ "$DRY_RUN" -eq 0 && "$ASSUME_YES" -eq 0 ]]; then
 fi
 echo
 
-run mkdir -p "$CLAUDE_HOME/commands" "$CLAUDE_HOME/baton" "$CLAUDE_HOME/bin"
+run mkdir -p "$CLAUDE_HOME/commands" "$CLAUDE_HOME/baton"
 
 # Slash commands (user-level, available in every project on this machine)
 for f in "$BUNDLE_DIR"/claude/commands/*.md; do
@@ -105,18 +110,10 @@ done
 # Docs package: rules, role-prompts/, release-mode-template/
 run cp -rv "$BUNDLE_DIR"/claude/baton/. "$CLAUDE_HOME/baton/"
 
-# bin/: release-verify.sh + the release-board tooling (status CLI, HTML
-# dashboard, and the shared reader under bin/lib/).
-# Deliberate allowlist — never a blanket copy of bin/. — so a stray file in
-# the bundle's bin/ can't silently land in the user's ~/.claude/bin.
-for f in release-verify.sh release-board-status.sh release-board-ui.mjs; do
-  run cp -v "$BUNDLE_DIR/bin/$f" "$CLAUDE_HOME/bin/"
-done
-run mkdir -p "$CLAUDE_HOME/bin/lib"
-run cp -rv "$BUNDLE_DIR"/bin/lib/. "$CLAUDE_HOME/bin/lib/"
-run chmod +x "$CLAUDE_HOME/bin/release-verify.sh" \
-             "$CLAUDE_HOME/bin/release-board-status.sh" \
-             "$CLAUDE_HOME/bin/release-board-ui.mjs"
+# Record schemas — the JSON-record contracts the roles emit against. Hosted
+# canonically at baton.sawy3r.net/schemas/; installed locally for offline use.
+run mkdir -p "$CLAUDE_HOME/baton/schemas"
+run cp -v "$BUNDLE_DIR"/schemas/*.json "$CLAUDE_HOME/baton/schemas/"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo
@@ -138,16 +135,12 @@ Slash commands available in every project on this machine:
   /merge-release <release-name>                  (release-wt → integration branch)
   /mark-shipped <release-name>                   (verified → shipped, after deploy)
 
-Verify script lives at:  $CLAUDE_HOME/bin/release-verify.sh
-  (the slash commands invoke it by absolute path; you can also call it
-   directly from any repo as \$HOME/.claude/bin/release-verify.sh)
-
-Release-board tooling, also at $CLAUDE_HOME/bin/ — run from inside any repo:
-  release-board-status.sh [--verbose]    terminal go/no-go verdict (exit 0/1)
-  release-board-ui.mjs [--port N]        auto-refreshing HTML dashboard
-  Both resolve slice state from track/* + release-wt/* git branches. The
-  release-docs root defaults to docs/release/; set BATON_RELEASE_DIR to
-  override (e.g. docs/release for a Fumadocs layout).
+Running the gates (optional):
+  Baton ships no binaries. The role prompts reference each gate by name with a
+  reference-implementation pointer to the open \`sworn\` binary (e.g. the trace
+  gate is \`sworn trace\`, proof-bundle verification is \`sworn verify\`). Install
+  \`sworn\` to automate the gates; the by-hand loop (paste prompts, the LLM emits
+  the JSON records, you review them) needs nothing more than these files.
 
 Remaining manual step — wire the Rule 1–5 fragment into your global
 agent instructions if you haven't already. The fragment ships at:
@@ -162,11 +155,8 @@ Two ways to wire it:
       applies to every project on THIS machine. Convenient for your solo
       work — but it is invisible to anyone else and to CI.
 
-  NOTE: (b) does NOT substitute for (a). Because the user-level rules make
-  Baton "work everywhere" for you, the per-project step is easy to forget —
-  and a shared/public repo then ships with no rules for other contributors.
-  Do (a) for every repo that others (or CI) touch; (b) is an additional
-  personal fallback, not a replacement.
+  NOTE: (b) does NOT substitute for (a). Do (a) for every repo that others
+  (or CI) touch; (b) is an additional personal fallback, not a replacement.
 
 Project setup before first /plan-release:
   1. cd into the target repo.
@@ -177,19 +167,3 @@ Project setup before first /plan-release:
 See $CLAUDE_HOME/baton/README.md for the rule rationale and
 $CLAUDE_HOME/baton/INSTALL.md for deeper integration notes.
 EOF
-
-# PATH guidance — surfaced, never auto-applied (this script edits no shell rc).
-# Shown only when the bin dir is genuinely missing from PATH.
-case ":${PATH}:" in
-  *":$CLAUDE_HOME/bin:"*) : ;;  # already on PATH — nothing to surface
-  *)
-    cat <<EOF
-
-Optional — add baton's bin/ to your PATH so the release-board scripts run by
-bare name (release-board-status.sh / release-board-ui.mjs), the way their own
-output refers to them. Add to your shell rc (~/.zshrc, ~/.bashrc, …):
-
-  export PATH="\$HOME/.claude/bin:\$PATH"
-EOF
-    ;;
-esac

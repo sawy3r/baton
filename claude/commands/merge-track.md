@@ -36,7 +36,7 @@ You are operating in the **Track Integrator role** for track `$1` in release `$2
 
 The merge target is `release-wt/$2`, which the release worktree owns.
 
-**Read the board through the oracle.** Run `$HOME/.claude/bin/release-board-status.sh --json` from anywhere inside the repo — it reads `index.md` and every `status.json` straight from the `release-wt/$2` and `track/$2/*` **git refs**, so the track and slice states it reports are branch-accurate regardless of which branch the launch directory sits on. Every gate in Steps 0-1 reads this one JSON; do not re-read `index.md` or `status.json` by hand. If the script is missing or exits non-zero, BLOCK: "release board oracle unavailable — install baton (`~/.claude/bin/`) before merging."
+**Read the board through the oracle** (reference implementation: `sworn board --json`). Run it from anywhere inside the repo — it reads `board.json` and every `status.json` straight from the `release-wt/$2` and `track/$2/*` **git refs**, so the track and slice states it reports are branch-accurate regardless of which branch the launch directory sits on. Every gate in Steps 0-1 reads this one JSON; do not re-read `board.json` or `status.json` by hand. If the oracle is unavailable or exits non-zero, BLOCK: "release board oracle unavailable — install the reference implementation (the open `sworn` binary) before merging."
 
 1. If `$2` is empty, find the release from the oracle: the release whose `.tracks[]` contains an entry with `.id == "$1"`. Exactly one match ⇒ that is `$2`; none ⇒ BLOCK ("no release contains track `$1`"); more than one ⇒ stop and ask the human.
 2. From `.releases["$2"]` capture `<release_worktree_path>` (`.releaseWorktreePath`) and `<release_worktree_branch>` (`.releaseWorktreeBranch`, = `release-wt/$2`). If `.releaseWorktreePath` is null, BLOCK: "Release `$2` has no release worktree — nothing has been implemented yet."
@@ -71,12 +71,12 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
    ```
 
-4. **Resolve conflicts — identical touchpoint contract to Step 4.** By invariant 2 of track-mode.md, disjoint tracks never write the same code/test file, so the forward-merge is conflict-free on code — expect at most an `index.md` reconciliation. On `git -C <track-worktree-path> diff --name-only --diff-filter=U`:
+4. **Resolve conflicts — identical touchpoint contract to Step 4.** By invariant 2 of track-mode.md, disjoint tracks never write the same code/test file, so the forward-merge is conflict-free on code — expect at most a `board.json` reconciliation. On `git -C <track-worktree-path> diff --name-only --diff-filter=U`:
 
    - **No conflicts** — `git merge` already created the merge commit. Continue to step 5.
-   - **Release `index.md`** — expected board reconciliation. Per-slice and per-track rows are disjoint and auto-merge; only the **Aggregate state** block and the **Recent activity** log collide. Resolve: keep both sides' rows, union the Recent activity entries chronologically, recompute the Aggregate state counts. `git -C <track-worktree-path> add` the file.
+   - **Release `board.json`** — expected board reconciliation. Per-slice and per-track entries are disjoint and auto-merge; only the aggregate counts and the activity log collide. Resolve: keep both sides' entries, union the activity entries chronologically, recompute the aggregate counts, and re-render `index.md`. `git -C <track-worktree-path> add` both files.
    - **A documented shared file** (matrix row marked `DOCUMENTED SHARED` with each track's declared region) — inspect the hunks: if they sit in the declared-separate regions, keep both tracks' regions and `git -C <track-worktree-path> add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git -C <track-worktree-path> merge --abort` and BLOCK as a planner error.
-   - **Any other file** — `git -C <track-worktree-path> merge --abort` and BLOCK: "Forward-merge of `release-wt/$2` into track `$1` conflicted on `<files>`, which are neither `index.md` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a merged sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
+   - **Any other file** — `git -C <track-worktree-path> merge --abort` and BLOCK: "Forward-merge of `release-wt/$2` into track `$1` conflicted on `<files>`, which are neither `board.json` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a merged sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 
    After resolving any conflicts, commit the merge: `git -C <track-worktree-path> commit --no-edit` (retains the message from step 3).
 
@@ -97,41 +97,34 @@ Merge track $1 into release-wt/$2 — N slices verified
 
 Track: $1
 Slices merged (all verified):
-- <slice-id>: <one-line user outcome from spec.md>
+- <slice-id>: <one-line user outcome from spec.json>
 ...
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 
-**Conflict handling — the touchpoint matrix is the contract.** By invariant 2 of track-mode.md, code and test files cannot conflict between disjoint tracks. The only legitimate conflicts are `index.md` and **documented shared files** (rows the matrix marks `DOCUMENTED SHARED`). On `git diff --name-only --diff-filter=U`:
+**Conflict handling — the touchpoint matrix is the contract.** By invariant 2 of track-mode.md, code and test files cannot conflict between disjoint tracks. The only legitimate conflicts are `board.json` and **documented shared files** (rows the matrix marks `DOCUMENTED SHARED`). On `git diff --name-only --diff-filter=U`:
 
-- **Release `index.md`** — expected board reconciliation. Per-slice and per-track rows are disjoint and auto-merge; only the **Aggregate state** block and the **Recent activity** log collide. Resolve: keep both sides' rows, union the Recent activity entries chronologically, recompute the Aggregate state counts. `git add` and continue.
+- **Release `board.json`** — expected board reconciliation. Per-slice and per-track entries are disjoint and auto-merge; only the aggregate counts and the activity log collide. Resolve: keep both sides' entries, union the activity entries chronologically, recompute the aggregate counts, and re-render `index.md`. `git add` both files and continue.
 - **A documented shared file** (the touchpoint matrix marks it `DOCUMENTED SHARED` with each track's declared region) — the tracks were declared to edit well-separated regions. Inspect the conflict hunks: if they sit in the declared-separate regions, resolve by keeping both tracks' regions and `git add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git merge --abort` and BLOCK as a planner error.
-- **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on `<files>`, which are neither `index.md` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
+- **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on `<files>`, which are neither `board.json` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 
 ## Step 5 — Update the board
 
-On `release-wt/$2` (in the release worktree), update `docs/release/$2/index.md`:
+On `release-wt/$2` (in the release worktree), update `docs/release/$2/board.json`:
 
-- Set the track's `state: merged` — both the `tracks:` frontmatter entry and the Tracks table row.
-- Recompute the **Aggregate state** block (slice counts + the track counts line).
-- Add a **Recent activity** entry:
+- Set the track's `state` to `"merged"` in the `tracks` array.
+- Recompute the aggregate counts (slice counts + the track counts).
+- Append an activity entry recording the merge: actor `track integrator (/merge-track)`, note `N verified slices merged: <slice-id list>. Track state -> merged.`, dated and tagged with the merge commit SHA.
 
-  ```markdown
-  ### YYYY-MM-DD — track `$1` merged to release-wt (commit <SHA>)
-
-  - **Actor**: track integrator (/merge-track)
-  - **Note**: N verified slices merged: <slice-id list>. Track state -> merged.
-  ```
-
-Commit on `release-wt/$2`: `docs(release/$2): record track $1 merge to release-wt`.
+Validate `board.json` against `board-v1`, then re-render `index.md` from it (the Tracks table, Aggregate state, and Recent activity sections are views). Commit both on `release-wt/$2`: `docs(release/$2): record track $1 merge to release-wt`.
 
 ## Step 6 — Hand off
 
 Tell the human, in one short message:
 
 - Merge commit SHA; track `$1` state is now `merged`.
-- Remaining unmerged tracks (`index.md` `tracks:` entries with `state != merged`), each with its verified/total slice count.
+- Remaining unmerged tracks (`board.json` `tracks` entries with `state != merged`), each with its verified/total slice count.
 - If every track is now `merged`: "All tracks merged — run `/merge-release $2` to integrate the release into the version branch."
 - Reminder: this command did **not** push, and did **not** delete `track/$2/$1` or its worktree (both retained for any post-merge fix). Push `release-wt/$2` when ready; remove the track worktree with `git worktree remove <track-worktree-path>` once you are sure no more work belongs to the track.
 

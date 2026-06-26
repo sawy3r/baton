@@ -110,7 +110,7 @@ In your next agent session, ask the agent: "What's our reachability gate rule?" 
 
 The Release Mode harness is what makes Rules 6 through 11 enforceable. Without it, the rules are aspirational — there's no artefact for the verifier to read and no fresh-context boundary preventing self-certification.
 
-The harness is intentionally minimal: four artefact files per slice, four role prompts, one shell script. There is no orchestration framework.
+The harness is intentionally minimal: the per-slice record files, four role prompts, and the record schemas. Baton ships no binaries; the mechanical gates are run by the open `sworn` reference implementation. There is no orchestration framework in Baton itself.
 
 ### Step A — Create the release directory
 
@@ -129,28 +129,25 @@ cp -r docs/baton/role-prompts docs/release/_role-prompts
 
 Adopters copy these into the repo so they're discoverable from `docs/release/` directly, rather than spread across the documentation package. The originals stay in `docs/baton/` as the canonical reference; the copies are working templates.
 
-### Step C — Adjust `release-verify.sh` to your stack
+### Step C — Install the reference implementation for the mechanical gates
 
-`./install.sh` places `release-verify.sh` at `~/.claude/bin/release-verify.sh`; the slash commands invoke it from there by absolute path. It is a reference implementation, not a universal artefact — it bakes in defaults that may not match your project:
+Baton installs **no binaries** — it specifies each gate (what it checks, that it fails closed) but does not run them. The reference implementation is the open `sworn` binary, installed separately; the slash commands name each gate by its protocol role (e.g. the proof-bundle verification gate, `sworn verify`) and `sworn` runs it.
 
-- The base branch name (defaults to `main`)
-- Test commands relevant to the reference project (Go + TypeScript)
-- Dark-code marker patterns
-- Glob patterns for which files are scanned
+The gates carry project-specific defaults — the base branch name, the test commands, dark-code marker patterns, which files are scanned. Those are not edited into a shell script any more; they live in the reference implementation's configuration (`sworn init` wires them in-repo) and in each slice's `spec.json` (its `Required tests`). The contract is the gate's role and that it fails closed; the contents are project-flavoured.
 
-Adjust those defaults to your stack — edit `bin/release-verify.sh` in your baton checkout and re-run `./install.sh`, or edit the installed copy directly. Keep the structure (six checks producing a numbered first-pass verdict) — the structure is the contract, the contents are project-flavoured.
+Adopters who want the zero-binary by-hand loop can skip this step entirely: the LLM emits the JSON records and a human eyeballs the rendered Markdown. Installing `sworn` is what automates the gates on top of that loop.
 
 ### Step D — Bind the harness to your workflow
 
 The full loop, per release, is:
 
-1. **Planner session (chat mode)**. Human pastes `role-prompts/planner.md` into a fresh agent session. They describe the release conversationally — screenshots, gestures, references. The planner captures everything to `docs/release/<release-name>/intake.md`, proposes a slice decomposition, writes a `spec.md` per agreed slice, and commits. No code is written in this session.
+1. **Planner session (chat mode)**. Human pastes `role-prompts/planner.md` into a fresh agent session. They describe the release conversationally — screenshots, gestures, references. The planner captures everything to `docs/release/<release-name>/intake.md`, proposes a slice decomposition, writes a `spec.json` per agreed slice, and commits. No code is written in this session.
 
-2. **Implementer session (per slice)**. Human opens a fresh session and pastes `role-prompts/implementer.md`. The implementer reads the slice's `spec.md`, makes the changes, writes `proof.md` from live repo state, runs `~/.claude/bin/release-verify.sh <slice-id>`, and stops at state `implemented`. The implementer is forbidden from declaring `verified`.
+2. **Implementer session (per slice)**. Human opens a fresh session and pastes `role-prompts/implementer.md`. The implementer reads the slice's `spec.json`, makes the changes, emits `proof.json` from live repo state, runs the proof-bundle verification gate (`sworn verify <slice-id>`), and stops at state `implemented`. The implementer is forbidden from declaring `verified`.
 
-3. **Verifier session (per slice, fresh context)**. Human opens **another** fresh session — new terminal, no inherited transcript — and pastes `role-prompts/verifier.md`. The verifier reads only `spec.md`, `proof.md`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`. Verdict goes to `journal.md`.
+3. **Verifier session (per slice, fresh context)**. Human opens **another** fresh session — new terminal, no inherited transcript — and pastes `role-prompts/verifier.md`. The verifier reads only `spec.json`, `proof.json`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`. Verdict goes to `journal.md`.
 
-4. **Human approval**. Verified slices wait for explicit human approval before being marked `shipped`. The release board (`index.md`) is the single source of truth for state.
+4. **Human approval**. Verified slices wait for explicit human approval before being marked `shipped`. The release board record (`board.json`, rendered to `index.md`) is the single source of truth for state.
 
 ### Step E — Set per-project memory expectations
 

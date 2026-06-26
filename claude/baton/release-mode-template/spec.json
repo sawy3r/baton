@@ -1,0 +1,21 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/spec-v1.json",
+  "slice_id": "S01-example-slice",
+  "release": "YYYY-MM-DD-theme",
+  "track": "T1-example-track",
+  "scope": "One sentence: the single user-reachable outcome this slice delivers.",
+  "rationale": "Optional human-authored prose explaining the slice. Never machine-parsed.",
+  "touchpoints": ["path/to/file.ext"],
+  "covers_needs": ["N-01"],
+  "risks": [
+    { "id": "R-01", "description": "What could go wrong.", "mitigation": "The binding mitigation the implementer must follow." }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-01",
+      "text": "WHEN <user gesture at the entry point> THE SYSTEM SHALL <observable result>",
+      "ears_pattern": "event-driven",
+      "test_refs": ["TestThatVerifiesThisAC"]
+    }
+  ]
+}

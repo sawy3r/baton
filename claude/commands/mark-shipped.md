@@ -69,8 +69,8 @@ home, and a shipped release's `release-wt` may already be gone.)
 2. Confirm the working tree is clean (`git status --short` empty). If not,
    BLOCK: "Working tree has uncommitted changes — commit, stash, or revert
    before recording shipped state."
-3. Parse the integration branch from `docs/release/$1/index.md` "Release
-   summary" → `Target version / integration branch`. Confirm the current branch
+3. Read the integration branch from `docs/release/$1/board.json`
+   `release.integration_branch`. Confirm the current branch
    is that integration branch. If not, BLOCK: "/mark-shipped records onto the
    integration branch `<integration>`. Switch to it and re-run."
 4. `git fetch origin` and confirm the local integration branch is not behind
@@ -159,21 +159,17 @@ record. Leave `deferred` / `superseded` / already-`shipped` slices untouched.
 
 ## Step 4 — Update the release board
 
-In `docs/release/$1/index.md` on the integration branch:
+In `docs/release/$1/board.json` on the integration branch:
 
-1. **Slices table** — change every `<to-ship>` slice's State cell from
+1. **Slice states** — change every `<to-ship>` slice's `state` from
    `verified` to `shipped`.
-2. **Aggregate state** — recompute: move the `<to-ship>` count out of the
-   "Verified" line into the "Shipped" line.
-3. **Recent activity** — prepend an entry:
-   ```markdown
-   ### YYYY-MM-DD — release `$1` marked shipped (deployed <deployed-commit short SHA>)
+2. **Aggregate counts** — recompute: move the `<to-ship>` count out of the
+   verified total into the shipped total.
+3. **Activity log** — prepend an entry: actor `release shipper (/mark-shipped)`,
+   note `N slices transitioned verified -> shipped. Deployed commit <deployed-commit>; deploy ref <deploy_ref or 'none recorded'>. This is the terminal state — release $1 is live in production.`, dated and tagged with the deployed-commit short SHA.
 
-   - **Actor**: release shipper (/mark-shipped)
-   - **Note**: N slices transitioned verified -> shipped. Deployed commit
-     `<deployed-commit>`; deploy ref `<deploy_ref or 'none recorded'>`. This is
-     the terminal state — release `$1` is live in production.
-   ```
+Validate `board.json` against `board-v1`, then re-render `index.md` from it (the
+Slices table, Aggregate state, and Recent activity sections are views).
 
 ## Step 5 — Commit
 
@@ -182,7 +178,7 @@ slice status files, by explicit path, so no unrelated working-tree change is
 swept in (see `$HOME/.claude/baton/multi-worktree-resilience.md`):
 
 ```
-git commit -o docs/release/$1/index.md docs/release/$1/*/status.json -m "docs(release/$1): mark N slices shipped — deployed <short SHA>
+git commit -o docs/release/$1/board.json docs/release/$1/index.md docs/release/$1/*/status.json -m "docs(release/$1): mark N slices shipped — deployed <short SHA>
 
 Release $1 is live in production. N slices transitioned verified -> shipped.
 
@@ -214,7 +210,7 @@ Tell the human, in one short message:
 - Do not merge anything. If the Step 1 ship gate fails because the release is
   not fully merged, the fix is `/merge-track` / `/merge-release`, not this
   command.
-- Do not edit slice `spec.md`, `proof.md`, or the `verification` block of
+- Do not edit slice `spec.json`, `proof.json`, or the `verification` block of
   `status.json`. The verification record is immutable history.
 - Do not delete branches or worktrees — recommend the cleanup, let the human
   run it.

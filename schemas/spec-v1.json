@@ -52,6 +52,26 @@
       "minItems": 1,
       "items": { "$ref": "#/$defs/need_id" }
     },
+    "risks": {
+      "type": "array",
+      "description": "Risks the planner enumerated, each with its mitigation. A stated mitigation is binding direction for the implementer (the captain's design-review treats it as load-bearing, not advisory), not a suggestion.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Optional stable id, e.g. R-01."
+          },
+          "description": { "type": "string", "minLength": 1 },
+          "mitigation": {
+            "type": "string",
+            "description": "The concrete mitigation. Binding direction when present."
+          }
+        }
+      }
+    },
     "acceptance_criteria": {
       "type": "array",
       "minItems": 1,

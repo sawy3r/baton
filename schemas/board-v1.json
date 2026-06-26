@@ -41,6 +41,22 @@
           "type": "string",
           "description": "The release integration base branch, e.g. release/v0.1.0."
         },
+        "worktree": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The release assembly worktree binding (release-wt/<release-name>), materialised at the first /implement-slice. Absent before then.",
+          "required": ["path", "branch"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path of the release assembly worktree."
+            },
+            "branch": {
+              "type": "string",
+              "description": "The release assembly branch, e.g. release-wt/<release-name>."
+            }
+          }
+        },
         "vertical_trace": {
           "type": "object",
           "additionalProperties": false,
