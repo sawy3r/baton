@@ -73,13 +73,21 @@
             "description": "Track ids that must merge before this track.",
             "items": { "$ref": "#/$defs/id_token" }
           },
-          "worktree_path": {
-            "type": "string",
-            "description": "Absolute path of the track's git worktree."
-          },
-          "worktree_branch": {
-            "type": "string",
-            "description": "The track branch, e.g. track/<release>/<track-id>."
+          "worktree": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The track's git worktree binding. Absent for a track not yet checked out. Grouped so the binding can grow (e.g. head sha, created_at) without a breaking change.",
+            "required": ["path", "branch"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Absolute path of the track's git worktree."
+              },
+              "branch": {
+                "type": "string",
+                "description": "The track branch, e.g. track/<release>/<track-id>."
+              }
+            }
           },
           "state": { "$ref": "#/$defs/track_state" }
         }
