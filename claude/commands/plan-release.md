@@ -26,8 +26,8 @@ Examples of well-formed release names:
 
 1. Confirm the release name with the human in one sentence: "Planning release **$1**. Is that right?"
 2. Check whether `docs/release/$1/` already exists.
-   - If it does not exist, create the directory. Copy `$HOME/.claude/baton/release-mode-template/intake.md` to `docs/release/$1/intake.md` and `$HOME/.claude/baton/release-mode-template/index.md` to `docs/release/$1/index.md`. Create `docs/release/$1/screenshots/` (empty directory; touch a `.gitkeep` so git tracks it).
-   - If it does exist, read `intake.md` and `index.md` in full before responding. The release is mid-planning; you are continuing, not starting. State the current slice count and any slices not yet at `verified` state in your first message back.
+   - If it does not exist, create the directory. Copy `$HOME/.claude/baton/release-mode-template/intake.md` to `docs/release/$1/intake.md` and `$HOME/.claude/baton/release-mode-template/board.json` to `docs/release/$1/board.json` (the human-readable `index.md` is rendered from `board.json`, never hand-authored). Create `docs/release/$1/screenshots/` (empty directory; touch a `.gitkeep` so git tracks it).
+   - If it does exist, read `intake.md` and `board.json` in full before responding. The release is mid-planning; you are continuing, not starting. State the current slice count and any slices not yet at `verified` state in your first message back.
 3. If this tool maintains per-project persistent memory (Claude Code stores it under `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md`, where `<encoded-cwd>` is the current repo's absolute path with `/` replaced by `-`), read the most recent 3 entries and consult any that look relevant to the release name (e.g. if the release name mentions "portfolio" or "workspace", load those entries). If no such memory store exists, skip this step.
 4. Begin the discovery conversation.
 
@@ -82,7 +82,7 @@ Example commit messages:
 - **No production code in this session.** You do not edit `src/`, `go/`, `packages/`, `content/`. The only writes are inside `docs/release/$1/`.
 - **No implementation hand-off in this session.** When planning is complete, your last message tells the human to open a fresh terminal session and use `/implement-slice <slice-id>` (or paste `role-prompts/implementer.md` manually). You do not implement in this same window.
 - **No verification claims.** Slices end this session in `planned` state. Period.
-- **Planning stays on the integration branch in the primary worktree.** Do not create or check out any worktree from this session. Release and track worktrees are materialised lazily by `/implement-slice` — the release worktree on the first slice of the release, each track worktree on the first slice of that track — never at planning time. This is deliberate: multiple concurrent `/plan-release` sessions can run on different releases while sharing the integration branch as a visibility layer, so each planner sees the others' spec/intake files as they land. Worktree materialisation is the carve-off point where a release stops being shared planning context and becomes isolated implementation work.
+- **Planning stays on the integration branch in the primary worktree.** Do not create or check out any worktree from this session. Release and track worktrees are materialised lazily by `/implement-slice` — the release worktree on the first slice of the release, each track worktree on the first slice of that track — never at planning time. This is deliberate: multiple concurrent `/plan-release` sessions can run on different releases while sharing the integration branch as a visibility layer, so each planner sees the others' spec.json / intake.md files as they land. Worktree materialisation is the carve-off point where a release stops being shared planning context and becomes isolated implementation work.
 - **Track grouping is mandatory output, not optional.** Phase 3b (group slices into tracks + build the touchpoint matrix) is a required deliverable — see `$HOME/.claude/baton/role-prompts/planner.md` and `$HOME/.claude/baton/track-mode.md`. A release board with slices but no tracks cannot be safely implemented in parallel.
 
 ## Output to human at session end
@@ -90,7 +90,7 @@ Example commit messages:
 A single message containing:
 
 - Release name, slice count, and track count.
-- Path to `intake.md` and `index.md`.
+- Path to `intake.md` and `board.json` (and the rendered `index.md`).
 - The tracks, each with its ordered slice list (slice id + one-sentence user outcome) and any `depends_on` edge.
 - Explicit handoff: "Open a fresh session per track and use `/implement-slice <first-slice-of-track>`. Tracks with no `depends_on` can run in parallel — each materialises its own worktree."
 
