@@ -7,14 +7,14 @@
 # directories under ~/.agents/skills/<name>/ with a SKILL.md manifest,
 # invoked as `$<skill-name>` or via the `/skills` picker. This script
 # packages each of baton's seven commands as a Codex skill, installs
-# the rule docs + bin/ scripts under ~/.codex/, and prints the manual
+# the rule docs + record schemas under ~/.codex/, and prints the manual
 # wiring step for ~/.codex/AGENTS.md.
 #
 # Codex Mac App + Codex CLI share the same on-disk config, so a single
 # install serves both.
 #
 # Idempotent: re-running overwrites the seven skills, the baton docs
-# package, and the bin/ scripts. It does NOT touch ~/.codex/AGENTS.md
+# package and record schemas. It does NOT touch ~/.codex/AGENTS.md
 # or any other user config — wiring the AGENTS rules fragment is a
 # manual step printed at the end.
 
@@ -38,10 +38,10 @@ Environment:
 Installs:
   ~/.agents/skills/baton-plan-release/SKILL.md             (and 6 more — one per baton command)
   ~/.codex/baton/                                          (rule docs, role prompts, templates)
-  ~/.codex/bin/release-verify.sh                           (first-pass verifier script)
-  ~/.codex/bin/release-board-status.sh                     (release board — terminal verdict)
-  ~/.codex/bin/release-board-ui.mjs                        (release board — HTML dashboard)
-  ~/.codex/bin/lib/release-board.mjs                       (shared branch-aware board reader)
+  ~/.codex/baton/schemas/                                  (record schemas)
+
+Does NOT install:
+  any binary. Gates are run by the open \`sworn\` binary (reference implementation).
 
 Does NOT modify:
   ~/.codex/AGENTS.md                                       (wire AGENTS-fragment.md in manually)
@@ -91,9 +91,9 @@ cat <<EOF
 About to install baton for Codex:
   $SKILLS_DIR/baton-*/      seven Codex skills, one per baton command  (overwritten)
   $CODEX_HOME/baton/        rule docs, role prompts, templates          (overwritten)
-  $CODEX_HOME/bin/          release-verify.sh + release-board tooling   (overwritten)
+  $CODEX_HOME/baton/schemas/ record schemas                             (overwritten)
 
-Not touched: your shell rc, $CODEX_HOME/AGENTS.md, any other config.
+No binaries installed. Not touched: your shell rc, $CODEX_HOME/AGENTS.md.
 EOF
 
 if [[ "$DRY_RUN" -eq 0 && "$ASSUME_YES" -eq 0 ]]; then
@@ -111,7 +111,7 @@ if [[ "$DRY_RUN" -eq 0 && "$ASSUME_YES" -eq 0 ]]; then
 fi
 echo
 
-run mkdir -p "$SKILLS_DIR" "$CODEX_HOME/baton" "$CODEX_HOME/bin"
+run mkdir -p "$SKILLS_DIR" "$CODEX_HOME/baton"
 
 # Docs package: rules, role-prompts/, release-mode-template/. Installed FIRST
 # so the skill bodies that reference $CODEX_HOME/baton/... resolve immediately
@@ -121,14 +121,11 @@ run cp -rv "$BUNDLE_DIR"/claude/baton/. "$CODEX_HOME/baton/"
 # Rewrite every $HOME/.claude/baton/ reference inside the docs package to
 # $HOME/.codex/baton/ — the role prompts and templates were authored for
 # Claude Code's install root and need to point at Codex's instead.
-# Same for $HOME/.claude/bin/ -> $HOME/.codex/bin/.
 if [[ "$DRY_RUN" -eq 0 ]]; then
   find "$CODEX_HOME/baton" -type f \( -name '*.md' -o -name '*.json' \) -print0 \
     | xargs -0 sed -i.bak \
         -e 's|\$HOME/\.claude/baton/|$HOME/.codex/baton/|g' \
-        -e 's|\$HOME/\.claude/bin/|$HOME/.codex/bin/|g' \
-        -e 's|~/\.claude/baton/|~/.codex/baton/|g' \
-        -e 's|~/\.claude/bin/|~/.codex/bin/|g'
+        -e 's|~/\.claude/baton/|~/.codex/baton/|g'
   find "$CODEX_HOME/baton" -type f -name '*.bak' -delete
 fi
 
@@ -174,9 +171,7 @@ for src in "$BUNDLE_DIR"/claude/commands/*.md; do
   # second whitespace-separated tokens of the user's invocation message.
   rewritten_body="$(printf '%s\n' "$body_after_frontmatter" \
     | sed -e 's|\$HOME/\.claude/baton/|$HOME/.codex/baton/|g' \
-          -e 's|\$HOME/\.claude/bin/|$HOME/.codex/bin/|g' \
-          -e 's|~/\.claude/baton/|~/.codex/baton/|g' \
-          -e 's|~/\.claude/bin/|~/.codex/bin/|g')"
+          -e 's|~/\.claude/baton/|~/.codex/baton/|g')"
 
   cat > "$skill_md" <<SKILL_EOF
 ---
@@ -192,17 +187,10 @@ SKILL_EOF
   echo "  installed: $skill_name -> $skill_md"
 done
 
-# bin/: release-verify.sh + release-board tooling. Same set as ~/.claude/bin/.
-# Deliberate allowlist — never a blanket copy of bin/. — so a stray file in
-# the bundle's bin/ can't silently land in the user's bin.
-for f in release-verify.sh release-board-status.sh release-board-ui.mjs; do
-  run cp -v "$BUNDLE_DIR/bin/$f" "$CODEX_HOME/bin/"
-done
-run mkdir -p "$CODEX_HOME/bin/lib"
-run cp -rv "$BUNDLE_DIR"/bin/lib/. "$CODEX_HOME/bin/lib/"
-run chmod +x "$CODEX_HOME/bin/release-verify.sh" \
-             "$CODEX_HOME/bin/release-board-status.sh" \
-             "$CODEX_HOME/bin/release-board-ui.mjs"
+# Record schemas — the JSON-record contracts the roles emit against. Hosted at
+# baton.sawy3r.net/schemas/; installed locally for offline use.
+run mkdir -p "$CODEX_HOME/baton/schemas"
+run cp -v "$BUNDLE_DIR"/schemas/*.json "$CODEX_HOME/baton/schemas/"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo
@@ -232,16 +220,10 @@ Invocation forms in Codex:
       \$baton-implement-slice S03-portfolio-add-flow 2026-06-10-multi-currency
   - Or use /skills to pick from the menu.
 
-Verify script lives at:  $CODEX_HOME/bin/release-verify.sh
-  (the skills invoke it by absolute path; you can also call it directly
-   from any repo as \$HOME/.codex/bin/release-verify.sh)
-
-Release-board tooling, also at $CODEX_HOME/bin/ — run from inside any repo:
-  release-board-status.sh [--verbose]    terminal go/no-go verdict (exit 0/1)
-  release-board-ui.mjs [--port N]        auto-refreshing HTML dashboard
-  Both resolve slice state from track/* + release-wt/* git branches. The
-  release-docs root defaults to docs/release/; set BATON_RELEASE_DIR to
-  override (e.g. docs/release for a Fumadocs layout).
+Running the gates (optional):
+  Baton ships no binaries. The skill bodies reference each gate by name with a
+  pointer to the open \`sworn\` binary (e.g. \`sworn trace\`, \`sworn verify\`).
+  Install \`sworn\` to automate the gates; the by-hand loop needs only these files.
 
 Remaining manual step — wire the Rule 1-5 fragment into your Codex agent
 instructions. The fragment ships at:
@@ -280,16 +262,3 @@ File issues at https://github.com/sawy3r/baton/issues if any skill
 misbehaves in a Codex session.
 EOF
 
-# PATH guidance — surfaced, never auto-applied (this script edits no shell rc).
-case ":${PATH}:" in
-  *":$CODEX_HOME/bin:"*) : ;;  # already on PATH — nothing to surface
-  *)
-    cat <<EOF
-
-Optional — add baton's bin/ to your PATH so the release-board scripts run by
-bare name. Add to your shell rc (~/.zshrc, ~/.bashrc, …):
-
-  export PATH="\$HOME/.codex/bin:\$PATH"
-EOF
-    ;;
-esac
