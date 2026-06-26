@@ -41,13 +41,21 @@
           "type": "string",
           "description": "The release integration base branch, e.g. release/v0.1.0."
         },
-        "release_benefit": {
-          "type": "string",
-          "description": "Vertical-trace top: the user/business benefit this release delivers. The RTM gate threads every slice up to this."
-        },
-        "org_objective": {
-          "type": "string",
-          "description": "Optional higher objective the release_benefit serves. The solo/small-team floor has no org objective; absence is valid."
+        "vertical_trace": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The golden-thread top: the benefit every slice traces up to, and the optional higher objective it serves. Grouped so the trace can grow without a breaking change.",
+          "required": ["benefit"],
+          "properties": {
+            "benefit": {
+              "type": "string",
+              "description": "The user/business benefit this release delivers. The RTM gate threads every slice up to this."
+            },
+            "org_objective": {
+              "type": "string",
+              "description": "Optional higher objective the benefit serves. The solo/small-team floor has none; absence is valid."
+            }
+          }
         }
       }
     },
