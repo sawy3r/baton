@@ -72,7 +72,7 @@ Use GitHub Issues for epics, feature specs, implementation plans, session captur
 
 ### 6. Proof Bundle (CRITICAL)
 
-Before marking any task, phase, or session complete, the agent must produce a **proof bundle** at `docs/captures/<date>-<topic>-proof.md` (or, for release-mode work, at `docs/release/<release-name>/<slice-id>/proof.md`). The bundle must be generated from live repo state — not recalled from context.
+Before marking any task, phase, or session complete, the agent must produce a **proof bundle** at `docs/captures/<date>-<topic>-proof.md` (prose; or, for release-mode work, the `proof.json` record at `docs/release/<release-name>/<slice-id>/proof.json`, rendered to Markdown for review). The bundle must be generated from live repo state — not recalled from context.
 
 **Required sections:**
 - **Scope** — one sentence: what was this task meant to deliver?
@@ -91,7 +91,7 @@ Before marking any task, phase, or session complete, the agent must produce a **
 
 ### 7. Adversarial Verification (CRITICAL)
 
-No slice may transition to `verified` state without a PASS verdict from a **fresh-context session** loaded only with the slice artefacts (`spec.md`, `proof.md`, `status.json`) and live repo state. The session that implemented the slice is never allowed to certify the slice.
+No slice may transition to `verified` state without a PASS verdict from a **fresh-context session** loaded only with the slice artefacts (`spec.json`, `proof.json`, `status.json`) and live repo state. The session that implemented the slice is never allowed to certify the slice.
 
 **Separation is about context, not model identity.** Same model, fresh window, artefact-only inputs is sufficient. The verifier must not load the implementer's session transcript, wrap-up message, or any "ready for review" prose.
 
@@ -104,11 +104,11 @@ No slice may transition to `verified` state without a PASS verdict from a **fres
 
 **Slice state machine:** `planned → in_progress → implemented → [fresh verifier] → verified | failed_verification`. The `implemented` checkpoint exists specifically so no agent can shortcut directly to `verified`.
 
-**Cheap-cost loop:** implementer writes the proof bundle, runs `scripts/release-verify.sh` for deterministic first-pass rejection, then a fresh session with `role-prompts/verifier.md` returns the verdict. One extra session per slice. On Max-plan tooling this is effectively free; on API usage it is still cheaper than the rework cost of an overclaimed slice.
+**Cheap-cost loop:** implementer writes the proof bundle, runs the proof-bundle verification gate (`sworn verify`) for deterministic first-pass rejection, then a fresh session with `role-prompts/verifier.md` returns the verdict. One extra session per slice. On Max-plan tooling this is effectively free; on API usage it is still cheaper than the rework cost of an overclaimed slice.
 
 ### 8. Requirements Fidelity (CRITICAL)
 
-The spec is not an axiom. Rules 1/6/7 verify delivery against the spec but treat the spec itself as correct; the front half of the chain — from intake need to acceptance criterion — goes unverified. Before a slice enters implementation its requirements must be **verified** (each acceptance criterion is singular, unambiguous, complete, consistent, feasible, and verifiable — the ISO/IEC/IEEE 29148 quality characteristics), **validated** (a human-owned positive-and-negative scenario sense-check confirms the spec serves the need), and **traced** (every need links to an acceptance criterion, every criterion back to a need and forward to a test, and every slice up a vertical golden thread to its release goal). A 2-D requirements traceability matrix, built fail-closed from `intake.md` / `spec.md` / `status.json` / `index.md`, makes a dropped need a hard, detectable trace break. Acceptance criteria use EARS notation; a Definition of Ready gate composes traced + verified + validated into one fail-closed verdict before `planned → in_progress`.
+The spec is not an axiom. Rules 1/6/7 verify delivery against the spec but treat the spec itself as correct; the front half of the chain — from intake need to acceptance criterion — goes unverified. Before a slice enters implementation its requirements must be **verified** (each acceptance criterion is singular, unambiguous, complete, consistent, feasible, and verifiable — the ISO/IEC/IEEE 29148 quality characteristics), **validated** (a human-owned positive-and-negative scenario sense-check confirms the spec serves the need), and **traced** (every need links to an acceptance criterion, every criterion back to a need and forward to a test, and every slice up a vertical golden thread to its release goal). A 2-D requirements traceability matrix, built fail-closed from `intake.md` / `spec.json` / `status.json` / `board.json`, makes a dropped need a hard, detectable trace break. Acceptance criteria use EARS notation; a Definition of Ready gate composes traced + verified + validated into one fail-closed verdict before `planned → in_progress`.
 
 ### 9. Design Fidelity (CRITICAL)
 
@@ -124,4 +124,4 @@ Any change — test or production — that mutates **process-global state** (the
 
 ---
 
-Full rule docs with provenance and detailed examples: `/docs/baton/`. Release Mode harness (slice template + role prompts + gate scripts): `/docs/baton/release-mode-template/`, `/docs/baton/role-prompts/`, `scripts/release-trace.sh`, `scripts/release-coverage.sh`, `scripts/release-audit-design.sh`, `scripts/release-mock-check.sh`, `scripts/release-regression.sh`, `scripts/release-verify.sh`. LLM checks: `release-llm-check.sh`. Architecture rules: `docs/baton/architecture.json`. Schemas: `https://baton.sawy3r.net/schemas/`.
+Full rule docs with provenance and detailed examples: `/docs/baton/`. Release Mode harness — slice template, role prompts, record schemas: `/docs/baton/release-mode-template/`, `/docs/baton/role-prompts/`, schemas at `https://baton.sawy3r.net/schemas/`. Baton ships no binaries; the mechanical gates (trace, coverage, design-conformance, mock-boundary, regression, proof-bundle verification, and the board oracle) and the deterministic LLM checks are run by the open `sworn` reference implementation. Architecture rules: `docs/baton/architecture.json`.
