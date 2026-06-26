@@ -24,6 +24,27 @@ roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
 
+## 0.5.0 — 2026-06-27
+
+Records-as-JSON + pure spec. The loop's artefacts become **emitted JSON records** validated against published schemas, and Baton stops shipping binaries — converging the gate + oracle *implementation* on the open `sworn` reference binary. The eleven rules are unchanged: this is a format-and-implementation transition, not a rules change. (ADR-0009, ADR-0010.)
+
+### Added
+- **Record schemas** — `board-v1`, `spec-v1`, `proof-v1`, `journeys-v1`, `attestations-v1` (joining the pre-existing `slice-status-v1`), hosted at `baton.sawy3r.net/schemas/`. Loop records are now emitted, schema-validated, and rendered to Markdown for human review — never hand-authored.
+- ADRs `0009` (records as JSON, prose as Markdown) and `0010` (Baton pure spec, Sworn implements), ratified in the Sworn repo.
+
+### Changed
+- **Records → JSON.** `index.md` → `board.json`, `spec.md` → `spec.json`, `proof.md` → `proof.json` across the templates, role prompts, slash commands, and rule docs. `status.json` was already JSON. Prose artefacts (`intake.md`, `journal.md`) stay Markdown. The human-readable `index.md` and the rendered proof are generated from the records — never maintained in parallel.
+- **Gate references abstracted.** The role prompts, slash commands, and rule docs name each gate by its protocol role with a reference-implementation pointer to the open `sworn` binary (`sworn verify`, `sworn trace`, `sworn coverage`, `sworn designaudit`, `sworn regress`, `sworn llm-check`, and the board oracle `sworn board`) — no longer welded to `bin/release-*.sh`. The spec names the gate and its contract; it does not pin the product binary's flags.
+- **Board oracle implementation moved.** The oracle *contract* (`board-v1` + git-ref state resolution) stays in Baton; the *implementation* moves from the Node `release-board-status.sh` / `release-board-ui.mjs` / `lib/release-board.mjs` to `sworn`.
+- **Planner: 16 hats → six considerations.** Reframed as considerations, not roles — a mandatory floor (security & privacy, compliance & legal, accessibility, performance) plus applied-where-they-bear (user experience, architecture & fit); requirements elicitation is the spine of the prompt.
+- README (root + embedded), `INSTALL.md`, `AGENTS-fragment.md`, `ROADMAP.md`, `architecture.json` — de-bashed; the harness is described as pure spec run by the `sworn` reference implementation. `architecture.json`'s broken `"$schema": "https://"` stub fixed to the canonical `architecture-rules-v1` URL.
+
+### Removed
+- `bin/` — the bash gate scripts (`release-trace.sh`, `release-coverage.sh`, `release-audit-design.sh`, `release-mock-check.sh`, `release-regression.sh`, `release-verify.sh`, `release-board-status.sh`), the Node board oracle + HTML dashboard (`release-board-ui.mjs`, `lib/release-board.mjs`), and the `release-llm-check.sh` runner (~3,800 lines). Baton ships no binaries; the gates are run by the open `sworn` reference implementation.
+
+### Why
+Two products are launching: Baton (the open protocol) and Sworn (the reference implementation + hosted). Storing the loop's artefacts as hand-authored Markdown made them fragile (YAML frontmatter fusion silently corrupted release boards) and ambiguous about who authors them. ADR-0009 draws the line at emitted-vs-hand-authored: records are emitted JSON, never hand-authored, rendered for humans; prose stays Markdown. ADR-0010 converges the gate + oracle *implementation* on one open Go binary so Baton can be pure spec — rules, role prompts, schemas, templates, conformance contract — with `sworn` as the canonical (not the only possible) runner. *Baton specifies; Sworn implements.*
+
 ## 0.4.0 — 2026-06-24
 
 Minor: the fidelity layer + the parallel-safety guard + the Captain role go public. Rule count seven → eleven.
