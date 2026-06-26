@@ -2,7 +2,7 @@
 
 > A protocol for verifiable AI-assisted software delivery — discover, plan, implement, and verify with mechanical gates, LLM-based checks, and adversarial fresh-context review.
 
-**The baton is the proof bundle.** Four agent roles — planner (16 hats), implementer, verifier, and captain — with one file on disk that crosses between them. Every claim is verified by seven mechanical gate scripts, six deterministic LLM check types, and adversarial fresh-context review where no role can certify its own work. An integrator hat lands the verified work, and the **Coach** — the human-in-the-loop who owns the team — holds authority over strategy and product/architecture: the agent roles surface decisions to the Coach but never self-authorise them.
+**The baton is the proof bundle.** Four agent roles — planner (six considerations), implementer, verifier, and captain — with validated JSON records that cross between them. Every claim is verified by mechanical gates, deterministic LLM checks, and adversarial fresh-context review where no role can certify its own work. Baton is pure specification — rules, role prompts, record schemas, templates; the gates are run by the **reference implementation, the open `sworn` binary**. An integrator hat lands the verified work, and the **Coach** — the human-in-the-loop who owns the team — holds authority over strategy and product/architecture: the agent roles surface decisions to the Coach but never self-authorise them.
 
 ```
                                     fresh-context boundary
@@ -13,7 +13,7 @@
                                │  review    │  ║   implementer drafts design.md and
                                └────────────┘  ║   halts; the captain pins it, the
                          design.md ▲ ▼ PROCEED ║   Coach acks, then code proceeds
-    ┌──────────┐    spec.md    ┌────────────┐  ║   proof.md   ┌──────────┐
+    ┌──────────┐   spec.json   ┌────────────┐  ║  proof.json  ┌──────────┐
     │ planner  │ ─────────────►│ implementer│ ─╫─────────────►│ verifier │
     │ /plan-   │               │ /implement-│  ║              │ /verify- │
     │  release │               │   slice    │  ║              │   slice  │
@@ -43,9 +43,9 @@
                                               merged
 ```
 
-The double bar between implementer and verifier is the load-bearing piece: when the verifier session starts, it is a **brand-new context window** with no inherited transcript, framing, or reasoning from the implementer. It reads only `spec.md`, `proof.md`, and `status.json` from disk, then returns `PASS` / `FAIL` / `BLOCKED`. Without that separation, baton's Rule 7 collapses into "the same LLM marking its own homework" — which is precisely the failure mode it exists to prevent.
+The double bar between implementer and verifier is the load-bearing piece: when the verifier session starts, it is a **brand-new context window** with no inherited transcript, framing, or reasoning from the implementer. It reads only `spec.json`, `proof.json`, and `status.json` from disk, then returns `PASS` / `FAIL` / `BLOCKED`. Without that separation, baton's Rule 7 collapses into "the same LLM marking its own homework" — which is precisely the failure mode it exists to prevent.
 
-The arrows other than the double bar are read/write traffic through artefacts on disk (`spec.md`, `proof.md`, `status.json`). The `status.json` loop back to the planner is the state machine that tracks each slice's lifecycle (`planned` → `in_progress` → `implemented` → `verified` → `shipped`); `/replan-release` is the planner re-entry point that handles `BLOCKED` verdicts and any in-flight revision.
+The arrows other than the double bar are read/write traffic through validated JSON records on disk (`spec.json`, `proof.json`, `status.json`). The `status.json` loop back to the planner is the state machine that tracks each slice's lifecycle (`planned` → `in_progress` → `implemented` → `verified` → `shipped`); `/replan-release` is the planner re-entry point that handles `BLOCKED` verdicts and any in-flight revision.
 
 The **integrator** role below the slice loop runs the merge pipeline on gates, not on time: `/merge-track` requires every slice in the track to be `verified`; `/merge-release` requires every track to be merged into `release-wt/<name>`; `/mark-shipped` is the after-deploy bookkeeping step that flips every `verified` slice to the terminal `shipped` state with the deployed commit as evidence. The integrator is the only role that doesn't need a fresh context — the work is mechanical (`git merge --no-ff` with the gate checks built into each command), the planner/implementer/verifier have already produced everything that matters, and the integrator's job is just to land it without breaking the gates. Same agent session can run several integrator commands in a row; one merge per shared integration branch at a time, but otherwise no Rule 7 constraint.
 
@@ -67,7 +67,7 @@ The structural failures it addresses — things you may have already hit:
 - **Context loss.** Substantial analysis lives only in chat transcript. `/clear` happens. The reasoning is gone. The next session starts from scratch.
 - **Plan / proof drift.** Planning docs say one thing, implementation does another, the divergence is never surfaced.
 
-baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Eleven rules, four role prompts, seven gate scripts, six LLM check types. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
+baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Eleven rules, four role prompts, the record schemas, and a conformance contract its reference implementation enforces. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
 
 ## The eleven rules
 
@@ -87,11 +87,24 @@ Each rule has a one-line summary here and a full doc explaining the failure mode
 | 10 | Customer journey validation | Critical end-to-end journeys are a ratified, version-controlled artefact, re-walked against real boundaries — a journey walked over a mocked boundary proves nothing. | [customer-journey-validation.md](claude/baton/customer-journey-validation.md) |
 | 11 | Process-global mutation guard | Any change mutating process-global state (working directory, environment, or which worktree/branch a tool acts on) must guarantee restore, assert the target before git ops, and prove the guard with a reachability artefact. | [process-global-mutation.md](claude/baton/process-global-mutation.md) |
 
-Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 11 are mechanically enforceable — each backed by a gate script that exits non-zero on violation. The full gate suite: `release-trace.sh` (RTM + EARS + sniff-test), `release-coverage.sh` (AC → test mapping), `release-audit-design.sh` (colours + architecture rules), `release-mock-check.sh` (undeclared mock boundaries), `release-regression.sh` (post-merge full suite), `release-verify.sh` (proof bundle structure), `release-board-status.sh` (slice/track state machine). Six LLM check types provide content verification beyond mechanical gates: spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review.
+Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 11 are mechanically enforceable: Baton **specifies** each gate (what it checks, that it fails closed) and the reference implementation — the open `sworn` binary — **runs** them: requirements traceability (RTM + EARS), AC → test coverage, design conformance, undeclared-mock boundaries, post-merge regression, proof-bundle structure, and the board state machine. Six deterministic LLM check types add content verification beyond the mechanical gates: spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review. (Baton itself ships no binaries; see "Baton is pure spec" below.)
+
+## Baton is pure spec
+
+Baton ships **no binaries**. It is the specification: the eleven rules, the four role prompts, the JSON-record schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
+
+The **reference implementation is [SwornAgent](https://github.com/swornagent/sworn)** — an open, single, zero-dependency Go binary that runs every gate and the board oracle, and adds the autonomous orchestration loop (`sworn run`) on top. *Baton specifies; Sworn implements.* They are separate and at arm's length: the contract is the schemas + rule semantics, so Sworn is the canonical runner, not the only possible one.
+
+Two ways to run the loop:
+
+- **By hand, zero binaries** — paste the role prompts, your LLM emits the JSON records, you review the rendered views. Pure Markdown + schemas, no dependency.
+- **+ the open `sworn` binary** — the mechanical gates and the board oracle, automated. One static binary instead of a pile of scripts.
+
+Baton never *requires* Sworn; it requires it only to automate the gates.
 
 ## Example artefacts
 
-The protocol's whole pitch is "files between sessions." Here's what those files actually look like.
+The protocol's whole pitch is "validated records between sessions." Here's what those files actually look like.
 
 A `status.json` (the state machine for a single slice):
 
@@ -116,33 +129,23 @@ A `status.json` (the state machine for a single slice):
 }
 ```
 
-A trimmed `proof.md`:
+A trimmed `proof.json` (validated against `proof-v1`):
 
-```markdown
-# proof — S03-account-settings-page
-
-## Scope
-User can update their profile via the account settings page and see the changes reflected.
-
-## Files changed
-3 files; e2e/account-settings.spec.ts is new and exercises the integration point.
-
-## Test results
-Playwright suite — 8 tests, all green. Captured output: ...
-
-## Reachability artefact
-e2e/account-settings.spec.ts:24 simulates the full user gesture
-(click → form fill → submit) and asserts the updated profile renders.
-
-## Delivered
-- Form submit updates profile in store
-- Dashboard re-renders within 200ms
-
-## Not delivered
-- Multi-currency support (deferred to S05; tracked in journal.md, acknowledged 2026-05-12)
+```json
+{
+  "$schema": "https://baton.sawy3r.net/schemas/proof-v1.json",
+  "slice_id": "S03-account-settings-page",
+  "scope": "User can update their profile via the account settings page and see the changes reflected.",
+  "files_changed": ["src/components/AccountProfileSection.tsx", "e2e/account-settings.spec.ts"],
+  "test_results": [{ "command": "pnpm playwright test e2e/account-settings.spec.ts", "passed": true, "exit_code": 0 }],
+  "reachability": { "type": "e2e-test", "evidence": "e2e/account-settings.spec.ts:24 simulates click -> form fill -> submit and asserts the updated profile renders" },
+  "delivered": [{ "item": "Form submit updates profile in store", "evidence": "AccountProfileSection.tsx + account-settings.spec.ts:24" }],
+  "not_delivered": [{ "item": "Multi-currency support", "why": "Complex cross-cutting concern, needs its own slice", "tracking": "S05-multi-currency", "acknowledged": true }],
+  "divergence": []
+}
 ```
 
-A `journal.md` accumulates state transitions and verifier verdicts over the slice's lifetime. The full templates live in [`claude/baton/release-mode-template/`](claude/baton/release-mode-template/).
+The records (`board.json`, `spec.json`, `proof.json`, `status.json`) are **emitted** — by the LLM, the `sworn` binary, or a UI — validated against their schemas, never hand-authored; the human-readable views (`index.md`, the rendered proof) are generated from them. Prose artefacts — `intake.md`, `journal.md` — stay Markdown. The templates live in [`claude/baton/release-mode-template/`](claude/baton/release-mode-template/).
 
 ## Install
 
@@ -157,8 +160,8 @@ The agent clones the repo, places the rule docs, role prompts, and templates whe
 ```bash
 git clone https://github.com/sawy3r/baton.git ~/projects/baton
 cd ~/projects/baton
-./install.sh           # Claude Code  — installs ~/.claude/commands/, ~/.claude/baton/, ~/.claude/bin/
-./install-codex.sh     # OpenAI Codex — installs ~/.agents/skills/baton-*/, ~/.codex/baton/, ~/.codex/bin/
+./install.sh           # Claude Code  — installs ~/.claude/commands/, ~/.claude/baton/ (+ schemas)
+./install-codex.sh     # OpenAI Codex — installs ~/.agents/skills/baton-*/, ~/.codex/baton/ (+ schemas)
 ```
 
 Preview with `./install.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / `CODEX_HOME` / `AGENTS_HOME` to relocate; update later with `git pull && ./install.sh`. Either installer is safe on the same machine — they touch disjoint directories. The scripts install the slash commands **natively for Claude Code and Codex**; on other tools the agent-driven path installs the rules and harness and you drive the command docs / role prompts directly (native command adapters for other tools are on the roadmap). Neither script touches your `CLAUDE.md` — that wiring is exactly what the agent-driven path automates.
@@ -168,18 +171,10 @@ Preview with `./install.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / `CODEX_
 | Source in repo                         | Installed to                                  | Purpose                                              |
 | -------------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
 | `claude/commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
-| `claude/baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, release-mode templates     |
-| `bin/release-verify.sh`                | `~/.claude/bin/release-verify.sh`             | Proof bundle structure gate                          |
-| `bin/release-trace.sh`                 | `~/.claude/bin/release-trace.sh`              | RTM, EARS, sniff-test gate (Rule 8)                  |
-| `bin/release-coverage.sh`              | `~/.claude/bin/release-coverage.sh`           | AC → test traceability gate                          |
-| `bin/release-audit-design.sh`          | `~/.claude/bin/release-audit-design.sh`       | Design conformance + architecture rules (Rule 9)     |
-| `bin/release-mock-check.sh`            | `~/.claude/bin/release-mock-check.sh`         | Undeclared mock boundary gate (Rule 10)              |
-| `bin/release-regression.sh`            | `~/.claude/bin/release-regression.sh`         | Post-merge regression gate                           |
-| `bin/release-llm-check.sh`             | `~/.claude/bin/release-llm-check.sh`          | 6 LLM check types (deterministic, temp=0)            |
-| `bin/release-board-status.sh`          | `~/.claude/bin/release-board-status.sh`       | Release board — terminal go/no-go verdict (exit 0/1) |
-| `bin/release-board-ui.mjs`             | `~/.claude/bin/release-board-ui.mjs`          | Release board — auto-refreshing HTML dashboard       |
-| `bin/lib/release-board.mjs`            | `~/.claude/bin/lib/release-board.mjs`         | Shared branch-aware board reader                     |
-| `schemas/*.json`                       | Hosted at baton.sawy3r.net/schemas/           | 5 JSON Schemas (slice status, architecture rules, design fidelity, allowlist, overrides) |
+| `claude/baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, JSON record templates      |
+| `schemas/*.json`                       | `~/.claude/baton/schemas/` (also hosted at baton.sawy3r.net/schemas/) | Record schemas: board, spec, proof, status, journeys, attestations (+ design/architecture config). The JSON-record contracts the roles emit against. |
+
+Baton installs **no binaries**. The mechanical gates are run by the open `sworn` binary — install it separately to automate them; the by-hand loop needs only these files and your LLM.
 
 Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment rules into your global instructions is a deliberate manual step — see the post-install message printed by `install.sh`.
 
@@ -256,13 +251,13 @@ flowchart TD
 
 For each release:
 
-1. **Planner session** — fresh window. Human pastes `/plan-release <name>`. Conversational discovery; planner writes `intake.md`, decomposes into slices, groups the slices into touchpoint-disjoint **tracks**, writes `spec.md` per slice. No code written here.
-2. **Implementer session, per slice** — fresh window. Human runs `/implement-slice <slice-id>`. Implementer reads `spec.md`, makes changes, writes `proof.md` from live repo state, runs `release-verify.sh`, stops at state `implemented`. **Never marks `verified`.**
-3. **Verifier session, per slice** — *another* fresh window with no inherited context. Human runs `/verify-slice <slice-id>`. Verifier reads only `spec.md`, `proof.md`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`.
+1. **Planner session** — fresh window. Human pastes `/plan-release <name>`. Conversational discovery; planner writes `intake.md`, decomposes into slices, groups the slices into touchpoint-disjoint **tracks**, emits `spec.json` per slice. No code written here.
+2. **Implementer session, per slice** — fresh window. Human runs `/implement-slice <slice-id>`. Implementer reads `spec.json`, makes changes, emits `proof.json` from live repo state, runs the proof-bundle verification gate, stops at state `implemented`. **Never marks `verified`.**
+3. **Verifier session, per slice** — *another* fresh window with no inherited context. Human runs `/verify-slice <slice-id>`. Verifier reads only `spec.json`, `proof.json`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`.
    - **PASS** → slice transitions to `verified`, available for `/merge-track`.
    - **FAIL** → slice goes to `failed_verification`; back to the implementer with the verifier's numbered violations.
    - **BLOCKED** → spec defect or external gap the implementer can't resolve. Handoff routes *forward* (never back to the implementer) to `/replan-release <name>` — the only command authorised to amend a spec or re-group tracks on an in-flight release. Once the planner ratifies the resolution, the slice re-enters at `/implement-slice`.
-4. **Replan in flight, when needed** — `/replan-release <name>` is the planner re-entry point for any in-flight revision: adding unplanned scope, dropping a not-started slice, re-grouping tracks, or clearing a BLOCKED verdict. It reconciles board state from `release-wt/<name>` and every `track/<name>/*` branch (not the stale `index.md` on the integration branch) before proposing changes, and propagates the revised plan back out to in-flight track branches so the verifier doesn't loop on a stale spec.
+4. **Replan in flight, when needed** — `/replan-release <name>` is the planner re-entry point for any in-flight revision: adding unplanned scope, dropping a not-started slice, re-grouping tracks, or clearing a BLOCKED verdict. It reconciles board state from `release-wt/<name>` and every `track/<name>/*` branch (not a stale `board.json` on the integration branch) before proposing changes, and propagates the revised plan back out to in-flight track branches so the verifier doesn't loop on a stale spec.
 The next three steps are the **integrator** role — the only role that doesn't need a fresh context. The work is mechanical (`git merge --no-ff` with the gate checks built into each command), the planner/implementer/verifier have already produced everything that matters, and the integrator's job is to land it without breaking the gates. Same agent session can run several integrator commands in a row; one merge per shared integration branch at a time, but otherwise no Rule 7 constraint.
 
 5. **Merge a track** (integrator) — when every slice in a track is `verified`, `/merge-track <track-id>` merges the track branch into the release assembly branch `release-wt/<name>` with `--no-ff`. Gate: every slice in the track verified; a planner-domain conflict (cross-track touchpoint collision) BLOCKs and routes to `/replan-release`.
@@ -275,12 +270,12 @@ Tracks run in parallel — one implement/verify session line per track, each in 
 
 ## Tracking the board
 
-Two read-only tools report release progress straight from git — no database, no state file. Both resolve every slice's authoritative `status.json` from the `track/*` and `release-wt/*` branches, so the terminal verdict and the dashboard agree by construction:
+Baton specifies the board record (`board.json`) and the oracle's state-resolution rules; the reference implementation reads it. The open `sworn` binary reports release progress straight from git — no database, no state file — resolving every slice's authoritative `status.json` from the `track/*` and `release-wt/*` branches, so every view agrees by construction:
 
-- `release-board-status.sh [--verbose]` — terminal go/no-go verdict. Exits `0` when every slice is in a terminal state (`verified` / `shipped` / `deferred`), `1` otherwise — scriptable as a ship gate.
-- `release-board-ui.mjs [--port N]` — a local auto-refreshing HTML dashboard at `http://localhost:3333`, incomplete releases sorted to the top.
+- a terminal **go/no-go verdict** — exit `0` when every slice is in a terminal state (`verified` / `shipped` / `deferred`), `1` otherwise — scriptable as a ship gate.
+- `sworn top` — a live evidence surface for the active release.
 
-Run either from inside the repo. The release-docs root defaults to `docs/release/`; set `BATON_RELEASE_DIR` to override for custom layouts.
+The board oracle used to ship as a Node script in this repo; per the open-core seam it now lives in `sworn`. The contract (`board-v1` + the state-resolution rules) stays here.
 
 ## Path tokens
 
@@ -294,7 +289,7 @@ The slash commands use two runtime tokens the agent resolves on first Bash call:
 - **Claude Code and OpenAI Codex today.** The slash commands target Claude Code's `~/.claude/commands/` (via `install.sh`) and Codex's `~/.agents/skills/` (via `install-codex.sh`, covering Codex CLI and the Codex Mac App, which share `~/.codex/` config). Gemini CLI and OpenCode adapters are on the [roadmap](ROADMAP.md).
 - **Codex skills are mechanically derived** from the Claude Code command bodies at install time, with paths rewritten to `~/.codex/` and a header explaining Codex's free-form argument resolution prepended. Behaviour is preserved; a few presentation differences remain (e.g. `AskUserQuestion` reads fine as "prompt the human" but doesn't render as a Codex-native picker).
 - **Per-project memory is optional.** If your tool maintains per-project persistent memory (Claude Code stores it under `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md`), the planner reads it at session start. On a clean install it doesn't exist; the step skips silently.
-- **`release-verify.sh` is the proof-bundle gate.** It checks for required artefact files, valid JSON in `status.json`, non-empty diff vs the base branch, dark-code markers in changed files, and required `proof.md` sections. It does *not* make subjective calls about whether the diff actually implements the spec — that's the LLM verifier's job. The broader gate suite (`release-trace.sh`, `release-coverage.sh`, `release-audit-design.sh`, `release-mock-check.sh`, `release-regression.sh`) provides additional mechanical and architecture enforcement.
+- **The proof-bundle gate is mechanical, not subjective.** It checks for required record fields, valid JSON, a non-empty diff vs the base branch, dark-code markers in changed files, and the required `proof.json` sections. It does *not* judge whether the diff actually implements the spec — that's the LLM verifier's job. Baton specifies this gate and the broader suite (traceability, coverage, design conformance, mock boundaries, regression); the open `sworn` binary runs them.
 
 ## Roadmap
 
