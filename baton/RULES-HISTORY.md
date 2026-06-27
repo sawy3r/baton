@@ -24,7 +24,7 @@ roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
 
-## 0.5.1 — 2026-06-27
+## 0.6.1 — 2026-06-27
 
 Tool-neutral repo layout. Packaging/layout change, not a rules-content change —
 the eleven rules, role prompts, and templates are byte-identical, just relocated.
@@ -61,7 +61,7 @@ baked into the source tree.
   with the per-tool-installer naming; left for a strategy decision rather than
   silently rewritten.
 
-## 0.5.0 — 2026-06-27
+## 0.6.0 — 2026-06-27
 
 Records-as-JSON + pure spec. The loop's artefacts become **emitted JSON records** validated against published schemas, and Baton stops shipping binaries — converging the gate + oracle *implementation* on the open `sworn` reference binary. The eleven rules are unchanged: this is a format-and-implementation transition, not a rules change. (ADR-0009, ADR-0010.)
 
