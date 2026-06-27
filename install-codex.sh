@@ -85,7 +85,7 @@ run() {
   fi
 }
 
-# Plan + confirmation gate (mirrors install.sh behaviour). Non-interactive
+# Plan + confirmation gate (mirrors install-claude.sh behaviour). Non-interactive
 # shells proceed silently; --dry-run previews; -y skips the prompt.
 cat <<EOF
 About to install baton for Codex:
@@ -116,7 +116,7 @@ run mkdir -p "$SKILLS_DIR" "$CODEX_HOME/baton"
 # Docs package: rules, role-prompts/, release-mode-template/. Installed FIRST
 # so the skill bodies that reference $CODEX_HOME/baton/... resolve immediately
 # after install completes.
-run cp -rv "$BUNDLE_DIR"/claude/baton/. "$CODEX_HOME/baton/"
+run cp -rv "$BUNDLE_DIR"/baton/. "$CODEX_HOME/baton/"
 
 # Rewrite every $HOME/.claude/baton/ reference inside the docs package to
 # $HOME/.codex/baton/ — the role prompts and templates were authored for
@@ -129,13 +129,13 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
   find "$CODEX_HOME/baton" -type f -name '*.bak' -delete
 fi
 
-# Skills: wrap each claude/commands/*.md body in SKILL.md format. Codex skills
+# Skills: wrap each commands/*.md body in SKILL.md format. Codex skills
 # require a `name:` and `description:` in YAML frontmatter; the existing
 # command files already have `description:` and `argument-hint:`, so we add
 # `name:` and preserve the rest. The command body becomes the SKILL.md body
 # Codex loads on `$<skill-name>` invocation.
 echo
-for src in "$BUNDLE_DIR"/claude/commands/*.md; do
+for src in "$BUNDLE_DIR"/commands/*.md; do
   cmd_name="$(basename "$src" .md)"               # e.g. plan-release
   skill_name="baton-${cmd_name}"                  # e.g. baton-plan-release
   skill_dir="$SKILLS_DIR/$skill_name"
@@ -229,7 +229,7 @@ Remaining manual step — wire the Rule 1-5 fragment into your Codex agent
 instructions. The fragment ships at:
   $CODEX_HOME/baton/AGENTS-fragment.md
 
-Two ways to wire it (mirror install.sh):
+Two ways to wire it (mirror install-claude.sh):
   (a) Per-project: copy AGENTS-fragment.md content into the project's
       AGENTS.md. Each project that opts in gets the rules.
   (b) User-level: append the content to $CODEX_HOME/AGENTS.md so it

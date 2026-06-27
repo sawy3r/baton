@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install.sh — install baton (the spec) at the user level (~/.claude/).
+# install-claude.sh — install baton (the spec) at the user level (~/.claude/).
 #
 # Baton is pure specification: slash commands, rule docs, role prompts, record
 # schemas, and templates. It installs NO binaries. The mechanical gates are
@@ -19,7 +19,7 @@ usage() {
   cat <<EOF
 baton installer (pure spec — no binaries)
 
-Usage: ./install.sh [--dry-run] [-y|--yes] [--help]
+Usage: ./install-claude.sh [--dry-run] [-y|--yes] [--help]
 
 Options:
   --dry-run   Print what would be copied, don't actually copy.
@@ -50,7 +50,7 @@ for arg in "$@"; do
     -h|--help)    usage; exit 0 ;;
     --dry-run)    DRY_RUN=1 ;;
     -y|--yes)     ASSUME_YES=1 ;;
-    *)            echo "install.sh: unknown argument '$arg'" >&2; usage >&2; exit 2 ;;
+    *)            echo "install-claude.sh: unknown argument '$arg'" >&2; usage >&2; exit 2 ;;
   esac
 done
 
@@ -103,12 +103,12 @@ echo
 run mkdir -p "$CLAUDE_HOME/commands" "$CLAUDE_HOME/baton"
 
 # Slash commands (user-level, available in every project on this machine)
-for f in "$BUNDLE_DIR"/claude/commands/*.md; do
+for f in "$BUNDLE_DIR"/commands/*.md; do
   run cp -v "$f" "$CLAUDE_HOME/commands/"
 done
 
 # Docs package: rules, role-prompts/, release-mode-template/
-run cp -rv "$BUNDLE_DIR"/claude/baton/. "$CLAUDE_HOME/baton/"
+run cp -rv "$BUNDLE_DIR"/baton/. "$CLAUDE_HOME/baton/"
 
 # Record schemas — the JSON-record contracts the roles emit against. Hosted
 # canonically at baton.sawy3r.net/schemas/; installed locally for offline use.

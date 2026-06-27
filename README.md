@@ -75,17 +75,17 @@ Each rule has a one-line summary here and a full doc explaining the failure mode
 
 | # | Rule | One-liner | Doc |
 |---|------|-----------|-----|
-| 1 | Reachability gate | Every UI feature's first failing test renders through the user-path integration point, not the leaf component in isolation. | [reachability-gate.md](claude/baton/reachability-gate.md) |
-| 2 | No silent deferrals | Inline "deferred" / "TODO" / "later" requires *why* + *tracking* + *acknowledgement* — all three, surfaced before the comment lands. | [no-silent-deferrals.md](claude/baton/no-silent-deferrals.md) |
-| 3 | Capture discipline | Conversation context is the most ephemeral persistence layer; subagent findings and decisions land in durable storage before session ends. | [capture-discipline.md](claude/baton/capture-discipline.md) |
-| 4 | Commit messages as capture | Decisions are restated in the commit message body, not "see plan X" — git log becomes the immutable record. | [commit-messages-as-capture.md](claude/baton/commit-messages-as-capture.md) |
-| 5 | Session discipline | Sessions anchored to durable trackers (issues, plans); captures at every session boundary, not only at the end. | [session-discipline.md](claude/baton/session-discipline.md) |
-| 6 | Proof bundle | Completion claims require a structured proof file written from live repo state, not paraphrased from memory. | [proof-bundle.md](claude/baton/proof-bundle.md) |
-| 7 | Adversarial verification | Verification runs in a fresh-context session loaded only with the proof artefacts — never in the implementer's window. | [adversarial-verification.md](claude/baton/adversarial-verification.md) |
-| 8 | Requirements fidelity | The spec is not an axiom: needs are verified (29148 quality), validated (human sense-check), and traced (need → AC → test) so a need can't drop silently between intake and spec. | [requirements-fidelity.md](claude/baton/requirements-fidelity.md) |
-| 9 | Design fidelity | Design stays human-owned, with judgement calibrated to each choice's stakes (reversibility × blast-radius); Type-1 choices need a recorded human decision the model can't self-authorise. | [design-fidelity.md](claude/baton/design-fidelity.md) |
-| 10 | Customer journey validation | Critical end-to-end journeys are a ratified, version-controlled artefact, re-walked against real boundaries — a journey walked over a mocked boundary proves nothing. | [customer-journey-validation.md](claude/baton/customer-journey-validation.md) |
-| 11 | Process-global mutation guard | Any change mutating process-global state (working directory, environment, or which worktree/branch a tool acts on) must guarantee restore, assert the target before git ops, and prove the guard with a reachability artefact. | [process-global-mutation.md](claude/baton/process-global-mutation.md) |
+| 1 | Reachability gate | Every UI feature's first failing test renders through the user-path integration point, not the leaf component in isolation. | [reachability-gate.md](baton/reachability-gate.md) |
+| 2 | No silent deferrals | Inline "deferred" / "TODO" / "later" requires *why* + *tracking* + *acknowledgement* — all three, surfaced before the comment lands. | [no-silent-deferrals.md](baton/no-silent-deferrals.md) |
+| 3 | Capture discipline | Conversation context is the most ephemeral persistence layer; subagent findings and decisions land in durable storage before session ends. | [capture-discipline.md](baton/capture-discipline.md) |
+| 4 | Commit messages as capture | Decisions are restated in the commit message body, not "see plan X" — git log becomes the immutable record. | [commit-messages-as-capture.md](baton/commit-messages-as-capture.md) |
+| 5 | Session discipline | Sessions anchored to durable trackers (issues, plans); captures at every session boundary, not only at the end. | [session-discipline.md](baton/session-discipline.md) |
+| 6 | Proof bundle | Completion claims require a structured proof file written from live repo state, not paraphrased from memory. | [proof-bundle.md](baton/proof-bundle.md) |
+| 7 | Adversarial verification | Verification runs in a fresh-context session loaded only with the proof artefacts — never in the implementer's window. | [adversarial-verification.md](baton/adversarial-verification.md) |
+| 8 | Requirements fidelity | The spec is not an axiom: needs are verified (29148 quality), validated (human sense-check), and traced (need → AC → test) so a need can't drop silently between intake and spec. | [requirements-fidelity.md](baton/requirements-fidelity.md) |
+| 9 | Design fidelity | Design stays human-owned, with judgement calibrated to each choice's stakes (reversibility × blast-radius); Type-1 choices need a recorded human decision the model can't self-authorise. | [design-fidelity.md](baton/design-fidelity.md) |
+| 10 | Customer journey validation | Critical end-to-end journeys are a ratified, version-controlled artefact, re-walked against real boundaries — a journey walked over a mocked boundary proves nothing. | [customer-journey-validation.md](baton/customer-journey-validation.md) |
+| 11 | Process-global mutation guard | Any change mutating process-global state (working directory, environment, or which worktree/branch a tool acts on) must guarantee restore, assert the target before git ops, and prove the guard with a reachability artefact. | [process-global-mutation.md](baton/process-global-mutation.md) |
 
 Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 11 are mechanically enforceable: Baton **specifies** each gate (what it checks, that it fails closed) and the reference implementation — the open `sworn` binary — **runs** them: requirements traceability (RTM + EARS), AC → test coverage, design conformance, undeclared-mock boundaries, post-merge regression, proof-bundle structure, and the board state machine. Six deterministic LLM check types add content verification beyond the mechanical gates: spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review. (Baton itself ships no binaries; see "Baton is pure spec" below.)
 
@@ -145,38 +145,38 @@ A trimmed `proof.json` (validated against `proof-v1`):
 }
 ```
 
-The records (`board.json`, `spec.json`, `proof.json`, `status.json`) are **emitted** — by the LLM, the `sworn` binary, or a UI — validated against their schemas, never hand-authored; the human-readable views (`index.md`, the rendered proof) are generated from them. Prose artefacts — `intake.md`, `journal.md` — stay Markdown. The templates live in [`claude/baton/release-mode-template/`](claude/baton/release-mode-template/).
+The records (`board.json`, `spec.json`, `proof.json`, `status.json`) are **emitted** — by the LLM, the `sworn` binary, or a UI — validated against their schemas, never hand-authored; the human-readable views (`index.md`, the rendered proof) are generated from them. Prose artefacts — `intake.md`, `journal.md` — stay Markdown. The templates live in [`baton/release-mode-template/`](baton/release-mode-template/).
 
 ## Install
 
 Baton is an agent protocol — the easiest way to install it is to let your coding agent do it. Open Claude Code, Codex, Gemini CLI, OpenCode, Hermes Agent, or any agent in a terminal and paste:
 
-> Clone https://github.com/sawy3r/baton, read its `claude/baton/INSTALL.md`, install Baton for the tool I'm using, and wire the Baton rules fragment into my agent instructions. Show me the plan first.
+> Clone https://github.com/sawy3r/baton, read its `baton/INSTALL.md`, install Baton for the tool I'm using, and wire the Baton rules fragment into my agent instructions. Show me the plan first.
 
-The agent clones the repo, places the rule docs, role prompts, and templates where your tool reads them, and — the step a shell script can't do for you — wires the `AGENTS-fragment.md` rules into your `AGENTS.md` / `CLAUDE.md` / `GEMINI.md`. [`INSTALL.md`](claude/baton/INSTALL.md) lists the per-tool targets the agent follows; "Per-project setup" below covers what every repo needs regardless.
+The agent clones the repo, places the rule docs, role prompts, and templates where your tool reads them, and — the step a shell script can't do for you — wires the `AGENTS-fragment.md` rules into your `AGENTS.md` / `CLAUDE.md` / `GEMINI.md`. [`INSTALL.md`](baton/INSTALL.md) lists the per-tool targets the agent follows; "Per-project setup" below covers what every repo needs regardless.
 
 ### Prefer a script? (Claude Code / Codex)
 
 ```bash
 git clone https://github.com/sawy3r/baton.git ~/projects/baton
 cd ~/projects/baton
-./install.sh           # Claude Code  — installs ~/.claude/commands/, ~/.claude/baton/ (+ schemas)
+./install-claude.sh           # Claude Code  — installs ~/.claude/commands/, ~/.claude/baton/ (+ schemas)
 ./install-codex.sh     # OpenAI Codex — installs ~/.agents/skills/baton-*/, ~/.codex/baton/ (+ schemas)
 ```
 
-Preview with `./install.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / `CODEX_HOME` / `AGENTS_HOME` to relocate; update later with `git pull && ./install.sh`. Either installer is safe on the same machine — they touch disjoint directories. The scripts install the slash commands **natively for Claude Code and Codex**; on other tools the agent-driven path installs the rules and harness and you drive the command docs / role prompts directly (native command adapters for other tools are on the roadmap). Neither script touches your `CLAUDE.md` — that wiring is exactly what the agent-driven path automates.
+Preview with `./install-claude.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / `CODEX_HOME` / `AGENTS_HOME` to relocate; update later with `git pull && ./install-claude.sh`. Either installer is safe on the same machine — they touch disjoint directories. The scripts install the slash commands **natively for Claude Code and Codex**; on other tools the agent-driven path installs the rules and harness and you drive the command docs / role prompts directly (native command adapters for other tools are on the roadmap). Neither script touches your `CLAUDE.md` — that wiring is exactly what the agent-driven path automates.
 
 ## What lands where
 
 | Source in repo                         | Installed to                                  | Purpose                                              |
 | -------------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
-| `claude/commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
-| `claude/baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, JSON record templates      |
+| `commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
+| `baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, JSON record templates      |
 | `schemas/*.json`                       | `~/.claude/baton/schemas/` (also hosted at baton.sawy3r.net/schemas/) | Record schemas: board, spec, proof, status, journeys, attestations (+ design/architecture config). The JSON-record contracts the roles emit against. |
 
 Baton installs **no binaries**. The mechanical gates are run by the open `sworn` binary — install it separately to automate them; the by-hand loop needs only these files and your LLM.
 
-Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment rules into your global instructions is a deliberate manual step — see the post-install message printed by `install.sh`.
+Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment rules into your global instructions is a deliberate manual step — see the post-install message printed by `install-claude.sh`.
 
 ## Per-project setup
 
@@ -264,7 +264,7 @@ The next three steps are the **integrator** role — the only role that doesn't 
 6. **Merge the release** (integrator) — when every track is merged into `release-wt/<name>`, `/merge-release <name>` merges the assembly branch into the version integration branch (e.g. `release/v0.5.0`) with `--no-ff`. Gate: every track merged (which implies every slice verified).
 7. **Mark it shipped** (integrator) — once the integration branch has actually deployed to production, `/mark-shipped <name>` flips every `verified` slice to the terminal `shipped` state, recording the deployed commit as evidence. Bookkeeping only — it does not deploy.
 
-Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`claude/baton/track-mode.md`](claude/baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
+Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`baton/track-mode.md`](baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
 
 > GitHub renders the diagram above as a flowchart natively. If you read this README in a tool without Mermaid support, the prose 1-7 below it is the source of truth.
 
@@ -286,7 +286,7 @@ The slash commands use two runtime tokens the agent resolves on first Bash call:
 
 ## Caveats
 
-- **Claude Code and OpenAI Codex today.** The slash commands target Claude Code's `~/.claude/commands/` (via `install.sh`) and Codex's `~/.agents/skills/` (via `install-codex.sh`, covering Codex CLI and the Codex Mac App, which share `~/.codex/` config). Gemini CLI and OpenCode adapters are on the [roadmap](ROADMAP.md).
+- **Claude Code and OpenAI Codex today.** The slash commands target Claude Code's `~/.claude/commands/` (via `install-claude.sh`) and Codex's `~/.agents/skills/` (via `install-codex.sh`, covering Codex CLI and the Codex Mac App, which share `~/.codex/` config). Gemini CLI and OpenCode adapters are on the [roadmap](ROADMAP.md).
 - **Codex skills are mechanically derived** from the Claude Code command bodies at install time, with paths rewritten to `~/.codex/` and a header explaining Codex's free-form argument resolution prepended. Behaviour is preserved; a few presentation differences remain (e.g. `AskUserQuestion` reads fine as "prompt the human" but doesn't render as a Codex-native picker).
 - **Per-project memory is optional.** If your tool maintains per-project persistent memory (Claude Code stores it under `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md`), the planner reads it at session start. On a clean install it doesn't exist; the step skips silently.
 - **The proof-bundle gate is mechanical, not subjective.** It checks for required record fields, valid JSON, a non-empty diff vs the base branch, dark-code markers in changed files, and the required `proof.json` sections. It does *not* judge whether the diff actually implements the spec — that's the LLM verifier's job. Baton specifies this gate and the broader suite (traceability, coverage, design conformance, mock boundaries, regression); the open `sworn` binary runs them.
@@ -303,4 +303,4 @@ For everything else — bugs in the harness, slash-command improvements, adapter
 
 ## Releases
 
-Versions and release notes live on the [Releases page](https://github.com/sawy3r/baton/releases). Tag the version you want, clone or download, run `./install.sh`.
+Versions and release notes live on the [Releases page](https://github.com/sawy3r/baton/releases). Tag the version you want, clone or download, run `./install-claude.sh`.

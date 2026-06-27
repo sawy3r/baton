@@ -17,7 +17,7 @@ The agent uses the table below to put things in the right place for your tool �
 
 | Tool | Slash commands → | Instructions file (wire the fragment) | Notes |
 |---|---|---|---|
-| **Claude Code** | `~/.claude/commands/*.md` | `~/.claude/CLAUDE.md` (user) or repo `AGENTS.md` | Native markdown. `install.sh` does this. |
+| **Claude Code** | `~/.claude/commands/*.md` | `~/.claude/CLAUDE.md` (user) or repo `AGENTS.md` | Native markdown. `install-claude.sh` does this. |
 | **Codex** | `~/.codex/prompts/*.md` | `AGENTS.md` | Native markdown (`$ARGUMENTS`, `$1…$9`). `install-codex.sh` installs them as skills. |
 | **OpenCode** | `~/.config/opencode/commands/*.md` | `AGENTS.md` | Native markdown; the file body is the command template. |
 | **Gemini CLI** | `~/.gemini/commands/*.toml` | `GEMINI.md` | **Transform:** wrap the command body in `prompt = """…"""`, add `description`, change `$ARGUMENTS` → `{{args}}`. |
