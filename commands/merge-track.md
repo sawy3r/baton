@@ -1,5 +1,5 @@
 ---
-description: Merge a completed track's track/<release>/<track-id> branch into the release assembly branch release-wt/<release>. Hard-gates on every slice in the track being verified. Does NOT push or delete the branch/worktree. Usage: /merge-track <track-id> [<release-name>]
+description: Merge a completed track's track/<release>/<track-id> branch into the release assembly branch release-wt/<release>. Hard-gates on every slice in the track being verified, then re-runs the track's tests AND the affected-package regression suite on the merged base. Does NOT push or delete the branch/worktree. Usage: /merge-track <track-id> [<release-name>]
 argument-hint: <track-id> [<release-name>] (e.g. T1-identity-account 2026-05-19-uat-bug-fix)
 ---
 
@@ -80,7 +80,11 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
 
    After resolving any conflicts, commit the merge: `git -C <track-worktree-path> commit --no-edit` (retains the message from step 3).
 
-5. **Re-run the track's tests in the track worktree.** Collect the deduplicated union of every track slice's `status.json` `test_commands` and run each from `<track-worktree-path>`. The per-slice verifications each ran against an *older* `release-wt`; this is the first run with the merged siblings underneath. If any command fails, BLOCK with the failing command and its output — the forward-merge surfaced a real integration regression. The forward-merge commit stays on the track branch; fix forward, then re-run `/merge-track $1 $2`.
+5. **Re-run the track's tests AND the affected-package suite in the track worktree.** Two layers, both from `<track-worktree-path>`, on the merged base:
+   - **Per-slice commands.** The deduplicated union of every track slice's `status.json` `test_commands`.
+   - **Affected-package sweep.** Per-slice `test_commands` only cover each slice's *own* package — a slice that edits a documented-shared file can break a package no slice's command names (this is exactly how a red `internal/run` suite once reached `release-wt`). So also run the project's full/affected regression suite over the merged base. Reference Go impl: `sworn regress --release $2 --worktree <track-worktree-path>` (runs `go test ./...` + any TS + golden-fixture checks against that worktree, exit non-zero on any failure). For a non-Go project, run the equivalent project-declared regression command.
+
+   The per-slice verifications each ran against an *older* `release-wt`; this is the first run with the merged siblings underneath. If **either layer** fails (any command non-zero, or `sworn regress` exits non-zero), BLOCK with the failing command and its output — the forward-merge surfaced a real integration regression. The forward-merge commit stays on the track branch; fix forward, then re-run `/merge-track $1 $2`.
 
 6. **Re-confirm.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2` must now be `0`. Proceed to Step 3.
 
