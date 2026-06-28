@@ -83,7 +83,7 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
     ```
 
     Re-push after every commit. `origin/track/<release-name>/<track-id>` is the durable home of the track's work and the branch `/merge-track` lands. If you discover on session start that the working tree is missing commits you remember making, recover with `git fetch && git reset --hard origin/track/<release-name>/<track-id>`. See `docs/baton/track-mode.md` "Recovery". Because each track has its own worktree and index, you are not racing other implementers — but the push still protects against an accidental local reset.
-2. Implement against the spec's acceptance checks. Stay within the slice's `In scope` boundary; surface out-of-scope discoveries to `journal.md` as Rule 2 deferrals.
+2. Implement against the spec's acceptance checks. Stay within the slice's `In scope` boundary; surface out-of-scope discoveries to `journal.md` as Rule 2 deferrals. **Every deferral you record — in `journal.md`, in `proof.json` `not_delivered`, or in `status.json` `open_deferrals` — MUST carry concrete tracking: a real owning slice id (e.g. `S14-board-json`) OR a tracker ref in the project's issue tool (GitHub `#123` / Jira `ABC-123` / Linear `ENG-123` / issue URL). Vague tracking ("a follow-up slice", "later", "future concern", a theme or ADR name, or a pointer back to the deferral's own list) is a Rule 2 violation. If no slice or issue owns the work yet, CREATE the tracker first (see "Non-gating findings" below), then cite it.**
 3. Write tests at the integration point that owns the user-facing affordance (Rule 1).
 4. Maintain `journal.md` as you go — decisions, trade-offs, anything a verifier might need context on.
 5. When you believe the slice is done:
@@ -113,12 +113,14 @@ The pattern is described in Playwright/TypeScript terms because that's the commo
 
 `/plan-release` stores screenshots the human pastes during requirements discovery at `docs/release/<release-name>/screenshots/<YYYY-MM-DD>-<slug>.png` — **date-prefixed**. Reachability screenshots use **slice-id-prefix** (`<slice-id>-<descriptor>.png`). Same directory, different prefix family — they sort cleanly and never collide on a filename. Do not invent a `screenshots/reachability/` or `screenshots/planning/` subfolder split; the prefix is the discriminator and keeping the directory flat preserves "every screenshot related to the release lives in one place."
 
-## Non-gating findings must land as GitHub issues (Rule 3)
+## Non-gating findings must land in a tracker (Rule 3)
 
-Any observation that names follow-up work outside this slice's scope — a related defect, a bug your change masks, missing coverage — becomes a silent deferral the moment it exists only as prose. The agent that finds the issue files the issue:
+Any observation that names follow-up work outside this slice's scope — a related defect, a bug your change masks, missing coverage — becomes a silent deferral the moment it exists only as prose. The agent that finds the work files the tracker, in whatever issue tool the project uses (**tool-agnostic**: GitHub, Jira, Linear, …):
 
-1. `gh issue create --title "<concise defect>" --body "<what you observed, file:line, why out of scope>"`
-2. Cite the returned number inline ("tracked in #NNN").
+1. File the tracker. Reference implementation (GitHub): `gh issue create --title "<concise defect>" --body "<what you observed, file:line, why out of scope>"`. Other tools: the project's documented CLI/API.
+2. Cite the returned ref inline at every place the deferral appears (`journal.md`, `proof.json` `not_delivered`, `status.json` `open_deferrals`): "tracked in #NNN" / "ABC-123" / issue URL.
+
+The **only** alternative to filing a tracker is naming a real **owning slice** that delivers the work. One of the two — owning slice id or tracker ref — is mandatory for every deferral. "I'll do it in a follow-up slice" without creating that slice is not tracking; it is the exact pattern Rule 2 forbids.
 
 ## What you must never do
 
