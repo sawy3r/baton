@@ -1,5 +1,5 @@
 ---
-description: Enter Implementer role for a specific slice. Reads spec.json, implements against acceptance checks, writes proof.json. Stops at state 'implemented' — never claims verified. Usage: /implement-slice <slice-id> [<release-name>]
+description: Enter Implementer role for a specific slice. On a `planned` slice, first produces the Design TL;DR (design.md) and halts at `design_review` for Captain review (Rule 9 — design review before code); once the review is acknowledged, implements against acceptance checks and writes proof.json. Stops at state 'implemented' — never claims verified. Usage: /implement-slice <slice-id> [<release-name>]
 argument-hint: <slice-id> [<release-name>] (e.g. S03-portfolio-add-flow 2026-05-20-billing-redesign)
 ---
 
@@ -91,7 +91,14 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
    - `<wt>/docs/release/$2/$1/proof.json` (may be empty template)
    - `git -C <wt> status` and `git -C <wt> diff <base> --stat`, where `<base>` is this slice's `start_commit` from `status.json` if already set, else `release-wt/$2` (the point the track branch was cut from). Never diff against `main` or the version branch — that inflates the diff with every prior track and slice.
 3. Confirm the slice's `User outcome` from spec.json back to the human in one sentence: "Implementing **$1**: `<outcome>`. Acceptance checks: N. Out of scope: <summary>."
-4. Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. Capture that commit's SHA (`git -C <wt> rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and is the verifier's exact diff base. **Then push the track branch so the work is durable:**
+
+   **Design TL;DR gate (Rule 9 — design review happens BEFORE code).** A slice must pass design review before any code is written. Determine where this slice sits in that gate from `status.json` `state` plus the artefacts in `<wt>/docs/release/$2/$1/`:
+
+   - **`state: planned` (no design review yet).** Do NOT transition to `in_progress` and do NOT write code. Produce the **Design TL;DR**: a concise design plan derived from `spec.json` — the approach, key design choices + rationale, the files you intend to touch, and any design-level risks/pins worth a reviewer's eye (each AC traceable to a planned change). Write it to `<wt>/docs/release/$2/$1/design.md`. Set `status.json` → `state: design_review`. Commit `docs(release/$2/$1): produce design TL;DR — awaiting design review` and push the track branch. Then **STOP** — output: "design.md produced; slice now in `design_review`. Run `/design-review $1 $2` (Captain) before implementation." This is the gate the router and `/design-review` both expect (`/design-review` BLOCKs with "no design.md to review" if you skip it); skipping it is a Rule-9 violation.
+   - **`state: design_review`, review NOT yet acknowledged** (no `review.md` carrying `DECISION: PROCEED`, or the Coach has not acknowledged per the orchestrator's ack convention — e.g. an `approved-ack.md` marker, or a human Coach confirmation): **STOP** — output: "design review pending — run `/design-review $1 $2`, then the Coach acknowledges (PROCEED) before implementation resumes." Do not write code.
+   - **`state: design_review` WITH an acknowledged `DECISION: PROCEED`**, OR **`state: in_progress` / `failed_verification`** (already past the gate): the gate is satisfied — continue to step 4. (Apply any inline `IMPLEMENTER_FIX` pins from `review.md` as you implement; a design revised after a decline must be re-reviewed — re-enter `design_review`, do not jump to code.)
+
+4. **(Design-review gate satisfied — see step 3.)** Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. Capture that commit's SHA (`git -C <wt> rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and is the verifier's exact diff base. **Then push the track branch so the work is durable:**
    ```
    git -C <wt> push origin HEAD:refs/heads/track/$2/<track-id>
    ```
