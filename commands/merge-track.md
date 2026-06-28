@@ -84,8 +84,15 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
 
 6. **Re-confirm.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2` must now be `0`. Proceed to Step 3.
 
-## Step 3 — Confirm scope with the human
+## Step 3 — Confirm scope
 
+**Autonomous mode — if `BATON_AUTO_CONFIRM` is set in the environment** (the autonomous loop sets it):
+do NOT call `AskUserQuestion`. The deterministic verification gate from Step 1.4 (`<ready_to_merge>` —
+true only when every slice in the track is terminal/verified, the track is not already merged, and
+`<blocked_by>` is empty) IS the authorization; asking a human would be redundant and, with no human
+present, stalls the loop. Emit one line — `auto-confirm (BATON_AUTO_CONFIRM): merge track/$2/$1 into release-wt/$2 — <N> commits, gate green` (cite the Step 2 forward-merge sync SHA if one was performed) — and proceed directly to Step 4.
+
+**Interactive mode — if `BATON_AUTO_CONFIRM` is unset** (a human is driving):
 `AskUserQuestion`: show release, track id, branch, the verified slice list, and the commit count (`git rev-list --count release-wt/$2..track/$2/$1`). If Step 2 performed a forward-merge, say so explicitly — cite the sync commit SHA and note that the track's tests were re-run green on the merged base. Question: "Merge `track/$2/$1` into `release-wt/$2`?" Options: "Yes, merge" / "No, abort". If aborted, exit cleanly.
 
 ## Step 4 — Perform the merge
