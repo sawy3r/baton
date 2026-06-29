@@ -24,9 +24,9 @@ roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
 
-## 0.7.0 — 2026-06-29
+## 0.6.3 — 2026-06-29
 
-Rule 2 hardening (deferral *tracking* made enforceable) + merge-track gate hardening.
+Rule 2 refinement (deferral *tracking* made enforceable) + merge-track gate hardening. Patch, not minor: the Rule 2 *contract* is unchanged — tracking always meant a real issue/slice — this clarifies what does not count (vague futures) and adds the gate teeth to catch it. An adopter already following the rule needs no action.
 
 ### Changed
 - **Rule 2 — No Silent Deferrals**: the *Tracking* leg is now enforceable, not vague. A deferral is tracked only by a concrete **owning slice id** that exists, OR a tool-agnostic **tracker ref** (GitHub `#123`/URL, Jira `ABC-123`, Linear `ENG-123`). Vague futures ("a follow-up slice", "future concern"), release-theme names, ADR ids, process/ceremony names, and circular self-references are explicitly **not** tracking. The rule now enumerates every deferral surface — proof `## Not delivered`, status `open_deferrals`, spec `## Out of scope`, inline comments, UI labels.
