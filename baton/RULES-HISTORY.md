@@ -24,6 +24,22 @@ roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
 
+## 0.7.0 — 2026-06-29
+
+Rule 2 hardening (deferral *tracking* made enforceable) + merge-track gate hardening.
+
+### Changed
+- **Rule 2 — No Silent Deferrals**: the *Tracking* leg is now enforceable, not vague. A deferral is tracked only by a concrete **owning slice id** that exists, OR a tool-agnostic **tracker ref** (GitHub `#123`/URL, Jira `ABC-123`, Linear `ENG-123`). Vague futures ("a follow-up slice", "future concern"), release-theme names, ADR ids, process/ceremony names, and circular self-references are explicitly **not** tracking. The rule now enumerates every deferral surface — proof `## Not delivered`, status `open_deferrals`, spec `## Out of scope`, inline comments, UI labels.
+- **Implementer role**: every deferral must carry concrete tracking; if no slice or issue owns the work yet, create the tracker first. The "Non-gating findings" guidance is now tool-agnostic (GitHub / Jira / Linear).
+- **Verifier role — Gate 5**: a new fail-closed deferral-tracking sub-gate inspects all four surfaces (closing the spec `## Out of scope` blind spot) and FAILs on vague or absent tracking.
+- **/merge-track command**: Step 2.5 runs the affected-package test suite (not just per-slice tests); an already-merged track is an idempotent no-op rather than a re-merge/BLOCK.
+
+### Adopter impact
+- Adopters with existing vague deferrals ("a follow-up slice", "future concern") will now see the verifier FAIL them. Remediate by citing a concrete owning slice id or filing a tracker. This is the intended teeth: a deferral the gate cannot resolve to a real home is a violation, not a decision.
+
+### Why
+A workflow audit of a 27-slice release found **39 untracked deferrals that shipped "verified"** — the deterministic gate inspected only proof `## Not delivered`, so punts hidden in spec `## Out of scope` evaded it, and "a follow-up slice" satisfied the old presence-only tracking check. This release makes the tracking leg resolvable and the gate's surface coverage complete.
+
 ## 0.6.1 — 2026-06-27
 
 Tool-neutral repo layout. Packaging/layout change, not a rules-content change —
