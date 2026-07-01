@@ -5,7 +5,7 @@
   "description": "The machine-readable contract for one slice: scope, the needs it covers, and its acceptance criteria as EARS-notation entries with trace links. Human-authored rationale lives in the free-text 'rationale' field; runtime state lives in status.json (slice-status-v1).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["slice_id", "scope", "covers_needs", "acceptance_criteria"],
+  "required": ["slice_id", "user_outcome", "covers_needs", "acceptance_criteria"],
   "$defs": {
     "id_token": {
       "type": "string",
@@ -22,6 +22,10 @@
       "type": "string",
       "description": "EARS pattern class. 'none' (free-form, unmatched) is deliberately excluded — it is a Rule 8 violation the lint catches, never a valid authored value.",
       "enum": ["ubiquitous", "event-driven", "state-driven", "optional-feature", "unwanted-behaviour", "complex", "note"]
+    },
+    "effort_axis": {
+      "type": "string",
+      "enum": ["low", "high"]
     }
   },
   "properties": {
@@ -32,10 +36,10 @@
     "slice_id": { "$ref": "#/$defs/id_token" },
     "release": { "type": "string" },
     "track": { "$ref": "#/$defs/id_token" },
-    "scope": {
+    "user_outcome": {
       "type": "string",
       "minLength": 1,
-      "description": "One sentence: what this slice delivers."
+      "description": "One sentence: the user-facing outcome this slice delivers."
     },
     "rationale": {
       "type": "string",
@@ -51,6 +55,23 @@
       "description": "Intake need ids this slice delivers (vertical trace up). Rule 8 requires every slice to thread to at least one need.",
       "minItems": 1,
       "items": { "$ref": "#/$defs/need_id" }
+    },
+    "effort_complexity": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Two-axis per-slice rating set by the planner during decomposition (ADR-0011 §3.7). Complexity (Cynefin low/high) drives model choice + verification rigor; effort (relative T-shirt low/high) drives timeout/retry budget. The quadrant is derivable from the two axes and serves as a consistency checksum.",
+      "required": ["effort", "complexity", "quadrant"],
+      "properties": {
+        "effort": { "$ref": "#/$defs/effort_axis" },
+        "complexity": { "$ref": "#/$defs/effort_axis" },
+        "quadrant": {
+          "type": "string",
+          "description": "Derived checksum label: low/low=quick, high/low=grind, low/high=puzzle, high/high=epic.",
+          "enum": ["quick", "grind", "puzzle", "epic"]
+        },
+        "rationale": { "type": "string" },
+        "confirmed_by_implementer": { "type": "boolean" }
+      }
     },
     "risks": {
       "type": "array",

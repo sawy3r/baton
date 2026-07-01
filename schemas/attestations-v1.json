@@ -27,6 +27,37 @@
       "minimum": 1,
       "description": "Artefact schema version for forward compatibility."
     },
+    "ratification": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Human ratification of the attestations artefact as a whole (parallels journeys-v1.ratification), distinct from any single attestation's per-walkthrough boundary. Optional: projects that gate on individual attestation status rather than a file-level sign-off may omit this.",
+      "required": ["ratified"],
+      "properties": {
+        "ratified": { "type": "boolean" },
+        "at": { "type": "string", "description": "ISO 8601; present once ratified." },
+        "by": { "type": "string" }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Describes the deployment context these attestations were walked against — distinct from each attestation's own per-walkthrough boundary object (which asserts real_infra/mocks_off for that one walkthrough). Optional.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the boundary context (e.g. 'production', 'staging')."
+        },
+        "mock_banned": {
+          "type": "boolean",
+          "description": "True when no mocks or stubs are permitted anywhere in this boundary."
+        },
+        "entitlement_boundary": {
+          "type": "string",
+          "description": "The entitlement boundary path or identifier this context enforces."
+        }
+      }
+    },
     "attestations": {
       "type": "array",
       "items": {

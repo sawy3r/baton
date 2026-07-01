@@ -68,6 +68,14 @@
             "type": "boolean",
             "description": "True when an automated regression guards this journey."
           },
+          "regression_test_path": {
+            "type": "string",
+            "description": "Path to the regression test asserted by has_regression. Present once has_regression is true."
+          },
+          "no_mock_boundary": {
+            "type": "string",
+            "description": "The entitlement/infra boundary that must cross real infrastructure (not mock) when this journey is walked (Rule 10 enforcement). Absence means no boundary is declared for this journey."
+          },
           "steps": {
             "type": "array",
             "items": {
