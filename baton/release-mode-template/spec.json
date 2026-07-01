@@ -3,10 +3,19 @@
   "slice_id": "S01-example-slice",
   "release": "YYYY-MM-DD-theme",
   "track": "T1-example-track",
-  "scope": "One sentence: the single user-reachable outcome this slice delivers.",
+  "user_outcome": "One sentence: the single user-reachable outcome this slice delivers.",
   "rationale": "Optional human-authored prose explaining the slice. Never machine-parsed.",
   "touchpoints": ["path/to/file.ext"],
+  "in_scope": ["Bullet-level statement of what this slice includes."],
+  "out_of_scope": ["Adjacent work this slice deliberately does not do."],
   "covers_needs": ["N-01"],
+  "effort_complexity": {
+    "effort": "low",
+    "complexity": "low",
+    "quadrant": "quick",
+    "rationale": "Why this effort/complexity rating.",
+    "confirmed_by_implementer": false
+  },
   "risks": [
     { "id": "R-01", "description": "What could go wrong.", "mitigation": "The binding mitigation the implementer must follow." }
   ],

@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://baton.sawy3r.net/schemas/spec-v1.json",
   "title": "Baton Slice Spec",
-  "description": "The machine-readable contract for one slice: scope, the needs it covers, and its acceptance criteria as EARS-notation entries with trace links. Human-authored rationale lives in the free-text 'rationale' field; runtime state lives in status.json (slice-status-v1).",
+  "description": "The machine-readable contract for one slice: the user outcome, the in/out-of-scope boundary, the needs it covers, and its acceptance criteria as EARS-notation entries with trace links. Human-authored rationale lives in the free-text 'rationale' field; runtime state lives in status.json (slice-status-v1).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["slice_id", "user_outcome", "covers_needs", "acceptance_criteria"],
+  "required": ["slice_id", "user_outcome", "covers_needs", "acceptance_criteria", "in_scope", "out_of_scope"],
   "$defs": {
     "id_token": {
       "type": "string",
@@ -49,6 +49,16 @@
       "type": "array",
       "description": "Files/paths this slice owns. Used by track-disjointness and design-fit checks.",
       "items": { "type": "string" }
+    },
+    "in_scope": {
+      "type": "array",
+      "description": "The boundary of what this slice delivers — distinct from user_outcome (the one-sentence result) and from acceptance_criteria (the testable checks). Bullet-level statements of what's included. Empty array is valid only when the slice is trivial enough that user_outcome + acceptance_criteria already state the full boundary; the field must still be present (records-as-JSON: this was previously a `## In scope` spec.md heading, scraped rather than validated).",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "out_of_scope": {
+      "type": "array",
+      "description": "Explicit exclusions — things adjacent to this slice that it deliberately does not do. Each item is a Rule 2 boundary statement, not a deferral (a deferral needs why/tracking/acknowledgement in status.json's open_deferrals; out_of_scope just draws the line so the implementer doesn't silently absorb adjacent work). Empty array is valid (nothing adjacent worth calling out), but the field must be present (records-as-JSON: this was previously a `## Out of scope` spec.md heading, scraped rather than validated).",
+      "items": { "type": "string", "minLength": 1 }
     },
     "covers_needs": {
       "type": "array",
