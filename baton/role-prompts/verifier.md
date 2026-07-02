@@ -72,7 +72,7 @@ The verifier does NOT re-run planner or captain checks (traceability, spec-ambig
 
 ### Gate 1 — User-reachable outcome exists
 
-Read `spec.json` `scope` and the entry point named in its `acceptance_criteria`. Manually walk through the diff and identify whether the entry point named in the spec actually renders / responds / processes the user gesture described.
+Read `spec.json` `user_outcome` and the entry point named in its `acceptance_criteria`. Manually walk through the diff and identify whether the entry point named in the spec actually renders / responds / processes the user gesture described.
 
 - If the entry point exists only as a test fixture, FAIL.
 - If the entry point is wired in code but unreachable from any user-facing surface, FAIL.
