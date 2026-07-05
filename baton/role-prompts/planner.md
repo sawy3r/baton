@@ -245,9 +245,11 @@ Before the human can approve a spec, verify it against this checklist:
 
 **`effort_complexity` is a controlled vocabulary, not free-text T-shirt words.** The field is required by `spec-v1`, and each axis has a fixed enum — a schema-valid record MUST use these exact tokens. Do not invent scales: `small` / `medium` / `large` for effort, or `quick-win` / `considered` / `major` for the quadrant, are all schema-invalid and will fail validation the moment anything checks the record against `spec-v1` (ADR-0011 §3.7).
 
-- **`effort`** — exactly `"low"` or `"high"`. Relative T-shirt size; drives the implementer's timeout/retry budget. The scale is **deliberately binary** — there is no `medium`. Force the call: is this closer to a one-sitting change (`low`) or a multi-sitting one (`high`)?
-- **`complexity`** — exactly `"low"` or `"high"`. Cynefin-style; drives model choice and verification rigor. `low` = clear cause-and-effect, known solution shape. `high` = the approach itself is uncertain or the blast radius is wide.
-- **`quadrant`** — exactly one of `"quick"` / `"grind"` / `"puzzle"` / `"epic"`. It is a **derived checksum** of the two axes, not a free rating: `low`/`low` = `quick`, `high` effort + `low` complexity = `grind`, `low` effort + `high` complexity = `puzzle`, `high`/`high` = `epic`. If your quadrant does not match the derivation, one of the three fields is wrong — reconcile before emitting.
+Each axis is anchored to a named standard so `low`/`high` is a decidable call, not a vibe (a vague axis is exactly what lets ratings drift):
+
+- **`effort`** — exactly `"low"` or `"high"`. **Relative agile sizing** (T-shirt / story-point scale, collapsed to binary); drives the implementer's timeout/retry budget. The scale is **deliberately binary** — there is no `medium`. Split rule: `low` = fits one implementer sitting on a bounded surface; `high` = multi-sitting or broad surface.
+- **`complexity`** — exactly `"low"` or `"high"`. **Cynefin**; drives model choice and verification rigor. Split rule: `low` = Clear/Complicated (a knowable right-or-good answer exists — expertise, not discovery); `high` = Complex/Chaotic (the solution shape is emergent, or the blast radius is wide).
+- **`quadrant`** — exactly one of `"quick"` / `"grind"` / `"puzzle"` / `"beast"`. It is a **derived checksum** of the two axes, not a free rating: `low`/`low` = `quick`, `high` effort + `low` complexity = `grind` (known but voluminous), `low` effort + `high` complexity = `puzzle` (small but tricky), `high`/`high` = `beast` (big and hard). Nothing branches on the quadrant — the two axes carry all behaviour — so if your quadrant does not match the derivation, one of the three fields is wrong; reconcile before emitting.
 
 The `spec.json` in `release-mode-template/` shows the correct shape (`"quadrant": "quick"`). Copy the vocabulary from there or from the enum above; never paraphrase it.
 
