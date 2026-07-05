@@ -243,6 +243,14 @@ Before the human can approve a spec, verify it against this checklist:
 - [ ] **Correct touchpoints** — every file that will be edited is listed. If the intake mentions a behaviour in a specific component, that component MUST appear in planned touchpoints.
 - [ ] **Explicit out-of-scope** — every adjacent concern from the intake that is NOT covered by this slice is listed, with the slice that owns it named.
 
+**`effort_complexity` is a controlled vocabulary, not free-text T-shirt words.** The field is required by `spec-v1`, and each axis has a fixed enum — a schema-valid record MUST use these exact tokens. Do not invent scales: `small` / `medium` / `large` for effort, or `quick-win` / `considered` / `major` for the quadrant, are all schema-invalid and will fail validation the moment anything checks the record against `spec-v1` (ADR-0011 §3.7).
+
+- **`effort`** — exactly `"low"` or `"high"`. Relative T-shirt size; drives the implementer's timeout/retry budget. The scale is **deliberately binary** — there is no `medium`. Force the call: is this closer to a one-sitting change (`low`) or a multi-sitting one (`high`)?
+- **`complexity`** — exactly `"low"` or `"high"`. Cynefin-style; drives model choice and verification rigor. `low` = clear cause-and-effect, known solution shape. `high` = the approach itself is uncertain or the blast radius is wide.
+- **`quadrant`** — exactly one of `"quick"` / `"grind"` / `"puzzle"` / `"epic"`. It is a **derived checksum** of the two axes, not a free rating: `low`/`low` = `quick`, `high` effort + `low` complexity = `grind`, `low` effort + `high` complexity = `puzzle`, `high`/`high` = `epic`. If your quadrant does not match the derivation, one of the three fields is wrong — reconcile before emitting.
+
+The `spec.json` in `release-mode-template/` shows the correct shape (`"quadrant": "quick"`). Copy the vocabulary from there or from the enum above; never paraphrase it.
+
 3. Set the slice's `covers_needs` in `spec.json` — every intake need ID (N-NN) this slice delivers. This is the intake→slice arm of the RTM; the trace gate verifies every N-NN in intake appears in at least one slice's `covers_needs`.
 4. Initialise `status.json` with `state: planned` and the slice's `track` id, valid against `slice-status-v1`. Runtime state lives here; the spec contract lives in `spec.json`.
 5. The implementer emits `proof.json` during implementation — leave it unwritten. `journal.md` (a prose log) stays Markdown.
