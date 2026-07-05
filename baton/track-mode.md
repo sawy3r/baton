@@ -137,20 +137,20 @@ When the blocker clears, the next `/implement-slice <slice-id>` session resumes 
 
 ## Where the discovery data lives
 
-`index.md` frontmatter is the machine-readable registry the commands read:
+`board.json` is the machine-readable registry the commands read (via the oracle); `index.md` is its rendered view. `board.json` is a **pure plan** — the planner writes track ids, ordered slices, and `depends_on`, and nothing else about a track. Everything runtime is derived (invariant 5):
 
 ```yaml
-release_worktree_path: <derived by convention — $HOME/projects/<REPO_BASENAME>-worktrees/release-<release>>
-release_worktree_branch: release-wt/<release>
+# board.json tracks[] — a pure plan; NO worktree path, NO state persisted
 tracks:
   - id: T1-identity-account
     slices: [S03-..., S07-...]      # ordered
     depends_on: null                 # or another track id
-    worktree_path: <derived by convention — $HOME/projects/<REPO_BASENAME>-worktrees/release-<release>-T1-identity-account>
-    worktree_branch: track/<release>/T1-identity-account
-    state: planned                   # planner-set; live in_progress is oracle-DERIVED from the track branch; merged is set by /merge-track
 ```
 
-**Worktree paths are derived, not stored (invariant 5).** `worktree_path` / `release_worktree_path` are **conventional** — the oracle computes them from `<REPO_BASENAME>`, the release name, and the track id; no `/implement-slice` writes them. A track's existence and live `in_progress` state are resolved the same way: **enumerate `track/<release>/*` refs** (a ref exists ⇒ the track is materialised; commits beyond `release-wt`'s cut ⇒ `in_progress`). The planner writes the *plan* (track ids, ordered slices, `depends_on`, the conventional `worktree_branch`, initial `state: planned`); everything downstream of the plan is derived from refs so that no implementer has to write `release-wt` to make a track discoverable.
+**Worktree paths AND track state are derived, never stored (invariant 5).** The oracle computes them:
+- **Worktree path** — conventional: `$HOME/projects/<REPO_BASENAME>-worktrees/release-<release>[-<track-id>]`, from repo basename + release + track id. No command writes it.
+- **Track state** — from refs alone: `merged` iff the track branch is an ancestor of `release-wt/<release>` (`git merge-base --is-ancestor`); else `in_progress` iff the track branch exists with commits beyond `release-wt`'s cut; else `planned` (no branch, or branch at the cut). `/merge-track`'s merge commit *is* the `merged` signal — no `state` field is written to record it.
+
+Because neither is persisted, there is no field for a stale value to live in — the class of "board says `planned`, the branch says `verified`" bugs is gone by construction, not by discipline.
 
 The **Tracks table** and **touchpoint matrix** in the body of `index.md` are the human-readable mirror, kept in sync the same way the slice table mirrors each `status.json`. Each slice's `status.json` carries its `track` id and, once implementation starts, its `start_commit` (the SHA of the `docs(...): start implementation` commit) — the verifier diffs `start_commit..HEAD`.

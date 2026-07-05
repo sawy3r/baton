@@ -13,7 +13,7 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
 
 `/replan-release` runs on a release that is **in flight**, so the release worktree already exists. Every planning-artefact commit — new `spec.json` / `status.json`, `board.json`, `intake.md` — goes to the **release assembly branch `release-wt/$1`**, never to the version integration branch (`release/v*` or `main`).
 
-- Operate in the **release worktree** — `release.worktree.path` in `board.json`. `cd` there before writing or committing.
+- Operate in the **release worktree** — conventional path `$HOME/projects/<REPO_BASENAME>-worktrees/release-` on branch `release-wt/` (derived, not stored in `board.json`). `cd` there before writing or committing.
 - The version integration branch sits *above* `release-wt` in the track-mode hierarchy; the release reaches it only via `/merge-release`, gated on every track verified. Committing replan artefacts straight to the integration branch jumps that gate, puts unverified in-flight scope on the production-bound branch, and forces a backwards `integration → release-wt` sync to undo.
 - A new slice's `spec.json` lands on `release-wt/$1`. **Step 6** then propagates it out to every in-flight track branch, so no track is left reading a stale spec.
 
@@ -27,7 +27,7 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
 
 Before reconciling state or revising anything, bring `release-wt/$1` up to date with the version integration branch it was cut from. An in-flight release that has drifted behind its base replans against a stale picture — the touchpoint matrix, the schema-vs-spec audits, and any new slice you scope can all be wrong if the base has moved underneath them.
 
-1. From `board.json`: read `release.worktree.path` and the **base branch** (`release.integration_branch`, e.g. `release/v0.5.0`).
+1. Derive the release worktree path by convention (`$HOME/projects/<REPO_BASENAME>-worktrees/release-`, branch `release-wt/`), and read the **base branch** from `board.json` (`release.integration_branch`, e.g. `release/v0.5.0` — this field stays; only worktree path + state are derived).
 2. `cd` into the release worktree. Confirm it is on `release-wt/$1` and the working tree is clean (`git status --porcelain` is empty). If it is dirty, STOP and surface — uncommitted state in the release worktree is itself a finding the human must resolve before replanning. **Then capture `PLANNER_START_SHA = $(git rev-parse HEAD)`** — Step 6 uses this as the lower bound when cherry-picking *this session's* planning-artefact commits onto track branches.
 3. Has the base branch moved? `git rev-list --count release-wt/$1..<base-branch>`. Zero ⇒ already current; skip to Step 2.
 4. Non-zero ⇒ forward-merge the base in: `git merge --no-ff <base-branch>`.
@@ -71,7 +71,7 @@ Once the revision is committed to `release-wt/$1`, push it out to every in-fligh
 
 For each track in the `board.json` `tracks` array whose `state` is **not `merged`**:
 
-1. **No worktree yet** (`planned`, never started, no `worktree.branch` on disk): skip — its first `/implement-slice` will branch from the now-current `release-wt/$1`. Note it.
+1. **No worktree yet** (`planned`, never started — the `track/$1/<track-id>` branch does not exist): skip — its first `/implement-slice` will branch from the now-current `release-wt/$1`. Note it.
 2. `cd` into the track worktree. If its working tree is **dirty** (`git status --porcelain` non-empty — an implementer has uncommitted work in flight): **skip** the merge and note it: "track `<id>` has uncommitted work; its next `/implement-slice` / `/verify-slice` Step 0 will forward-merge `release-wt` and resolve." Never merge into a dirty track worktree.
 3. **Clean worktree**: forward-merge `git merge --no-ff release-wt/$1`.
    - **Clean, or conflicts only in planning artefacts** (`docs/release/**`, `board.json`, `intake.md`, `spec.json`, `status.json`): resolve and commit.
