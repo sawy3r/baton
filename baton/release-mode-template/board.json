@@ -13,8 +13,7 @@
     {
       "id": "T1-example-track",
       "slices": ["S01-example-slice"],
-      "depends_on": [],
-      "state": "planned"
+      "depends_on": []
     }
   ]
 }
