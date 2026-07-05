@@ -120,22 +120,18 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 - **A documented shared file** (the touchpoint matrix marks it `DOCUMENTED SHARED` with each track's declared region) — the tracks were declared to edit well-separated regions. Inspect the conflict hunks: if they sit in the declared-separate regions, resolve by keeping both tracks' regions and `git add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git merge --abort` and BLOCK as a planner error.
 - **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on `<files>`, which are neither `board.json` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 
-## Step 5 — Update the board
+## Step 5 — Re-render the board view
 
-On `release-wt/$2` (in the release worktree), update `docs/release/$2/board.json`:
+The track's `merged` state is **derived**, not written (invariant 5): the merge commit you just made puts the track branch in `release-wt/$2`'s ancestry, which *is* the `merged` signal. `board.json` is a pure plan — it has no `state` field to set, so there is nothing to update in it for this merge.
 
-- Set the track's `state` to `"merged"` in the `tracks` array.
-- Recompute the aggregate counts (slice counts + the track counts).
-- Append an activity entry recording the merge: actor `track integrator (/merge-track)`, note `N verified slices merged: <slice-id list>. Track state -> merged.`, dated and tagged with the merge commit SHA.
-
-Validate `board.json` against `board-v1`, then re-render `index.md` from it (the Tracks table, Aggregate state, and Recent activity sections are views). Commit both on `release-wt/$2`: `docs(release/$2): record track $1 merge to release-wt`.
+Re-render `index.md` from `board.json` (the oracle now resolves track `$1` as `merged` from the ref ancestry) and commit it on `release-wt/$2`: `docs(release/$2): re-render board — track $1 merged`. If your project renders `index.md` on demand rather than committing it, skip this commit — the merge commit alone is the durable, authoritative record.
 
 ## Step 6 — Hand off
 
 Tell the human, in one short message:
 
 - Merge commit SHA; track `$1` state is now `merged`.
-- Remaining unmerged tracks (`board.json` `tracks` entries with `state != merged`), each with its verified/total slice count.
+- Remaining unmerged tracks (from the oracle — tracks whose derived `state != merged`), each with its verified/total slice count.
 - If every track is now `merged`: "All tracks merged — run `/merge-release $2` to integrate the release into the version branch."
 - Reminder: this command did **not** push, and did **not** delete `track/$2/$1` or its worktree (both retained for any post-merge fix). Push `release-wt/$2` when ready; remove the track worktree with `git worktree remove <track-worktree-path>` once you are sure no more work belongs to the track.
 
