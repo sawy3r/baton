@@ -72,7 +72,7 @@ The verifier does NOT re-run planner or captain checks (traceability, spec-ambig
 
 ### Gate 1 — User-reachable outcome exists
 
-Read `spec.json` `scope` and the entry point named in its `acceptance_criteria`. Manually walk through the diff and identify whether the entry point named in the spec actually renders / responds / processes the user gesture described.
+Read `spec.json` `user_outcome` and the entry point named in its `acceptance_criteria`. Manually walk through the diff and identify whether the entry point named in the spec actually renders / responds / processes the user gesture described.
 
 - If the entry point exists only as a test fixture, FAIL.
 - If the entry point is wired in code but unreachable from any user-facing surface, FAIL.
@@ -172,6 +172,8 @@ Grep the changed files for `TODO`, `FIXME`, `deferred`, `later`, `placeholder`, 
 4. inline `// deferred` / `// later` / `// future` / `// TODO` in changed source
 
 For each deferral found on any of those surfaces, the **Tracking** leg must be a **concrete, resolvable reference** per Rule 2 ("What counts as tracking"): an **owning slice id** that exists (e.g. `S14-board-json`), OR a **tracker ref** in any issue tool (GitHub `#123`/URL, Jira `ABC-123`, Linear `ENG-123`, issue URL). If the tracking is vague or absent — "a follow-up slice", "later", "future concern", a release-theme name, an ADR/decision-record id, a process name, or a circular pointer to the deferral's own list — **FAIL**, naming the slice, the surface, and the deferral text. Do not pass a deferral on the strength of an owning-slice id you cannot confirm exists; an invented-but-uncreated slice id is not tracking. This sub-gate is the teeth of Rule 2: a deferral the gate cannot resolve to a real home is a violation, not a decision.
+
+For any deferral in `status.json` `open_deferrals`, also confirm the **Acknowledgement** leg is present as *both* `acknowledgement` (plain-text told-evidence) and `acknowledged_by` (who — required by `slice-status-v1` since v0.7.0). An `open_deferrals` entry missing `acknowledged_by` is schema-invalid; **FAIL**, naming the slice and the entry.
 
 ### Gate 6 — Design conformance (Rule 9, Layer 1)
 

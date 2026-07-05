@@ -104,7 +104,7 @@
       "properties": {
         "effort": { "type": "string", "enum": ["low", "high"] },
         "complexity": { "type": "string", "enum": ["low", "high"] },
-        "quadrant": { "type": "string", "enum": ["quick", "grind", "puzzle", "epic"] },
+        "quadrant": { "type": "string", "enum": ["quick", "grind", "puzzle", "beast"] },
         "rationale": { "type": "string" },
         "confirmed_by_implementer": { "type": "boolean" }
       }

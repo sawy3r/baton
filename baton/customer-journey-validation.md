@@ -34,6 +34,7 @@ The journeys artefact is a version-controlled JSON document at a stable project 
 
 - **Version** — schema version for forward compatibility.
 - **Journeys** — the list of critical journeys, each with an **id** (e.g. `J01-onboard-new-user`), a **user_type** (e.g. `free_user`, `pro_user`, `admin`), an **outcome** (what the user achieves), ordered **steps**, and an **entry_surface** (where the journey begins).
+- **Regression + boundary metadata** (per journey, added in v0.7.0) — `regression_test_path`, the path to the regression test asserted by `has_regression` (present once `has_regression` is true); and `no_mock_boundary`, the entitlement/infra boundary this journey must cross against **real** infrastructure when walked (its absence means no boundary is declared for the journey). `no_mock_boundary` is the machine-readable home of the "No-mock boundary" enforcement below — the gate reads it to know which boundary a walk may not mock.
 - **Ratification metadata** — `is_ratified`, `ratified_by`, `ratified_at`.
 
 ## Enforcement

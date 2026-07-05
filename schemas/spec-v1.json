@@ -69,15 +69,15 @@
     "effort_complexity": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Two-axis per-slice rating set by the planner during decomposition (ADR-0011 §3.7). Complexity (Cynefin low/high) drives model choice + verification rigor; effort (relative T-shirt low/high) drives timeout/retry budget. The quadrant is derivable from the two axes and serves as a consistency checksum.",
+      "description": "Two-axis per-slice rating set by the planner during decomposition (ADR-0011 §3.7), each axis anchored to a named standard so low/high is decidable rather than a vibe. COMPLEXITY (Cynefin) drives model choice + verification rigor: low = Clear/Complicated (a knowable right-or-good answer exists; expertise, not discovery); high = Complex/Chaotic (the solution shape is emergent, or the blast radius is wide). EFFORT (relative agile sizing) drives timeout/retry budget: low = fits one implementer sitting on a bounded surface; high = multi-sitting or broad surface. The quadrant is DERIVED from the two axes and is only a human-readable consistency checksum — nothing branches on it; the two axes carry all behaviour.",
       "required": ["effort", "complexity", "quadrant"],
       "properties": {
         "effort": { "$ref": "#/$defs/effort_axis" },
         "complexity": { "$ref": "#/$defs/effort_axis" },
         "quadrant": {
           "type": "string",
-          "description": "Derived checksum label: low/low=quick, high/low=grind, low/high=puzzle, high/high=epic.",
-          "enum": ["quick", "grind", "puzzle", "epic"]
+          "description": "Derived checksum label: low/low=quick, high effort + low complexity=grind (known but voluminous), low effort + high complexity=puzzle (small but tricky), high/high=beast (big and hard).",
+          "enum": ["quick", "grind", "puzzle", "beast"]
         },
         "rationale": { "type": "string" },
         "confirmed_by_implementer": { "type": "boolean" }
