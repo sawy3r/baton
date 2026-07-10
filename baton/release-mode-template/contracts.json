@@ -1,0 +1,46 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/contracts-v1.json",
+  "version": 1,
+  "release": "2026-05-20-billing-redesign",
+  "contracts": [
+    {
+      "id": "C-01",
+      "kind": "http-endpoint",
+      "surface": "PUT /api/billing/plan",
+      "shape": "PlanChangeRequest body ({plan_id, effective_from}); If-Match: <int>; 200 PlanState / 412 stale / 422 invalid plan / 428 missing precondition",
+      "owner": "S01-plan-api",
+      "consumers": ["S03-plan-picker-ui", "S05-downgrade-flow"],
+      "live_test": "api/billing/plan_contract_test.go: live PUT round-trip, no mocks",
+      "fixtures": "docs/release/2026-05-20-billing-redesign/S01-plan-api/fixtures/plan-put.json",
+      "edge_config": "C-03",
+      "rationale": "Body shape pinned against the handler's validation gate at planning time so consumer specs cannot re-derive it wrongly."
+    },
+    {
+      "id": "C-02",
+      "kind": "header",
+      "surface": "If-Match",
+      "shape": "integer plan version from GET /api/billing/plan; 428 when absent, 412 on mismatch",
+      "owner": "S01-plan-api",
+      "consumers": ["S03-plan-picker-ui"],
+      "live_test": "api/billing/plan_contract_test.go: precondition matrix",
+      "edge_config": "C-03"
+    },
+    {
+      "id": "C-03",
+      "kind": "edge-config",
+      "surface": "CORS AllowHeaders (api gateway config)",
+      "shape": "must include If-Match; preflight OPTIONS returns it in Access-Control-Allow-Headers",
+      "owner": "S01-plan-api",
+      "rationale": "The middleware surface between C-01/C-02's two ends. Owned explicitly so a real-browser preflight cannot fail with nobody accountable."
+    },
+    {
+      "id": "C-04",
+      "kind": "feature-flag",
+      "surface": "billing_redesign_enabled",
+      "shape": "boolean, default false; read at plan-picker mount",
+      "owner": "S02-flag-plumbing",
+      "consumers": ["S03-plan-picker-ui"],
+      "live_test": "web/flags.spec.ts: flag read against real flag store"
+    }
+  ]
+}
