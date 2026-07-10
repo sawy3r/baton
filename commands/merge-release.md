@@ -43,7 +43,11 @@ Run the **board oracle** (reference implementation: `sworn board --json`) from t
 
    If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed.
 2. **Track merge gate.** From `.releases["$1"].tracks[]`, every track must have `state == "merged"` — i.e. its `/merge-track` has run and its slices are already on `release-wt/$1`. A track whose slices are all `verified` but whose `state` is still `planned` / `in_progress` has **not** had its commits merged into `release-wt` and would be silently omitted from this release merge. If any track is not `merged`, BLOCK: `cannot merge release '$1' — these tracks are verified but not yet merged to release-wt: <list>. Run /merge-track <track-id> $1 for each before /merge-release.`
-3. **Planning-record integrity.** If the oracle's top-level `.ghostSlices` or `.pendingSpecs` name release `$1` (an `board.json` row with no `status.json` on any branch, or a live slice with no `spec.json`), surface them to the human in the Step 2 scope summary. They indicate the board names work the committed branches cannot back — warnings, not a hard BLOCK, but the human should see them before approving the final merge.
+3. **Assembly gate (Rule 10 assembly stage).** Read `docs/release/$1/assembly-proof.json` from the `release-wt/$1` ref (`git show release-wt/$1:docs/release/$1/assembly-proof.json`). Three outcomes:
+   - **Present with a passing verdict** — the release is `assembled`; note it in the Step 2 scope summary.
+   - **Present with a failing verdict** — BLOCK: `cannot merge release '$1' — assembly run failed: <failing suites/observations from the proof>. Fix and re-run the assembly stage (reference implementation: sworn assemble) before /merge-release.` A recorded failing assembly is a hard stop regardless of per-slice states.
+   - **Absent** — advisory (skew-window policy, baton#59): surface in the Step 2 scope summary as `WARNING: release '$1' has no assembly-proof.json — the assembled system has not been machine-walked end-to-end; per-slice verification cannot see cross-slice wire seams (CORS/middleware class). Proceed only if the human accepts the risk explicitly.` This flips to a hard BLOCK when the reference implementation (`sworn assemble`) ships.
+4. **Planning-record integrity.** If the oracle's top-level `.ghostSlices` or `.pendingSpecs` name release `$1` (an `board.json` row with no `status.json` on any branch, or a live slice with no `spec.json`), surface them to the human in the Step 2 scope summary. They indicate the board names work the committed branches cannot back — warnings, not a hard BLOCK, but the human should see them before approving the final merge.
 
 ## Step 1.5 — Forward-merge the integration branch into the release worktree
 
@@ -82,6 +86,7 @@ Print a short merge plan and ask `AskUserQuestion` to confirm before merging:
 
 - Release name + integration branch + worktree branch.
 - Slice state breakdown ("N verified, M deferred").
+- Assembly status from Step 1 gate 3: `assembled` (passing proof), or the no-assembly-proof WARNING verbatim.
 - If Step 1.5 created a forward-merge commit, say so: name the commit, list the commits it absorbed, and flag whether any of them touched application code (vs docs / governance files only).
 - The first 5 commits on `<worktree_branch>` not in `<integration>` (`git log --oneline <integration>..<worktree_branch> | head -5`).
 - Total commit count diff (`git rev-list --count <integration>..<worktree_branch>`).
