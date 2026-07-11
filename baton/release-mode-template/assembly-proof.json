@@ -1,0 +1,49 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/assembly-proof-v1.json",
+  "version": 1,
+  "release": "2026-05-20-billing-redesign",
+  "generated_at": "2026-05-27T04:28:00Z",
+  "environment": {
+    "worktree_branch": "release-wt/2026-05-20-billing-redesign",
+    "worktree_path": "/home/you/projects/acme-worktrees/release-2026-05-20-billing-redesign",
+    "services": [
+      { "name": "web", "url": "http://localhost:3400", "health_ok": true },
+      { "name": "api", "url": "http://localhost:8481", "health_ok": true },
+      { "name": "db", "url": "postgres://localhost:5433/acme_dev", "health_ok": true }
+    ],
+    "teardown": {
+      "verified": true,
+      "method": "ss-verified: spawned web+api pids killed, ports 3400/8481 confirmed free, unrelated :3000 process left untouched",
+      "worktree_clean": true
+    }
+  },
+  "suites": [
+    {
+      "name": "tests/e2e/billing-plan-change.spec.ts",
+      "no_mock": true,
+      "runs": 2,
+      "tests": [
+        { "name": "upgrade plan persists and returns new PlanState", "outcome": "pass", "note": "PUT /api/billing/plan 200 both runs" },
+        { "name": "stale If-Match returns 412", "outcome": "pass" }
+      ]
+    },
+    {
+      "name": "tests/e2e/billing-downgrade.spec.ts",
+      "no_mock": true,
+      "runs": 1,
+      "tests": [
+        { "name": "downgrade flow end to end", "outcome": "pass" },
+        { "name": "enterprise-tier proration", "outcome": "skip", "disposition": "by-design-excepted", "tracking": "#412 — enterprise seat data seeded only in staging", "note": "gated on STAGING_SEATS=1" }
+      ]
+    }
+  ],
+  "observations": [
+    { "surface": "preflight OPTIONS /api/billing/plan from Origin :3400", "observed": "204 with If-Match present in Access-Control-Allow-Headers", "contract_ref": "C-03" },
+    { "surface": "GET /api/billing/plan after upgrade", "observed": "returns version incremented by 1, matches C-01 shape" }
+  ],
+  "screenshots": [
+    "docs/release/2026-05-20-billing-redesign/S05-downgrade-flow/screenshots/assembly-downgrade.png"
+  ],
+  "verdict": "pass",
+  "verdict_note": "All suites green against real infra; the sole non-pass is an excepted, tracked staging-only skip. CORS preflight confirms the If-Match contract (C-02/C-03) works end to end in a real browser."
+}
