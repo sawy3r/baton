@@ -51,7 +51,7 @@ The **integrator** role below the slice loop runs the merge pipeline on gates, n
 
 **License:** [MIT](LICENSE) — permissive, attribution-only. Use it in any project, commercial or otherwise.
 
-**Used in production:** 500+ slices verified across two active projects — GetFired and Swornagent (the loop orchestrator built on Baton, itself built using Baton). Fully model-agnostic; switch vendors at will. Eval built in.
+**Dogfooded on real releases** — including Sworn, the loop orchestrator built on Baton and itself delivered using Baton. Fully model-agnostic; switch vendors at will. Eval built in.
 
 ---
 
