@@ -185,6 +185,17 @@ Run the **design-conformance gate** (reference implementation: `sworn designaudi
 - If the project has no design-fidelity config (`docs/baton/design-fidelity.json` absent or `ui_bearing: false`), the gate passes automatically (non-UI project).
 - Hardcoded colours in test files (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`) are excluded — tests may assert against literal values.
 
+### Gate 6b — Guard fidelity (Rule 12)
+
+When `proof.json` cites a **guard** — a regression test, lint rule, CI gate, invariant, or documentation check — as evidence for a claim that **quantifies over a domain** ("no component does X", "every Y is Z", "the doc is true", "machine-checked"), do not accept the guard's green as proof of the claim. A guard can be structurally incapable of detecting the defect it names and still return green at every layer. Check:
+
+- **Scope parity.** Does the domain the guard actually searches equal the domain the claim quantifies over? A guard scoped to one directory, one file glob, one quote style, or one syntactic form, backing a claim about "every" or "no" — FAIL, naming the uncovered domain. The claim must be bounded to what the guard checks, or the guard widened to the claim.
+- **Mutation against the real defect form.** The proof must record a mutation that breaks the guard **in the form the defect actually took in this codebase** — not a form the author imagined. If the recorded mutation is a strawman (a shape no real instance uses) while the real defect form goes unmutated, the mutation proof is void: FAIL. When in doubt, construct the real-form mutation yourself, run it, and confirm the guard fails; a guard that stays green on the real defect form is not evidence.
+- **Right instrument.** If the claim requires resolving scope, bindings, or structure (identifiers, JSX/HTML nesting, class composition, imports) and the guard is a regex or substring match, treat it as a guess, not a check: FAIL unless the claim is bounded to exactly what the pattern can see.
+- **Presence over absence.** A guard asserting the *absence of a known-bad token* (`not.toMatch(/bad/)`) does not establish the *presence of the truth*. If the claim is "the artefact is correct" and the guard only forbids one wrong value, it is scope-narrow: FAIL.
+
+This gate is what stops a silent guard from passing verification — the failure mode Rules 6 and 7 cannot see because they observe the same green the guard shows.
+
 ### Gate 7 — Claimed scope matches implemented scope
 
 Read the `delivered` list in `proof.json`. For each item, verify the evidence reference (file path, test name, artefact path) points to real, working state.

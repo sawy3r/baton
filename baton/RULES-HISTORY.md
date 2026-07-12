@@ -1,11 +1,11 @@
 ---
 title: Rules history
-description: Evolution of the eleven rules from their first draft through public release
+description: Evolution of the twelve rules from their first draft through public release
 ---
 
 # Rules history
 
-> **What this is:** the historical evolution of baton's eleven rules as
+> **What this is:** the historical evolution of baton's twelve rules as
 > they were drafted and refined inside a source project, before this
 > repo was extracted for public release. Public package versioning lives
 > on the [Releases page](https://github.com/sawy3r/baton/releases) — this
@@ -23,6 +23,25 @@ removed rules, renamed role contracts. Minor bumps: new rules or new
 roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
+
+## 0.7.0 — 2026-07-12
+
+**Rule 12 — Guard Fidelity (new)**, plus Rule 8 and Rule 9 amendments. Minor: a new rule. Derived from a design-system release in the source monorepo (2026-07-11/12) where **eleven fresh-context verification failures across two slices** all traced to one root cause — *a claim made wider than the evidence that backed it* — caught at three layers.
+
+### Added
+- **Rule 12 — Guard Fidelity** (`guard-fidelity.md`): a guard (regression test, lint rule, CI gate, invariant, doc check) cited as proof-bundle evidence (Rule 6) or relied on by a verifier (Rule 7) must satisfy four conditions — (1) mutation proof (break it, see red, restore, see green, record both); (2) scope parity (the domain checked equals the domain the claim quantifies over); (3) mutate the form the defect *actually* takes, not the imagined one (the condition nearly always violated); (4) right instrument (a parser, not a regex, when detection needs scope/bindings/structure). Corollary — quantifier discipline: "no X" / "every Y" / "machine-checked" is a promise about a search you have not run. Numbered last but logically upstream of 6/7 (append, not renumber — renumbering breaks every adopter reference and vendored copy).
+
+### Changed
+- **Rule 8 — Requirements Fidelity**: an acceptance criterion must be **bounded**. Verifiable (29148) is necessary, not sufficient; an unbounded AC (quantifying over an open domain) produces a non-terminating verification loop. Bound it to a named, enumerable set, machine-check each member, declare the rest non-normative. Honest-bounding test: the fix narrows the claim *and* strengthens enforcement at once.
+- **Rule 9 — Design Fidelity**: **prevalence is not correctness**. A decision ratified on "most of the code already does X" launders an existing defect into an official standard; separate the prevalence finding from the recommendation, and run the domain's quality floor on the incumbent before ratifying it. Tell: rationale of the form "ratifies reality" / "follows the code's gravity" — cost arguments dressed as design arguments.
+- **Verifier role prompt**: new Gate 6b (guard fidelity) — before accepting a guard as evidence for a domain-quantified claim, check scope parity and confirm the guard fails against the *real* defect form, not a strawman.
+
+### Files changed
+- `guard-fidelity.md` (new)
+- `requirements-fidelity.md`, `design-fidelity.md`, `role-prompts/verifier.md`, `AGENTS-fragment.md`, `README.md` (updated)
+
+### Provenance
+One guard (UI components own their styling) failed fresh-context verification **four consecutive times**, each a new disguise of "check scope narrower than the claim." Every one passed its author's own mutation test — because each mutated the imagined form and every real defect used a form they did not (condition 3). A sibling slice failed **seven** times on the same root cause in prose (absence-of-known-bad-string instead of presence-of-truth). Two live WCAG failures shipped because there was no guard for them to violate. Full brief: `docs/captures/2026-07-12-rule-12-guard-fidelity-handoff.md`.
 
 ## 0.6.3 — 2026-06-29
 

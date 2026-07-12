@@ -30,6 +30,21 @@ When the planner reaches a design choice during planning:
 
 The model may propose options, classify stakes, and surface trade-offs — but for a Type-1 choice the model **may not record the human decision itself**. (This is the design-time analogue of Rule 7: the agent that proposes is not the authority that decides.)
 
+## Prevalence is not correctness
+
+**"Most of the code already does X" is a reason X spread. It is not a reason X is right.** A design or architecture decision ratified on prevalence **launders an existing defect into an official standard** — it takes something that was drifted into, never chosen, and stamps it as the contract every future slice must conform to.
+
+When proposing a decision from an audit or inventory:
+
+1. **Separate the prevalence finding from the recommendation.** "60 files do X" and "we should standardise on X" are two different claims; the first does not establish the second. State them separately so the recommendation must stand on its own argument.
+2. **Run the domain's quality floor on the incumbent before ratifying it** — contrast and touch-target size for UI, latency for a query pattern, correctness for an algorithm, whatever the floor is. If the incumbent fails that floor, prevalence becomes an argument **for** change, not against it.
+
+**The tell:** any decision whose rationale is *"this ratifies reality"*, *"it follows the code's gravity"*, or *"it minimises migration"*. Those are **cost arguments dressed as design arguments**. They may still be right — migration cost is real — but they must be argued **on cost, openly**, not smuggled in as correctness. This is the structural failure mode of every codification or consolidation effort: the audit is necessary (you cannot uplift what you cannot see) but it is **descriptive**, and description cannot distinguish a convention from a bug when the only evidence is "most files do this."
+
+This pairs with Rule 9's human-ownership stance and the same root cause the sibling rules catch (a claim made wider than its evidence — here, "prevalent" widened into "correct"). **The machine can prove a colour fails a contrast ratio; it cannot notice that a button feels like it is shouting** — and in the motivating case those turned out to be the same defect.
+
+**Evidence.** A Type-1 decision ratified the source project's primary button colour, explicitly reasoned as *"follow the code's actual gravity: 60 files already do this."* White text on that colour measures **3.29:1; WCAG AA requires 4.5:1.** The decision would have made a button whose own label fails accessibility the official design standard. It was caught only because the human said *"it's too loud"* — and the loudness and the contrast failure were the same defect.
+
 ## Record format
 
 Each design decision is an entry in `status.json`:
