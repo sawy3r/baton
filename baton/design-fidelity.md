@@ -65,11 +65,21 @@ The design-review gate's **human-in-the-loop** behaviour is well-defined: the im
 The gate's autonomous behaviour is **keyed to the stakes class it already computes**:
 
 - **Type-2 choices** (and slices with no Type-1 choice): auto-proceed is permitted, provided the noted default is **recorded** in `status.json` exactly as a human-attended run would record it. A reversible, local choice does not need a human present.
-- **Type-1 / architecturally-significant choices**: the loop **must hard-pause and surface** the decision for asynchronous Coach acknowledgement (page/notify + halt at `design_review`); it **may not auto-proceed**, and it may not let a captain-role self-review stand in for the human decision — Rule 9's "the model may not record a Type-1 human decision itself" holds regardless of whether a human happens to be watching. A captain self-review may *enrich* the pins the Coach later sees; it cannot *clear* the gate.
+- **Type-1 / architecturally-significant choices**: by **default** the loop **must hard-pause and surface** the decision for asynchronous Coach acknowledgement (page/notify + halt at `design_review`); it does not auto-proceed, and a captain-role self-review may *enrich* the pins the Coach later sees but may not *clear* the gate. This is the safe default: an autonomous loop treating "no human here right now" as licence to auto-authorise a one-way-door choice is the exact silent downgrade Rule 9 exists to prevent.
 
-The failure mode this forbids is the silent one: an autonomous loop treating "no human here right now" as licence to auto-authorise a one-way-door choice. Fail closed — a Type-1 choice with no human decision blocks, exactly as the deterministic gate already enforces; autonomy changes *when* the human decides (async, after a pause), never *whether*.
+**The default is overridable — delegation, not abdication.** How much autonomous authority is appropriate is not universal: it scales with the maturity of the codebase and its tooling, the capability of the driving model (a frontier model can be trusted with more than a weak one), and the operator's risk tolerance. So an operator **may** grant an autonomous loop authority to auto-proceed on Type-1, via an explicit, recorded governance setting — never a flag an agent can set for itself. This preserves Rule 9's core principle intact: **the human still decides *whether*; they decide it once, ahead of time, as a standing delegation, rather than per-choice.** The authority to auto-proceed is itself a Type-1 human decision — recorded when the envelope is set, not invented at dispatch.
 
-> **Coach decision (ratify or amend before merge).** This section proposes **hard-pause on Type-1, auto-proceed-with-record on Type-2**. The alternatives the handoff named — blanket auto-proceed (recorded), or captain self-review clearing the gate — are recorded here as rejected defaults for the safety reason above. Amend if you want different autonomous semantics; this is itself a Type-1 governance choice.
+An `autonomous_design_authority` setting (project governance config, e.g. `docs/baton/design-fidelity.json`) declares the envelope:
+
+| Value | Type-1 behaviour when no human is present |
+|---|---|
+| `hard_pause` (default) | Halt at `design_review` and page; never auto-proceed. |
+| `auto_proceed_recorded` | The loop may choose and record the Type-1 decision, attributed to the standing delegation. |
+
+The setting must name **who delegated** and **the envelope's rationale/scope** (the audit trail: *"Coach Brad, 2026-07-12 — Fable-5-driven runs on this repo may auto-proceed on Type-1; revisit at v1.0"*), and an operator may narrow it — e.g. gate `auto_proceed_recorded` on the driving model meeting a capability bar (tie-in: [capability-policy](capability-policy.md)), or on specific choice domains. Whatever the envelope, the invariants below always hold, so autonomy is never a silent no-op:
+
+- Every auto-proceeded Type-1 choice is **fully recorded** in `status.json` — options, the chosen option, rationale, and the delegation it was authorised under — so it is auditable after the fact exactly as a human-attended decision would be.
+- With `hard_pause` (or no setting), a Type-1 choice with no human decision **blocks**, exactly as the deterministic gate already enforces. Fail closed is the default; opting out is an explicit, recorded, human act.
 
 ## Design-system input (UI-bearing projects)
 

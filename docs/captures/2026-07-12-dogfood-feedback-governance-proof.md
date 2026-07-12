@@ -86,10 +86,12 @@ behaviour; a capability-aware engine can validate an operator policy against the
 
 ## Divergence from plan
 
-- **§3.3 and §3.5 carried genuine forks; drafted with the safety-conservative default and flagged**
-  for Coach ratification rather than silently choosing (Rule 9: the model proposes, the human
-  records the Type-1 decision — merge = authorise, edit = override). §3.3 → hard-pause on Type-1;
-  §3.5 → `on_capability_absent` field, default engine behaviour, silent no-op forbidden.
+- **§3.3 resolved by the Coach as an overridable default** (not an absolute): Type-1 hard-pauses by
+  default, but an operator may grant auto-proceed authority via an explicit, recorded
+  `autonomous_design_authority` governance setting, scaled to codebase maturity / model capability /
+  risk tolerance. Reconciles with Rule 9 because the delegation is itself a recorded human decision
+  made ahead of time — the human still decides *whether*, once, as a standing envelope. §3.5 →
+  `on_capability_absent` field, default engine behaviour, silent no-op forbidden.
 - **`edge_config`-style structural enforcement of "requires token ∈ taxonomy"** is a gate check, not
   a schema constraint (JSON Schema cannot cross-reference within the doc); documented as the
   engine/gate's responsibility, mirroring how `contracts-v1` treats `live_test` resolution.
