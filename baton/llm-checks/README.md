@@ -65,8 +65,8 @@ Below is the slice specification, followed by the git diff of the code change.
 ```
 
 `{{project_context}}` is a one-line description of the adopting project, supplied by
-the engine from the repo's configuration — for example *"GetFired, a Next.js and
-TypeScript web application"*. It is a **required** substitution, not a default: a
+the engine from the repo's configuration — for example *"a Next.js and TypeScript
+web application"*. It is a **required** substitution, not a default: a
 check that tells the model it is reading a Go CLI while it reads TypeScript is
 grading against the wrong priors, quietly and in the model's favour.
 
