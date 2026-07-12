@@ -23,7 +23,7 @@ shipped.
 - Track mode — slices grouped into touchpoint-disjoint tracks for safe
   parallelism, each track in its own worktree. See
   `baton/track-mode.md`.
-- Eleven rules + four role prompts (planner, implementer, verifier, captain) +
+- Twelve rules + four role prompts (planner, implementer, verifier, captain) +
   release-mode templates installed at `~/.claude/baton/` (Claude Code) and
   `~/.codex/baton/` (Codex) via the two installers.
 - **Mechanical gate suite** — Baton specifies seven gates (what each checks, that it fails closed); the open `sworn` reference implementation runs them: the trace gate (RTM + EARS + sniff-test; `sworn trace`), coverage (AC → test mapping; `sworn coverage`), design-conformance (colours + architecture rules; `sworn designaudit`), mock-boundary (undeclared mock boundaries), regression (post-merge full suite; `sworn regress`), proof-bundle verification (proof-bundle structure; `sworn verify`), and the board oracle (state-machine resolution; `sworn board`). Baton installs no binaries (ADR-0010).
@@ -133,5 +133,5 @@ gives a more ergonomic install path for the Claude subset.
 - IDE-only integrations (VS Code Copilot, JetBrains AI Assistant) that
   don't expose a user-level slash-command directory.
 - Hosted version / SaaS wrapping.
-- Custom rule authoring API. The eleven rules are deliberately fixed; if
+- Custom rule authoring API. The twelve rules are deliberately fixed; if
   you want a different rule-set, fork the repo and amend.
