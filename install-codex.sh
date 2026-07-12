@@ -41,7 +41,11 @@ Installs:
   ~/.codex/baton/schemas/                                  (record schemas)
 
 Does NOT install:
-  any binary. Gates are run by the open \`sworn\` binary (reference implementation).
+  any binary. The skills, the gates, the board oracle and the LLM checks are run
+  by a conformant ENGINE, which Release Mode requires — reference implementation:
+  the open \`sworn\` binary (go install github.com/swornagent/sworn/cmd/sworn@latest).
+  Without one, every skill above BLOCKs at the board oracle. This script
+  preflights for an engine and tells you which case you are in.
 
 Does NOT modify:
   ~/.codex/AGENTS.md                                       (wire AGENTS-fragment.md in manually)
@@ -220,12 +224,40 @@ Invocation forms in Codex:
       \$baton-implement-slice S03-portfolio-add-flow 2026-06-10-multi-currency
   - Or use /skills to pick from the menu.
 
-Running the gates (optional):
-  Baton ships no binaries. The skill bodies reference each gate by name with a
-  pointer to the open \`sworn\` binary (e.g. \`sworn trace\`, \`sworn verify\`).
-  Install \`sworn\` to automate the gates; the by-hand loop needs only these files.
+EOF
 
-Remaining manual step — wire the Rule 1-5 fragment into your Codex agent
+# --- engine preflight -------------------------------------------------------
+# Baton is pure spec; the skills above are run by an engine. Say so out loud
+# rather than letting every skill BLOCK at the board oracle with no explanation.
+ENGINE_CMD="${BATON_ENGINE:-sworn}"
+if command -v "$ENGINE_CMD" >/dev/null 2>&1; then
+  cat <<EOF
+Engine: FOUND — $(command -v "$ENGINE_CMD")
+  $("$ENGINE_CMD" --version 2>/dev/null | head -1 || true)
+
+  The skills above are ready to use.
+EOF
+else
+  cat <<EOF
+Engine: NOT FOUND (looked for '$ENGINE_CMD' on PATH)
+
+  ** The seven skills above will BLOCK until an engine is installed. **
+
+  Baton is pure specification: it ships no binaries. The skills, the mechanical
+  gates (trace, coverage, design-conformance, mock-boundary, regression,
+  proof-bundle, board oracle) and the six LLM checks are run by a conformant
+  engine. The reference implementation is the open \`sworn\` binary:
+
+      go install github.com/swornagent/sworn/cmd/sworn@latest
+
+  The rules themselves (Tier 1 — wire the fragment below) work with no engine
+  at all. Only Release Mode needs one.
+EOF
+fi
+
+cat <<EOF
+
+Remaining manual step — wire the Rule 1-12 fragment into your Codex agent
 instructions. The fragment ships at:
   $CODEX_HOME/baton/AGENTS-fragment.md
 

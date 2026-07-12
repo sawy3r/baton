@@ -2,11 +2,15 @@
 #
 # install-claude.sh — install baton (the spec) at the user level (~/.claude/).
 #
-# Baton is pure specification: slash commands, rule docs, role prompts, record
-# schemas, and templates. It installs NO binaries. The mechanical gates are
-# provided by the open `sworn` binary — the reference implementation. Install
-# that separately if you want the gates automated; the by-hand loop needs nothing
-# but these files and your LLM.
+# Baton is pure specification: slash commands, rule docs, role prompts, LLM check
+# prompts, record schemas, and templates. It installs NO binaries.
+#
+# Two tiers. TIER 1 (the rules) is genuinely zero-binary: wire the AGENTS
+# fragment in and the twelve rules shape every session. TIER 2 (Release Mode —
+# the slash commands, the gates, the board oracle, the LLM checks) REQUIRES a
+# conformant engine; the reference implementation is the open `sworn` binary.
+# Without one, every slash command BLOCKs at the board oracle. This script
+# preflights for an engine and says so.
 #
 # Idempotent: re-running overwrites the slash commands and the baton docs
 # package (rules, role prompts, schemas, templates). It does NOT touch
@@ -126,7 +130,13 @@ cat <<EOF
 ----------------------------------------------------------------------
 Install complete.
 
-Slash commands available in every project on this machine:
+Baton installs in two tiers.
+
+TIER 1 — Rules. Works with no binaries at all.
+  Wire the Rule 1–12 fragment into your agent instructions (see below) and the
+  rules shape every session. Nothing else to install.
+
+TIER 2 — Release Mode. REQUIRES a conformant engine.
   /plan-release <YYYY-MM-DD-theme>
   /replan-release <release-name>                 (revise a release already in flight)
   /implement-slice <slice-id> [<release-name>]
@@ -134,15 +144,42 @@ Slash commands available in every project on this machine:
   /merge-track <track-id> [<release-name>]       (track → release-wt)
   /merge-release <release-name>                  (release-wt → integration branch)
   /mark-shipped <release-name>                   (verified → shipped, after deploy)
+EOF
 
-Running the gates (optional):
-  Baton ships no binaries. The role prompts reference each gate by name with a
-  reference-implementation pointer to the open \`sworn\` binary (e.g. the trace
-  gate is \`sworn trace\`, proof-bundle verification is \`sworn verify\`). Install
-  \`sworn\` to automate the gates; the by-hand loop (paste prompts, the LLM emits
-  the JSON records, you review them) needs nothing more than these files.
+# --- engine preflight -------------------------------------------------------
+# Baton is pure spec; the commands above are run by an engine. Say so out loud
+# rather than letting every command BLOCK at the board oracle with no
+# explanation of why.
+ENGINE_CMD="${BATON_ENGINE:-sworn}"
+if command -v "$ENGINE_CMD" >/dev/null 2>&1; then
+  cat <<EOF
 
-Remaining manual step — wire the Rule 1–5 fragment into your global
+  Engine: FOUND — $(command -v "$ENGINE_CMD")
+  $("$ENGINE_CMD" --version 2>/dev/null | head -1 || true)
+
+  Release Mode is ready to use.
+EOF
+else
+  cat <<EOF
+
+  Engine: NOT FOUND (looked for '$ENGINE_CMD' on PATH)
+
+  ** The seven commands above will BLOCK until an engine is installed. **
+
+  Baton is pure specification: it ships no binaries. The commands, the mechanical
+  gates (trace, coverage, design-conformance, mock-boundary, regression,
+  proof-bundle, board oracle) and the six LLM checks are run by a conformant
+  engine. The reference implementation is the open \`sworn\` binary:
+
+      go install github.com/swornagent/sworn/cmd/sworn@latest
+
+  Tier 1 (the rules) works right now regardless. Only Release Mode needs this.
+EOF
+fi
+
+cat <<EOF
+
+Remaining manual step — wire the Rule 1–12 fragment into your global
 agent instructions if you haven't already. The fragment ships at:
   $CLAUDE_HOME/baton/AGENTS-fragment.md
 

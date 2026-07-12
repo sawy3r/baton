@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baton.sawy3r.net/schemas/llm-check-report-v1.json",
+  "title": "Baton LLM Check Report",
+  "description": "The structured report returned by any of Baton's six deterministic LLM check types (spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review). Emitted as a schema-constrained structured-output call (ADR-0011), never scraped from prose. The model authors the judgement core (verdict, findings); an engine may stamp check/slice_id/release and harness telemetry post-emission, so those are validated-if-present rather than required of the model payload. Fails closed: a FAIL verdict must carry at least one finding.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["verdict", "findings"],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://baton.sawy3r.net/schemas/llm-check-report-v1.json" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "check": {
+      "type": "string",
+      "enum": [
+        "spec-ambiguity",
+        "design-review",
+        "ac-satisfaction",
+        "security-review",
+        "semantic-coverage",
+        "maintainability-review"
+      ]
+    },
+    "slice_id": { "type": "string", "minLength": 1 },
+    "release": { "type": "string", "minLength": 1 },
+    "verdict": { "type": "string", "enum": ["PASS", "FAIL"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "severity", "title", "detail"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "severity": {
+            "description": "Two vocabularies are in use. Five of the six checks grade FAIL/WARN/INFO; security-review grades critical/high/medium/low. Both are accepted here so the schema does not silently redefine a prompt's contract.",
+            "type": "string",
+            "enum": ["FAIL", "WARN", "INFO", "critical", "high", "medium", "low"]
+          },
+          "title": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "model_id_confirmed": { "type": "string" },
+    "structured_output_mode": { "type": "string", "enum": ["json_schema", "tool_call", "text_fallback"] },
+    "cost_usd": { "type": "number" },
+    "input_tokens": { "type": "integer" },
+    "output_tokens": { "type": "integer" },
+    "duration_ms": { "type": "integer" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "const": "FAIL" } }, "required": ["verdict"] },
+      "then": { "properties": { "findings": { "minItems": 1 } } }
+    }
+  ]
+}
