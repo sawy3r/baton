@@ -58,6 +58,19 @@ A deterministic, fail-closed gate reads each slice's `design_decisions` and chec
 
 This is the design-time counterpart to the delivery first-pass: cheap, deterministic, and run before model or human review time is spent.
 
+## Autonomous-mode gate semantics
+
+The design-review gate's **human-in-the-loop** behaviour is well-defined: the implementer produces the Design TL;DR and halts at `design_review`; a captain surfaces pins; the Coach acknowledges before code lands. Its **autonomous** behaviour — when no human Coach is present at dispatch time (an unattended `loop` run) — must be defined too, or "autonomous" silently downgrades design review to a no-op. That is the exact fidelity gap Rule 9 exists to close (2026-07-12 dogfood, finding 6: an autonomous loop generated the Design TL;DR and proceeded straight to implementing, because the gating captain dispatch had deferred out).
+
+The gate's autonomous behaviour is **keyed to the stakes class it already computes**:
+
+- **Type-2 choices** (and slices with no Type-1 choice): auto-proceed is permitted, provided the noted default is **recorded** in `status.json` exactly as a human-attended run would record it. A reversible, local choice does not need a human present.
+- **Type-1 / architecturally-significant choices**: the loop **must hard-pause and surface** the decision for asynchronous Coach acknowledgement (page/notify + halt at `design_review`); it **may not auto-proceed**, and it may not let a captain-role self-review stand in for the human decision — Rule 9's "the model may not record a Type-1 human decision itself" holds regardless of whether a human happens to be watching. A captain self-review may *enrich* the pins the Coach later sees; it cannot *clear* the gate.
+
+The failure mode this forbids is the silent one: an autonomous loop treating "no human here right now" as licence to auto-authorise a one-way-door choice. Fail closed — a Type-1 choice with no human decision blocks, exactly as the deterministic gate already enforces; autonomy changes *when* the human decides (async, after a pause), never *whether*.
+
+> **Coach decision (ratify or amend before merge).** This section proposes **hard-pause on Type-1, auto-proceed-with-record on Type-2**. The alternatives the handoff named — blanket auto-proceed (recorded), or captain self-review clearing the gate — are recorded here as rejected defaults for the safety reason above. Amend if you want different autonomous semantics; this is itself a Type-1 governance choice.
+
 ## Design-system input (UI-bearing projects)
 
 ### Canonical architecture — the source of truth
