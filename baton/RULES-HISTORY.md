@@ -24,6 +24,16 @@ roles. Patch bumps: new templates, new brainstorm patterns,
 clarifications, and examples — anything that augments existing rules or
 roles without changing their contract.
 
+## 0.7.1 — 2026-07-12
+
+**Cutover QA runbook** — an additive artefact under Rule 10, not a rule change. Patch: no existing rule, role, or contract changes; adopters need do nothing.
+
+### Added
+- **`qa-runbook.md`** (Rule 10, `customer-journey-validation.md` + `release-mode-template/qa-runbook.md`): a generated, human-facing walk of *what a release changed and how to check it*, that **targets** manual QA rather than replacing it. A **rendered view, not new data** — it aggregates each verified slice's reachability smoke-step (Rule 1), the touched journeys (`journeys-v1`), the `delivered` lists (`proof-v1`), and the new wire surfaces (`contracts-v1`) into one targeted walk. Sits between the assembly run (`assembly-proof.json`, the machine pass) and the attestation (`attestations-v1`, the signed human output): the runbook is the input the human walks. Prose, rendered at cutover by `sworn` or the orchestrator; **advisory** (an aid, not a new fail-closed gate — the attestation remains the gating artefact).
+
+### Why
+Manual QA is most teams' real finish line and the one step that does not scale with agent throughput; a targeted, per-release runbook aims the human pass at what changed instead of rediscovering the diff by hand each time. Two independent arrivals grounded it: the sworn/consumer-project work surfaced manual QA as the un-scaling finish line, and an outside practitioner independently described generating a per-release QA runbook to the same end (baton#66).
+
 ## 0.7.0 — 2026-07-12
 
 **Rule 12 — Guard Fidelity (new)**, plus Rule 8 and Rule 9 amendments. Minor: a new rule. Derived from a design-system release in the source monorepo (2026-07-11/12) where **eleven fresh-context verification failures across two slices** all traced to one root cause — *a claim made wider than the evidence that backed it* — caught at three layers.
