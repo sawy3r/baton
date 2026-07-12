@@ -67,9 +67,9 @@ The structural failures it addresses — things you may have already hit:
 - **Context loss.** Substantial analysis lives only in chat transcript. `/clear` happens. The reasoning is gone. The next session starts from scratch.
 - **Plan / proof drift.** Planning docs say one thing, implementation does another, the divergence is never surfaced.
 
-baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Eleven rules, four role prompts, the record schemas, and a conformance contract its reference implementation enforces. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
+baton is the minimum-viable protocol that addresses these *specifically* — not a complete engineering methodology. Twelve rules, four role prompts, the record schemas, and a conformance contract its reference implementation enforces. The rules are derived from a real release audit where each of the above failure modes was observed and traced to a specific structural gap.
 
-## The eleven rules
+## The twelve rules
 
 Each rule has a one-line summary here and a full doc explaining the failure mode, the rule, and why looser variants don't work.
 
@@ -86,12 +86,13 @@ Each rule has a one-line summary here and a full doc explaining the failure mode
 | 9 | Design fidelity | Design stays human-owned, with judgement calibrated to each choice's stakes (reversibility × blast-radius); Type-1 choices need a recorded human decision the model can't self-authorise. | [design-fidelity.md](baton/design-fidelity.md) |
 | 10 | Customer journey validation | Critical end-to-end journeys are a ratified, version-controlled artefact, re-walked against real boundaries — a journey walked over a mocked boundary proves nothing. | [customer-journey-validation.md](baton/customer-journey-validation.md) |
 | 11 | Process-global mutation guard | Any change mutating process-global state (working directory, environment, or which worktree/branch a tool acts on) must guarantee restore, assert the target before git ops, and prove the guard with a reachability artefact. | [process-global-mutation.md](baton/process-global-mutation.md) |
+| 12 | Guard fidelity | A guard cited as evidence must be mutation-proved against the form the defect *actually* takes and scope-matched to the claim it backs — a check narrower than its claim is a decoration that converts an unknown into a false assurance. | [guard-fidelity.md](baton/guard-fidelity.md) |
 
-Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 11 are mechanically enforceable: Baton **specifies** each gate (what it checks, that it fails closed) and the reference implementation — the open `sworn` binary — **runs** them: requirements traceability (RTM + EARS), AC → test coverage, design conformance, undeclared-mock boundaries, post-merge regression, proof-bundle structure, and the board state machine. Six deterministic LLM check types add content verification beyond the mechanical gates: spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review. (Baton itself ships no binaries; see "Baton is pure spec" below.)
+Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / `CLAUDE.md` and they shape every session. Rules 6 through 12 are enforced at verification time: Baton **specifies** each gate (what it checks, that it fails closed) and the reference implementation — the open `sworn` binary — **runs** the mechanical ones: requirements traceability (RTM + EARS), AC → test coverage, design conformance, undeclared-mock boundaries, post-merge regression, proof-bundle structure, and the board state machine. Rule 12 (guard fidelity) is enforced through the verifier's guard-fidelity gate — a guard cited as evidence must be scope-matched and mutation-proved against the real defect form before its green counts. Six deterministic LLM check types add content verification beyond the mechanical gates: spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review. (Baton itself ships no binaries; see "Baton is pure spec" below.)
 
 ## Baton is pure spec
 
-Baton ships **no binaries**. It is the specification: the eleven rules, the four role prompts, the JSON-record schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
+Baton ships **no binaries**. It is the specification: the twelve rules, the four role prompts, the JSON-record schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
 
 The **reference implementation is [SwornAgent](https://github.com/swornagent/sworn)** — an open, single, zero-dependency Go binary that runs every gate and the board oracle, and adds the autonomous orchestration loop (`sworn run`) on top. *Baton specifies; Sworn implements.* They are separate and at arm's length: the contract is the schemas + rule semantics, so Sworn is the canonical runner, not the only possible one.
 
@@ -297,7 +298,7 @@ baton today ships slash commands for Claude Code only. Cross-tool adapters for O
 
 ## Contributing
 
-The eleven rules are deliberately minimal and deliberately fixed — they're the smallest intervention that addresses the specific failure modes catalogued in the rule docs' `## Provenance` sections. If you want a different rule-set, fork and amend.
+The twelve rules are deliberately minimal and deliberately fixed — they're the smallest intervention that addresses the specific failure modes catalogued in the rule docs' `## Provenance` sections. If you want a different rule-set, fork and amend.
 
 For everything else — bugs in the harness, slash-command improvements, adapter contributions for other tools, doc clarifications — issues and PRs are welcome.
 

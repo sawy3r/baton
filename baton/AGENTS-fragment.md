@@ -11,7 +11,7 @@ Copy the block below into your project's agent-instructions file. Trim or extend
 
 ## Engineering Process — Baton
 
-This project follows the **Baton** rule-set (see `/docs/baton/` for full rule docs and provenance). Eleven rules, listed in priority order:
+This project follows the **Baton** rule-set (see `/docs/baton/` for full rule docs and provenance). Twelve rules, listed in priority order:
 
 ### 1. Reachability Gate (CRITICAL)
 
@@ -121,6 +121,10 @@ Critical customer journeys are a first-class artefact, not a per-release afterth
 ### 11. Process-Global Mutation Guard (CRITICAL)
 
 Any change — test or production — that mutates **process-global state** (the working directory, environment variables, or which worktree/branch a tool operates on) must satisfy three things before the owning slice can reach `verified`: **guaranteed restore** (prefer scoped mutation — an explicit working-directory argument or a framework helper that auto-restores — over mutating the ambient process), a **fail-closed target assertion** (any operation acting on a path/worktree, especially a `git` op carrying a directory argument, must first assert the target exists and is the expected directory), and a **reachability artefact** proving the guard fires. Load-bearing wherever sessions run concurrently against a shared base: an unrestored mutation is silently inherited by the next unit of work, and a git op in an unexpected directory can corrupt branch state.
+
+### 12. Guard Fidelity (CRITICAL)
+
+A **guard** — any automated check that prevents a class of defect recurring (regression test, lint rule, CI gate, invariant) — may be cited as proof-bundle evidence (Rule 6) or relied on by a verifier (Rule 7) only if it satisfies four conditions: **(1) mutation proof** — break the thing it protects, see red, restore, see green, record both (a guard that has never failed is a decoration that returns green); **(2) scope parity** — the domain the guard checks equals the domain the claim quantifies over (a check narrower than its claim is worse than no check, because it converts an unknown into a false assurance); **(3) mutate the form the defect ACTUALLY takes**, not the form you imagined — the condition nearly always violated, because a guard that catches only the shape you thought of passes its own mutation test and still misses every real instance; **(4) right instrument** — a parser, not a regex, when detection needs scope, bindings, or structure. **Corollary — quantifier discipline:** "no X exists" / "every Y is Z" / "machine-checked" is a promise about a search you have not run; state it only if a check covers the whole domain, else bound the claim to the search you actually ran. A guard fails loudly (red on correct code, self-correcting) or **silently** (green over a domain it never searched) — the silent one adds confidence while removing safety and is invisible at every layer above it. Numbered last but logically upstream of 6/7: it governs whether their evidence means anything.
 
 ---
 
