@@ -122,6 +122,34 @@ check must be told which it is looking at.
 > treat unstated stakes as **high**: an undeclared system is not a safe one, it is an
 > unexamined one.
 
+### How the record gets written: elicited → ratified → durable
+
+The same three-step Rule 10 applies to journeys, for the same reason — and nobody
+hand-writes a good one from a blank file.
+
+1. **Elicited.** At project setup, the engine has the adopter's model already configured
+   (it needs one to run the checks at all). It uses **that** model to *draft* the record by
+   reading the repo: the stack, the frameworks, the data layer, and a **proposal** for the
+   stakes — a model can see the auth code, the payment integration, the schema holding
+   customer records.
+
+2. **Ratified.** A human reviews and edits the draft, then ratifies it. The model can read
+   the code; it cannot know whether *real people depend on this today*. That is a business
+   fact, and it is the one that decides whether a `medium` finding blocks. **An unratified
+   record is a proposal, not a declaration: its stakes are treated as HIGH until a human
+   confirms otherwise.** A proposal may raise the bar; it may never lower it.
+
+3. **Durable.** The record is committed. Every session, every teammate, and CI all read the
+   same context — instead of each re-guessing it from directory names.
+
+> **The elicitation call is the adopter's, not the protocol's.** It runs through the
+> adopter's own configured model and credentials, against their own provider. Baton
+> specifies no hosted service and no phone-home, and an engine must not introduce one here:
+> drafting this record means sending repository content to a model, and where that content
+> goes is the adopter's decision — a data-residency and privacy question, not a convenience
+> one. An engine with no model configured must fall back to detection and label it inferred,
+> never silently reach out to a third party to fill the gap.
+
 `{{spec}}` is the slice's `spec.json` rendered to readable form (ADR-0009); a
 pre-migration `spec.md` may be passed verbatim.
 
