@@ -92,16 +92,16 @@ Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / 
 
 ## Baton is pure spec
 
-Baton ships **no binaries**. It is the specification: the twelve rules, the four role prompts, the JSON-record schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
+Baton ships **no binaries**. It is the specification: the twelve rules, the four role prompts, the [six LLM check prompts](baton/llm-checks/), the JSON-record schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
 
-The **reference implementation is [SwornAgent](https://github.com/swornagent/sworn)** — an open, single, zero-dependency Go binary that runs every gate and the board oracle, and adds the autonomous orchestration loop (`sworn run`) on top. *Baton specifies; Sworn implements.* They are separate and at arm's length: the contract is the schemas + rule semantics, so Sworn is the canonical runner, not the only possible one.
+The **reference implementation is [SwornAgent](https://github.com/swornagent/sworn)** — an open, single, zero-dependency Go binary that runs every gate and the board oracle, and adds the autonomous orchestration loop (`sworn run`) on top. *Baton specifies; Sworn implements.* They are separate and at arm's length: the contract is the schemas, the check prompts, and the rule semantics, so Sworn is the canonical engine, not the only possible one.
 
-Two ways to run the loop:
+**Baton does not require Sworn. Release Mode does require an engine.** Those are different claims, and the second one is easy to miss:
 
-- **By hand, zero binaries** — paste the role prompts, your LLM emits the JSON records, you review the rendered views. Pure Markdown + schemas, no dependency.
-- **+ the open `sworn` binary** — the mechanical gates and the board oracle, automated. One static binary instead of a pile of scripts.
+- **Tier 1 — the Rules. Genuinely zero-binary.** Splice the fragment into `AGENTS.md`; the twelve rules shape every session. Nothing installed, nothing to run. Most adopters should start and stay here for a while.
+- **Tier 2 — Release Mode. Needs an engine.** The slash commands resolve slice state through the board oracle and **BLOCK without one**. The role prompts run gates at their checkpoints: the planner's exit condition is a passing trace gate; the verifier runs the design-conformance gate and three LLM checks. Install `sworn` — or implement the spec yourself.
 
-Baton never *requires* Sworn; it requires it only to automate the gates.
+There is no zero-binary Release Mode, and Baton previously implied otherwise. What Baton guarantees instead is that the engine is *replaceable*: everything an engine must run is specified here, prompts included.
 
 ## Example artefacts
 
@@ -175,7 +175,12 @@ Preview with `./install-claude.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / 
 | `baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, JSON record templates      |
 | `schemas/*.json`                       | `~/.claude/baton/schemas/` (also hosted at baton.sawy3r.net/schemas/) | Record schemas: board, spec, proof, status, journeys, attestations (+ design/architecture config). The JSON-record contracts the roles emit against. |
 
-Baton installs **no binaries**. The mechanical gates are run by the open `sworn` binary — install it separately to automate them; the by-hand loop needs only these files and your LLM.
+Baton installs **no binaries**, and adopts in two tiers.
+
+- **Tier 1 — the Rules.** Splice the [rules fragment](baton/AGENTS-fragment.md) into your `AGENTS.md` / `CLAUDE.md` and the twelve rules shape every session. Needs nothing but your LLM. This is the whole of Rules 1–5 and the discipline behind 6–12.
+- **Tier 2 — Release Mode.** The slash commands, the mechanical gates, the board oracle, and the six LLM checks. **Requires a conformant engine.** The reference implementation is the open [`sworn`](https://github.com/swornagent/sworn) binary (`go install github.com/swornagent/sworn/cmd/sworn@latest`).
+
+Release Mode is not a zero-binary tier. Every slash command resolves slice state through the board oracle and **will BLOCK without an engine**, and the role prompts run gates at each step. Baton specifies all of it — the gate contracts, the record schemas, and the [six LLM check prompts](baton/llm-checks/) — so a second engine can implement the protocol; but *something* has to run it.
 
 Nothing under `~/.claude/CLAUDE.md` is touched. Wiring the AGENTS-fragment rules into your global instructions is a deliberate manual step — see the post-install message printed by `install-claude.sh`.
 

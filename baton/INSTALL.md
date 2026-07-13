@@ -110,7 +110,7 @@ In your next agent session, ask the agent: "What's our reachability gate rule?" 
 
 The Release Mode harness is what makes Rules 6 through 11 enforceable. Without it, the rules are aspirational — there's no artefact for the verifier to read and no fresh-context boundary preventing self-certification.
 
-The harness is intentionally minimal: the per-slice record files, four role prompts, and the record schemas. Baton ships no binaries; the mechanical gates are run by the open `sworn` reference implementation. There is no orchestration framework in Baton itself.
+The harness is intentionally minimal: the per-slice record files, four role prompts, the six LLM check prompts, and the record schemas. Baton ships no binaries; the mechanical gates, the board oracle, and the LLM checks are run by an engine (reference implementation: the open `sworn` binary — see Step C, which Release Mode requires). There is no orchestration framework in Baton itself.
 
 ### Step A — Create the release directory
 
@@ -129,13 +129,35 @@ cp -r docs/baton/role-prompts docs/release/_role-prompts
 
 Adopters copy these into the repo so they're discoverable from `docs/release/` directly, rather than spread across the documentation package. The originals stay in `docs/baton/` as the canonical reference; the copies are working templates.
 
-### Step C — Install the reference implementation for the mechanical gates
+### Step C — Install an engine (required for Release Mode)
 
-Baton installs **no binaries** — it specifies each gate (what it checks, that it fails closed) but does not run them. The reference implementation is the open `sworn` binary, installed separately; the slash commands name each gate by its protocol role (e.g. the proof-bundle verification gate, `sworn verify`) and `sworn` runs it.
+Baton installs **no binaries** — it specifies each gate (what it checks, that it fails
+closed) but does not run them. Running them is an **engine's** job. The reference
+implementation is the open `sworn` binary:
 
-The gates carry project-specific defaults — the base branch name, the test commands, dark-code marker patterns, which files are scanned. Those are not edited into a shell script any more; they live in the reference implementation's configuration (`sworn init` wires them in-repo) and in each slice's `spec.json` (its `Required tests`). The contract is the gate's role and that it fails closed; the contents are project-flavoured.
+```bash
+go install github.com/swornagent/sworn/cmd/sworn@latest
+```
 
-Adopters who want the zero-binary by-hand loop can skip this step entirely: the LLM emits the JSON records and a human eyeballs the rendered Markdown. Installing `sworn` is what automates the gates on top of that loop.
+**This step is not optional for Release Mode.** Every slash command resolves slice
+state through the board oracle and will `BLOCK` without an engine, and each role
+prompt runs gates at its checkpoints — the planner's exit condition is a passing trace
+gate, the implementer's proof bundle cites the proof-bundle gate, the verifier runs the
+design-conformance gate and three LLM checks. There is no zero-binary Release Mode.
+
+What *is* zero-binary is **Tier 1, the rules themselves** (Step 1 and Step 2 above):
+splice the fragment, and the twelve rules shape every session with nothing installed.
+That tier is real and it is where most adopters should start.
+
+The gates carry project-specific defaults — the base branch name, the test commands,
+dark-code marker patterns, which files are scanned. Those live in the engine's
+configuration (`sworn init` wires them in-repo) and in each slice's `spec.json` (its
+`Required tests`). The contract is the gate's role and that it fails closed; the
+contents are project-flavoured.
+
+Baton specifies everything an engine must run — the gate contracts, the record schemas,
+and the [six LLM check prompts](llm-checks/) — so `sworn` is the canonical engine, not
+the only possible one.
 
 ### Step D — Bind the harness to your workflow
 
