@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baton.sawy3r.net/schemas/project-context-v1.json",
+  "title": "Baton Project Context",
+  "description": "The adopting project's declared identity and stakes. Hand-authored, version-controlled, and read by the engine to fill the {{project_context}} and {{project_stakes}} substitutions in every LLM check's user payload (see baton/llm-checks/README.md). DECLARED, not inferred: an engine may fall back to detecting a project's technology from its files, but detection cannot know whether the system serves real customers or handles money — and that is precisely what should move a security finding from advisory to blocking. An engine that infers rather than reads this record must say so, because a guess presented to the model as a fact is graded against as a fact.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["context"],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://baton.sawy3r.net/schemas/project-context-v1.json" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "context": {
+      "description": "One line, in the voice of a sentence completing 'You are evaluating a slice in a release of ___'. State the stack as a reviewer would need it: languages, frameworks, and the data layer. Example: 'a Next.js and TypeScript frontend with a Go backend on Postgres'.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "stakes": {
+      "description": "What is at risk if a defect ships. Engines MUST act on this: a project in production serving real users, or handling sensitive data, raises the blocking threshold of the security-review check (see baton/llm-checks/security-review.md). Absent stakes are treated as the low-stakes default — declare them if they are real.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "production": {
+          "description": "The code is deployed and live, not a prototype or an internal tool.",
+          "type": "boolean"
+        },
+        "real_users": {
+          "description": "Real people outside the team depend on this system.",
+          "type": "boolean"
+        },
+        "sensitive_data": {
+          "description": "Categories of sensitive data the system holds or processes. A non-empty list means a leak has a real-world victim.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["pii", "financial", "health", "credentials", "government-id", "location", "biometric"]
+          }
+        },
+        "regulated": {
+          "description": "Free-text regime(s) the system is subject to, e.g. 'APRA CPS 234', 'PCI-DSS', 'GDPR'. Informational: it sharpens the model's priors, and an engine may surface it, but the blocking threshold is driven by production/real_users/sensitive_data.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "notes": {
+          "description": "Anything else a reviewer would want to know before judging severity.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
