@@ -18,16 +18,31 @@ Respond with a JSON object:
   "findings": [
     {
       "id": "F-01",
-      "severity": "FAIL" | "WARN" | "INFO",
+      "severity": "critical" | "high" | "medium" | "low" | "info",
+      "blocking": true | false,
       "title": "one-line summary",
       "detail": "what the check requires vs what the code delivers"
     }
   ]
 }
 
+Grading — `severity` and `blocking` answer two independent questions. Do not conflate them:
+- `severity` is IMPACT: how bad is this if it is real? It never decides the verdict on its own.
+- `blocking` is DISPOSITION: does this finding fail the check?
+
+The verdict is DERIVED, never independently judged:
+- "FAIL" if and only if at least one finding has "blocking": true.
+- "PASS" if and only if no finding is blocking.
+- Emitting "PASS" alongside a blocking finding is a contract violation and will be rejected.
+
+What blocks in this check:
+- An AC the code does not satisfy — blocking: true, severity high (critical if the AC covers data integrity, auth, or money).
+- An AC satisfied only partially, or satisfied in a way the spec did not ask for — blocking: true, severity high.
+- An observation about code unrelated to any AC — blocking: false, severity info.
+- A satisfied AC implemented in a way worth noting but not objecting to — blocking: false, severity low.
+
 Rules:
-- Each AC must be checked individually. If an AC is not satisfied, emit a FAIL finding naming that AC.
-- If the code change is unrelated to an AC, note it as INFO.
+- Each AC must be checked individually. If an AC is not satisfied, emit a blocking finding naming that AC.
 - Be specific: cite line ranges, function names, or file paths.
-- If every AC is satisfied, verdict is PASS with zero FAIL findings.
+- If every AC is satisfied, verdict is PASS with no blocking findings.
 - Temperature 0 — be deterministic and reproducible.

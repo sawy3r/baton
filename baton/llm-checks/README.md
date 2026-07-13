@@ -41,6 +41,36 @@ to be read out of an English paragraph is a check that will eventually be misrea
 **Fails closed.** A check that cannot run is a FAIL, not a pass. Absence of evidence
 is not evidence of absence (Rule 7).
 
+### Grading: severity and blocking are orthogonal
+
+Every finding carries **two independent fields**, and keeping them apart is load-bearing:
+
+| Field | Question | Values |
+|---|---|---|
+| `severity` | **Impact** — how bad is this, if real? | `critical` `high` `medium` `low` `info` |
+| `blocking` | **Disposition** — does this finding fail the check? | `true` `false` |
+
+One severity scale across all six checks. Each check's prompt states which of its findings
+block; that is the only place the mapping lives.
+
+**The verdict is derived, not asserted.** `verdict` is `FAIL` **if and only if** at least
+one finding has `blocking: true`. The schema enforces this in *both* directions: a `FAIL`
+with no blocking finding is invalid, and — the important one — **a `PASS` carrying a
+blocking finding is invalid**. An engine whose own tally disagrees with the model's stated
+verdict must fail closed.
+
+> **Why this is a contract, not a style preference.** These were originally two vocabularies
+> in one field: five checks graded `FAIL`/`WARN`/`INFO`, and `security-review` graded
+> `critical`/`high`/`medium`/`low`. The reference engine decided whether a check blocked by
+> scanning findings for `severity == "FAIL"` — a string `security-review` never emits. The
+> security check's blocking logic was therefore dead code, and the gate silently degraded to
+> trusting the model's own `verdict`. A model could return `verdict: "PASS"` beside a
+> `critical` remote-code-execution finding and the check went green.
+>
+> That is a Rule 12 failure: a guard whose *scope* was narrower than the *claim* it backed.
+> Separating impact from disposition, and deriving the verdict from the findings, makes that
+> state unrepresentable rather than merely discouraged.
+
 **Advisory to the role, not a substitute for it.** A PASS from `ac-satisfaction` does
 not make a slice verified. The checks are inputs to a role's judgement, and the
 verifier still owns the verdict.
