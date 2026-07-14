@@ -79,6 +79,103 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "maintainability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Bounded maintainability lifecycle state. cycle 0 is the initial Implementer preflight/remediation/closure cycle; cycle 1 is the only Coach-approved resume. The fresh Verifier appends its authoritative report. A second repeated closure failure requires re-slicing.",
+      "required": ["state", "cycle", "reports", "adjudication"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["pending", "passed", "needs_coach", "resume_approved", "re_slice_required"]
+        },
+        "cycle": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "reports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "phase", "input_fingerprint", "verdict", "blocking_finding_ids"],
+            "properties": {
+              "role": { "type": "string", "enum": ["implementer", "verifier"] },
+              "phase": { "type": "string", "enum": ["preflight", "closure", "authoritative"] },
+              "input_fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+              "verdict": { "type": "string", "enum": ["PASS", "FAIL"] },
+              "blocking_finding_ids": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "uniqueItems": true
+              }
+            }
+          }
+        },
+        "adjudication": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["decision", "report_fingerprints", "blocking_finding_ids", "rationale", "approved_by", "approved_at"],
+              "properties": {
+                "decision": { "type": "string", "enum": ["resume_in_scope", "re_slice"] },
+                "report_fingerprints": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                  "uniqueItems": true
+                },
+                "blocking_finding_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "minLength": 1 },
+                  "uniqueItems": true
+                },
+                "permitted_touchpoints": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "minLength": 1 },
+                  "uniqueItems": true
+                },
+                "rationale": { "type": "string", "minLength": 1 },
+                "approved_by": { "type": "string", "minLength": 1 },
+                "approved_at": { "type": "string", "format": "date-time" }
+              },
+              "allOf": [
+                {
+                  "if": { "properties": { "decision": { "const": "resume_in_scope" } }, "required": ["decision"] },
+                  "then": { "required": ["permitted_touchpoints"] }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "needs_coach" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "cycle": { "const": 0 },
+              "adjudication": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "resume_approved" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "cycle": { "const": 1 },
+              "adjudication": {
+                "type": "object",
+                "properties": { "decision": { "const": "resume_in_scope" } },
+                "required": ["decision"]
+              }
+            }
+          }
+        }
+      ]
+    },
     "open_deferrals": {
       "type": "array",
       "description": "Rule 2 deferral objects. Each must carry why, tracking, acknowledgement, and acknowledged_by (acknowledged_at optional) per the No Silent Deferrals rule. acknowledgement is the plain-text evidence the decision-maker was told; acknowledged_by is the structured attribution (who); acknowledged_at is when. This is STRICT ADDITIVE: acknowledged_by is in addition to acknowledgement, not an either-or substitute (a name is not the plain-text 'told' evidence Rule 2 requires).",

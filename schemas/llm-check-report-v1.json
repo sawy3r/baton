@@ -5,7 +5,7 @@
   "description": "The structured report returned by Baton's design-review, ac-satisfaction, security-review, semantic-coverage, and maintainability-review checks. Legacy spec-ambiguity reports remain valid for compatibility, but current spec-ambiguity uses spec-ambiguity-report-v1. Emitted as a schema-constrained structured-output call (ADR-0011), never scraped from prose. Grading uses two ORTHOGONAL fields: `severity` is impact and `blocking` is disposition. The verdict is DERIVED: FAIL if and only if at least one finding is blocking. Both directions are enforced below, so a PASS carrying a blocking finding is schema-invalid.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["verdict", "findings"],
+  "required": ["check", "verdict", "findings"],
   "properties": {
     "$schema": { "type": "string", "const": "https://baton.sawy3r.net/schemas/llm-check-report-v1.json" },
     "schema_version": { "type": "integer", "const": 1 },
@@ -50,6 +50,32 @@
         }
       }
     },
+    "input_fingerprint": {
+      "description": "Identity of the semantic review input. Maintainability reports use sha256:<lowercase hex> over the canonical baton-maintainability-v1 path/mode/object manifest.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "review_scope": {
+      "description": "The committed boundary and path set used to construct the semantic review input.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "head", "included_paths", "excluded_paths", "fingerprint_algorithm"],
+      "properties": {
+        "base": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+        "head": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+        "fingerprint_algorithm": { "type": "string", "const": "baton-maintainability-v1" },
+        "included_paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "excluded_paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
     "model_id_confirmed": { "type": "string" },
     "structured_output_mode": { "type": "string", "enum": ["json_schema", "tool_call", "text_fallback"] },
     "cost_usd": { "type": "number" },
@@ -58,6 +84,16 @@
     "duration_ms": { "type": "integer" }
   },
   "allOf": [
+    {
+      "title": "Maintainability reports must identify their semantic review input.",
+      "if": {
+        "properties": { "check": { "const": "maintainability-review" } },
+        "required": ["check"]
+      },
+      "then": {
+        "required": ["input_fingerprint", "review_scope"]
+      }
+    },
     {
       "title": "A FAIL verdict must be backed by at least one blocking finding.",
       "if": { "properties": { "verdict": { "const": "FAIL" } }, "required": ["verdict"] },

@@ -55,6 +55,21 @@ Before any code edit, read in this order:
 
 If `spec.json` is missing or ambiguous, stop and ask the human. Do not infer scope.
 
+### Maintainability resume gate
+
+Read `status.json` `maintainability` before editing. If absent on a legacy slice, initialise it from
+the current status template before the first maintainability run. Then enforce these transitions:
+
+- `pending` or `passed`: continue the normal slice workflow. `passed` is valid only when no included
+  semantic bytes have changed since its final report; otherwise reset it to `pending` before work.
+- `needs_coach`: STOP. The Coach must record `resume_in_scope` or `re_slice` in this object.
+- `re_slice_required`: STOP and route to `/replan-release`; implementation cannot continue.
+- `resume_approved`: continue only when the object is schema-valid, `cycle` is `1`, the adjudication
+  decision is `resume_in_scope`, its two fingerprints match the cycle-0 reports, and every proposed
+  edit is within `permitted_touchpoints`. Require those paths to be a non-empty subset of the
+  ratified spec touchpoints; any new path or ownership boundary requires re-slicing. This is the
+  only resumed maintainability cycle. A second resume is forbidden.
+
 ## Project extensions
 
 If `docs/baton/extensions/implementer.md` exists in this repo, read it at session start and follow it. Projects use this file to add repo-specific steps the universal role contract can't know about — e.g. booting a real server or fixture before tests/screenshots, allocating ports, seeding data — plus the matching teardown to run before the session ends (any terminal state). An extension may **add** steps; it may not relax this role's hard constraints. On any conflict, this prompt wins.
@@ -77,7 +92,7 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
 
 ## Workflow
 
-1. Update `status.json` → `in_progress`. Commit `docs(release/<release-name>/<slice-id>): start implementation`. Then capture that commit's SHA (`git rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and gives the verifier an exact, no-archaeology diff base (`start_commit..HEAD`).
+1. If `status.json` `start_commit` is null, update `status.json` → `in_progress`, commit `docs(release/<release-name>/<slice-id>): start implementation`, capture that commit's SHA (`git rev-parse HEAD`), and write it to `start_commit` with the first implementation commit. If `start_commit` is already set, require it to resolve to a commit and preserve it byte-for-byte. It is the immutable base for the slice's entire lifetime, including failed-verification remediation and a Coach-approved maintainability resume; never overwrite it with a later session's starting point.
 1a. Push the track branch to its remote so the work is durable:
 
     ```
@@ -93,15 +108,21 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
    - Run all relevant deterministic checks first: targeted tests, required mutation proofs, lint, typecheck, and any contract-required full suite. The implementation diff must be stable and green before any LLM readiness check runs. Do not use maintainability review as an implementation-time design assistant.
    - Run the **ac-satisfaction LLM check** (reference implementation: `sworn llm-check --check ac-satisfaction`; prompt body: `llm-checks/ac-satisfaction.md`) — confirm every AC is genuinely satisfied by the implementation. Fix gaps before proceeding.
    - If the project has security rules in `docs/baton/architecture.json`, run the **security-review LLM check** (`sworn llm-check --check security-review`; prompt body: `llm-checks/security-review.md`) — address any findings.
-   - Run one **maintainability readiness preflight** (`sworn llm-check --check maintainability-review`; prompt body: `llm-checks/maintainability-review.md`) against the stable semantic diff. This is Implementer feedback, not certification — the fresh Verifier owns the authoritative maintainability gate.
-     - Compute a review-scope hash from changed source, tests, and configuration. Exclude release-mode records (`spec`, `status`, `proof`, `journal`, board/index), generated output, and lockfile-only changes. Reuse an existing report for the same hash; never pay to review identical semantic bytes twice in one role session.
-     - On FAIL, allow exactly one bounded remediation pass. Re-run the affected targeted deterministic checks, then run exactly one closure review against the updated stable diff.
-     - The closure review decides whether the original blocking findings were resolved. A new blocker is closure-relevant only when it is a regression introduced by that remediation. Unrelated new findings stop for Coach adjudication rather than opening another refactor loop.
-     - If the closure review still FAILs, remain `in_progress`, record both reports and the review-scope hashes in `journal.md`, and STOP. Page the Coach to choose an in-scope fix, re-slicing, or an explicit tracked exception. Do not run a third Implementer review and do not mark the slice `implemented`.
-   - After a maintainability remediation, run the contract-required full suite once on the final restored tree. Do not run hosted CI or the full workspace after each intermediate extraction unless the spec explicitly requires it.
-   - Capture the final test output.
-   - Run the **proof-bundle verification gate** (reference implementation: `sworn verify`) and address any failures.
-   - Emit `proof.json` from live repo state, valid against `proof-v1` (files changed, test results, reachability artefact, delivered, not_delivered, divergence). The human-readable `proof.md` is rendered from it.
+   - Capture the final test output, emit `proof.json` from live repo state, and run the **proof-bundle verification gate** (reference implementation: `sworn verify`). Fix every deterministic, proof, AC, or security failure before maintainability review. Commit and push the stable implementation and proof checkpoint, then require a clean worktree and index; the canonical review scope is commit-to-commit.
+   - Invoke the engine's **maintainability-review operation** defined by `llm-checks/maintainability-review.md` once as a readiness preflight. Require a valid `llm-check-report-v1` carrying `check: maintainability-review`, `input_fingerprint`, and `review_scope`. Reuse an existing report for the same fingerprint rather than invoking the model again. This is Implementer feedback, not certification — the fresh Verifier owns the authoritative gate.
+     - Append each run to `status.json` `maintainability.reports` with its role, phase, fingerprint,
+       verdict, and blocking finding ids. On an initial PASS, set `maintainability.state: passed`.
+     - On FAIL, allow exactly one bounded remediation pass. Re-run affected targeted checks and the contract-required full suite, regenerate and verify the proof bundle, and resolve any AC or security regressions. Commit and push the remediation checkpoint and require a clean worktree and index. Only then may the engine run exactly one closure review.
+     - The closure review applies the same canonical prompt to the complete final semantic diff. It
+       receives no hidden prior-report input. On PASS, append the report and set
+       `maintainability.state: passed`.
+     - If closure FAILs, append the report, remain `in_progress`, and STOP. Do not run a third review
+       or mark the slice `implemented`. In cycle 0 set `maintainability.state: needs_coach`; the Coach
+       may approve the one cycle-1 `resume_in_scope` or require `re_slice`. In cycle 1 set
+       `maintainability.state: re_slice_required`; no further resume is legal. Before STOP, mirror
+       the handoff in `journal.md`, commit the status/journal transition, and push the track branch
+       so the next fresh context starts clean. There is no waiver.
+   - After the final maintainability PASS — initial or closure — do not edit authored source, tests, or configuration. Only proof/journal/status rendering may follow. If any later step requires semantic edits, remain `in_progress`, record the stale fingerprint and reason in `journal.md`, and STOP for Coach adjudication.
    - Update `status.json` → `implemented`.
    - **Stop.** Do not run a verifier prompt in this session. Do not declare PASS.
 

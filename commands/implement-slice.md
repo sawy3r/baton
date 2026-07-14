@@ -80,6 +80,24 @@ If you do need to halt, surface:
 
 A BLOCKED verdict means a fresh-context verifier found a spec defect or external gap that only the planner can resolve; an implementer session cannot clear it. Picking the slice up here would re-enter the verifier → planner → verifier loop this guard exists to break — the handoff routes forward to `/replan-release`, never back to the implementer (handoff directionality is canonical in `$HOME/.claude/baton/session-discipline.md`). Stop here; do not run the session start handshake.
 
+## Step 0c — Maintainability adjudication guard
+
+Read `status.json` `maintainability` from the track worktree and apply the governing role prompt's
+resume gate before implementation:
+
+- `needs_coach`: STOP for a Coach decision; do not start another review cycle.
+- `re_slice_required`: STOP and route to `/replan-release $2`.
+- `resume_approved`: validate the schema, cycle-1 ceiling, two source fingerprints, and
+  `resume_in_scope` permitted touchpoints before continuing. Require those paths to be a non-empty
+  subset of the ratified spec touchpoints and reject any edit outside them.
+- `pending` or an unstaled `passed`: continue normally.
+
+This guard is independent of `verification.result`; maintainability closure failure remains
+`state: in_progress` and must not be disguised as a Verifier BLOCKED verdict.
+Both the closure-failure handoff and the Coach decision must already be committed and pushed; if
+their status/journal files are dirty, stop because the prior role did not complete its durable
+handoff.
+
 ## Session start handshake
 
 > **All paths in this section MUST be anchored at `<worktree_path>` from Step 0** (`<wt>` for short). The primary-repo working copy is on the integration branch and may carry a planner re-spec that has NOT yet been forward-ported to `release-wt/$2` — or vice versa. Reading `docs/release/...` without the `<wt>/` prefix can return stale content from the wrong branch. See `feedback_release_spec_forward_port` for the recurring incident pattern.
@@ -99,7 +117,7 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
    - **`state: design_review`, review NOT yet acknowledged** (no `review.md` carrying `DECISION: PROCEED`, or the Coach has not acknowledged per the orchestrator's ack convention — e.g. an `approved-ack.md` marker, or a human Coach confirmation): **STOP** — output: "design review pending — run `/design-review $1 $2`, then the Coach acknowledges (PROCEED) before implementation resumes." Do not write code.
    - **`state: design_review` WITH an acknowledged `DECISION: PROCEED`**, OR **`state: in_progress` / `failed_verification`** (already past the gate): the gate is satisfied — continue to step 4. (Apply any inline `IMPLEMENTER_FIX` pins from `review.md` as you implement; a design revised after a decline must be re-reviewed — re-enter `design_review`, do not jump to code.)
 
-4. **(Design-review gate satisfied — see step 3.)** Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. Capture that commit's SHA (`git -C <wt> rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and is the verifier's exact diff base. **Then push the track branch so the work is durable:**
+4. **(Design-review gate satisfied — see step 3.)** If `status.json` `start_commit` is null, update `status.json` → `state: in_progress`, commit `docs(release/$2/$1): start implementation`, capture that commit's SHA (`git -C <wt> rev-parse HEAD`), and write it to `start_commit` with the first implementation commit. If `start_commit` is already set for an `in_progress` or `failed_verification` slice, require it to resolve and preserve it byte-for-byte; never reset the slice's diff base on resume. **Then push the track branch so the work is durable:**
    ```
    git -C <wt> push origin HEAD:refs/heads/track/$2/<track-id>
    ```
@@ -115,13 +133,19 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
 
 ## At completion
 
-1. Run all test commands cited in `spec.json` "Required tests". Capture full output.
-2. Emit `proof.json` from live repo state, valid against `proof-v1`, using `$HOME/.claude/baton/release-mode-template/proof.json` as the template. Every section must be from a live command run. The human-readable `proof.md` is rendered from it.
-3. Run the **proof-bundle verification gate** (reference implementation: `sworn verify $1 $2`) and capture its output into the proof bundle's first-pass verdict.
-4. If the gate returns FAIL, address the failures and re-run. Do not proceed until first-pass is green.
-5. Update `status.json` → `state: implemented`, fill in `actual_files`, `test_commands`, `reachability_artifacts`.
-6. Append to `journal.md`: state transition entry with decisions, trade-offs, and any subagent dispatches.
-7. Commit: `feat(<slice-area>): land $1 — <user outcome>` with a Rule 4 body restating the decisions made during implementation.
+1. Complete Workflow step 5 in the governing Implementer role prompt in its stated order. That
+   sequence owns deterministic tests, AC/security checks, proof emission and verification, the
+   clean committed review checkpoints, bounded maintainability preflight/remediation/closure
+   lifecycle, and the final semantic freeze. This command does not provide a second or later
+   completion sequence.
+2. Confirm the final `proof.json` was emitted from live repo state and that the current semantic
+   review input still matches the fingerprint of the final maintainability PASS. If it does not,
+   remain `in_progress` and follow the role prompt's Coach-adjudication path.
+3. Update `status.json` → `state: implemented`, fill in `actual_files`, `test_commands`,
+   `reachability_artifacts`.
+4. Append to `journal.md`: state transition entry with decisions, trade-offs, any subagent
+   dispatches, and the final maintainability report fingerprint.
+5. Commit: `feat(<slice-area>): land $1 — <user outcome>` with a Rule 4 body restating the decisions made during implementation.
 
 ## Output to human at session end
 

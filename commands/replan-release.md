@@ -62,6 +62,10 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
 - Drive the revision conversation — what new scope, what re-scope, what to drop — using `AskUserQuestion` brainstorm patterns for every decision, exactly as `/plan-release` does.
 - Write `spec.json` + `status.json` for each new slice (Phase 4), setting its `track`.
 - Place new slices into tracks: a **new track**, or **appended to the tail** of an existing track that is not `merged` and whose trailing slices have not started. **Never** insert a slice before `in_progress` / `verified` / `merged` work in a track.
+- When a ratified re-slice resolves `status.json` `maintainability.state: re_slice_required`, reset
+  `maintainability` to the current status template's `pending` cycle-0 record. Preserve the prior
+  reports and adjudication in `journal.md` before resetting; there is no `resume_in_scope` transition
+  from cycle 1.
 - Re-validate the **touchpoint matrix** for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it — it cannot run in parallel.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 

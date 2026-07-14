@@ -73,7 +73,7 @@
       "id": "maintainability-review",
       "description": "Discover the role-owned maintainability check; role prompts define its authority and bounded lifecycle",
       "check": "external",
-      "command": "echo 'Run: sworn llm-check --check maintainability-review'",
+      "command": "echo 'Run LLM check: maintainability-review (role prompts own timing and authority)'",
       "severity": "warning",
       "note": "Discovery hint only. Implementer runs a bounded readiness preflight; fresh Verifier owns the authoritative gate."
     }

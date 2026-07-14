@@ -15,7 +15,8 @@ schema is the contract for a record. An engine that reworded them would be runni
 different checks under the same names, and a second engine could not be conformant
 without them. They live here, not in any one engine.
 
-The reference implementation runs them as `sworn llm-check --check <name>`.
+Engines expose each check by its stable check id. Invocation syntax is adapter-owned and
+non-normative; Baton specifies the input, prompt, report, lifecycle, and fail-closed semantics.
 
 ## The six checks
 
@@ -88,16 +89,90 @@ verifier still owns the verdict.
 Maintainability has two role-specific uses; they are intentionally not equal:
 
 1. The Implementer runs one **readiness preflight** only after deterministic checks are green and
-   the semantic diff is stable. A FAIL permits one bounded remediation and one closure review.
+   the semantic implementation diff is stable. A FAIL permits one bounded remediation and one
+   closure review.
    The Implementer cannot certify its own maintainability.
 2. The fresh Verifier runs one **authoritative gate** against the implemented diff. It records
    PASS or emits a verdict and stops; it never repairs and reruns inside the verifier session.
 
-Within a role session, identical semantic bytes reuse the existing report. Release records,
-generated output, and lockfile-only changes do not invalidate that report. A closure review is
-bounded to the original blockers plus regressions introduced by their remediation. A repeated
-FAIL routes to Coach adjudication (in-scope fix, re-slice, or explicit tracked exception), not an
-open-ended review/refactor loop.
+For each allowed run, a conformant engine MUST:
+
+1. Require a clean worktree and index. Resolve `review_scope.base` from the slice status
+   `start_commit` and `review_scope.head` from `HEAD`; record both as full lowercase commit object
+   ids. Candidate paths are
+   the NUL-delimited output of
+   `LC_ALL=C git diff --name-only -z --no-renames --no-relative --ignore-submodules=none <base>..<head>`,
+   interpreted as repository-relative byte strings. A path that is not valid UTF-8 fails scope
+   construction.
+2. Exclude only these path classes, recording every excluded path in `excluded_paths`:
+   - every path beneath the physical release root containing the reviewed slice's `status.json`
+     (resolve symlinks inside the workspace, then take the status file's grandparent directory),
+     which is the release-mode record and evidence tree;
+   - paths whose index attributes mark `baton-generated` or `linguist-generated` as `set` or
+     `true` (an undeclared generated path is included, never guessed); and
+   - files whose basename is one of `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`,
+     `bun.lockb`, `go.sum`, `Cargo.lock`, `poetry.lock`, `Pipfile.lock`, `Gemfile.lock`, or
+     `composer.lock`.
+   All remaining candidate paths are `included_paths`. Sort both arrays by unsigned UTF-8 byte
+   order. Path classification is performed from the clean reviewed index at `head`.
+3. Construct the semantic manifest used for identity. Start with the exact ASCII bytes
+   `baton-maintainability-v1` followed by NUL. For each included path in byte order append: the
+   base-10 UTF-8 path-byte length with no leading zero, `:`, the path bytes, NUL, the base Git mode
+   or `-` when absent, NUL, the full base Git object id or `-`, NUL, the head mode or `-`, NUL,
+   the full head object id or `-`, NUL. Modes and object ids come from the two committed trees, not
+   the worktree. Set `input_fingerprint` to `sha256:` plus the lowercase SHA-256 of this manifest.
+   This identifies the semantic bytes and mode changes independently of diff presentation or local
+   Git configuration.
+4. Construct `{{diff}}` for the prompt over the same included paths. Ignore system, global, and
+   untracked local diff presentation/driver configuration. Use external diff drivers and text
+   conversion disabled, full object ids, binary patches, no rename detection, no colour, the Myers
+   algorithm with indent heuristics disabled, exactly three context lines, zero inter-hunk context,
+   no function context, short submodule rendering, and literal pathspecs with fixed `a/` and `b/`
+   prefixes. A Git-based engine's effective invocation is:
+
+   `LC_ALL=C git diff --no-ext-diff --no-textconv --no-color --no-relative --binary --full-index --no-renames --submodule=short --ignore-submodules=none --diff-algorithm=myers --no-indent-heuristic --unified=3 --inter-hunk-context=0 --no-function-context --src-prefix=a/ --dst-prefix=b/ --line-prefix= <base>..<head> -- <each byte-sorted path as :(literal)<path>>`
+
+   The emitted bytes must be valid UTF-8 or scope construction fails closed. An empty included set
+   produces an empty `{{diff}}` and a deterministic PASS report without a model call.
+5. Pass that exact scoped diff as `{{diff}}` to `maintainability-review.md`.
+6. Emit a valid `llm-check-report-v1` with `check: maintainability-review`, `input_fingerprint`, and
+   `review_scope`; set `review_scope.fingerprint_algorithm` to `baton-maintainability-v1`.
+7. Fail closed if the scope cannot be constructed, the model call fails, or the report is missing,
+   malformed, or lacks the required scope identity.
+
+Within one role session, an existing report with the same `input_fingerprint` is reused without a
+new model call. Release-record, generated-output, and lockfile-only edits therefore do not consume
+another review. Any change to included semantic bytes produces a different fingerprint.
+
+A closure review applies the same canonical prompt to the complete final semantic diff; it receives
+no hidden adapter-specific context and may report any concrete blocker in that final diff. Any
+closure FAIL remains `in_progress` and routes to Coach adjudication instead of another review or
+refactor in the same cycle. There is no maintainability waiver.
+
+The machine-readable lifecycle lives in `status.json` `maintainability` (defined by
+`slice-status-v1`); `journal.md` may mirror it for humans but is not the transition authority. On
+the initial repeated FAIL, set `state: needs_coach`, keep `cycle: 0`, and append both reports. The
+Coach may choose exactly one of:
+
+- `resume_in_scope`: write the complete adjudication object, set `cycle: 1` and
+  `state: resume_approved`. This grants one new preflight/remediation/closure cycle in a fresh
+  Implementer context, restricted to `permitted_touchpoints`. Those paths must be a non-empty
+  subset of the ratified spec touchpoints; a Coach cannot expand the slice boundary through this
+  transition.
+- `re_slice`: write the adjudication and set `state: re_slice_required`; `/replan-release` must
+  revise the spec before implementation continues.
+
+The Coach writes the decision atomically to status, mirrors it in `journal.md`, commits both, and
+pushes the track branch before dispatching another role. A closure-failure handoff follows the same
+commit-and-push rule before the Implementer stops; a dirty worktree is never the handoff carrier.
+
+If closure FAILs in cycle 1, set `state: re_slice_required`. A second `resume_in_scope` is invalid;
+re-slicing is the only transition. A resumed Implementer proceeds only when the status record is
+schema-valid, `cycle` is 1, `state` is `resume_approved`, the adjudication decision is
+`resume_in_scope`, its two fingerprints match the cycle-0 reports, and every proposed edit is in
+`permitted_touchpoints`, which are themselves a subset of the ratified spec touchpoints. Otherwise
+it stops. After re-slicing, the Planner resets maintainability
+to the template's initial `pending` cycle-0 record as part of the ratified spec transition.
 
 ## The user payload
 

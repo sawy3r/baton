@@ -17,16 +17,44 @@ The state error was corrected forward, but the protocol had made the unsafe path
 
 - The Implementer gets a stable-diff readiness preflight, one remediation, and one closure review.
 - The fresh Verifier owns the authoritative maintainability gate and runs it once.
-- Identical semantic bytes reuse the existing report within a role session.
+- Every report identifies the exact scoped diff with a semantic input fingerprint; a role reuses
+  its report for identical semantic bytes without another model call.
+- Scope construction is canonical across engines: clean committed base/head, explicit release,
+  generated, and lockfile exclusions, byte-sorted paths, fixed prompt-diff options, and SHA-256
+  over a versioned path/mode/object manifest independent of local Git presentation. An empty
+  semantic scope passes without a model call.
 - Size thresholds trigger inspection but never block by themselves.
 - Blocking findings require a named symbol, mixed responsibilities or hidden coupling, concrete
   future cost, and bounded in-scope remediation.
-- A repeated or scope-expanding blocker routes to Coach adjudication instead of another loop.
-- Full workspace and hosted validation run on the final restored tree, not after every extraction.
+- A repeated blocker remains `in_progress` and stops for a recorded Coach adjudication. There is no
+  waiver: re-slice, or approve one fresh in-scope remediation cycle. If that resumed cycle also
+  fails closure, re-slicing is mandatory.
+- The full suite, proof gate, AC check, and security check run before closure. No authored source,
+  test, or configuration bytes may change after the final maintainability PASS.
+- The Verifier runs maintainability last and read-only, after every gate that might expose or add
+  semantic evidence.
+- The native Implementer and Verifier command adapters point to the same role-owned ordering, so
+  their completion steps cannot bypass or repeat the gate.
+- `slice-status-v1` carries the parseable report history, cycle number, and Coach adjudication;
+  journal prose is a human mirror rather than transition authority.
+
+## Protocol and engine boundary
+
+- Baton defines the stable operation id, semantic scope, report identity, authority, retry budget,
+  and role transitions. Engine CLI syntax is adapter-owned and non-normative.
+- A conformant engine supplies the exact scoped diff, fingerprints the bytes passed to the model,
+  validates the structured report, and fails closed when it cannot do so.
+- Current reference-engine compatibility is downstream implementation work, not a reason to weaken
+  or couple the Baton contract to one runner's present flags or diff behaviour.
+- Sworn conformance recommendations are tracked separately in
+  [swornagent/sworn#122](https://github.com/swornagent/sworn/issues/122) so they can be reviewed
+  alongside the incoming Baton change.
 
 ## Validation
 
 - Role ownership is explicit in both role prompts and the LLM-check registry.
 - The maintainability prompt distinguishes evidence from size/style heuristics.
 - Architecture metadata now identifies itself as discovery-only rather than competing authority.
+- The shared report schema carries additive semantic fingerprint and scope fields.
+- The slice status schema and template encode the one-resume lifecycle.
 - JSON and shell syntax checks plus whitespace validation are run before publication.

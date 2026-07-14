@@ -55,7 +55,7 @@ Release work runs under **track mode** (`$HOME/.claude/baton/track-mode.md`). Ea
    - Otherwise forward-merge: `git -C <worktree_path> merge release-wt/$2 --no-edit`. By track-mode invariant 2 the in-flight `release-wt` delta is touchpoint-disjoint from this track, so the merge is **conflict-free on code** — a docs-only merge (`spec.json`, `board.json`) is expected and proceeds silently.
    - On `git -C <worktree_path> diff --name-only --diff-filter=U` reporting a **code or test** conflict: `git -C <worktree_path> merge --abort` and return `BLOCKED: forward-merge of release-wt/$2 into <track-branch> conflicted on <files> — the touchpoint matrix was wrong (track-mode invariant 4). Route to /replan-release $2 to re-group.` A docs-only conflict (`board.json`) you resolve in favour of the union of both sides and continue.
    - Push the synced track branch so the merge is durable: `git -C <worktree_path> push origin HEAD:refs/heads/<track-branch>` (`origin/<track-branch>` is the track's durable home; a push failure is environmental, not a verdict input).
-6. **Idempotent BLOCKED short-circuit.** A fresh verifier (Rule 7) otherwise re-derives an identical BLOCKED every session. After the drift gate above, read `<worktree_path>/docs/release/$2/$1/status.json`. If **all three** of the following hold, do not re-run the six gates — re-emit the recorded verdict verbatim and STOP:
+6. **Idempotent BLOCKED short-circuit.** A fresh verifier (Rule 7) otherwise re-derives an identical BLOCKED every session. After the drift gate above, read `<worktree_path>/docs/release/$2/$1/status.json`. If **all three** of the following hold, do not re-run the verification gates — re-emit the recorded verdict verbatim and STOP:
    - `verification.result == "blocked"`.
    - `spec.json` is unchanged since that verdict. Find the most recent BLOCKED verdict commit on the track branch: `git -C <worktree_path> log --no-merges -n1 --format=%H --grep='verifier verdict — BLOCKED'` — call it `<verdict_commit>`. Then `git -C <worktree_path> diff <verdict_commit> HEAD -- docs/release/$2/$1/spec.json` must be empty. **If step 5's drift gate just merged a re-scoped spec, this diff is non-empty — fall through to step 7 and verify against the corrected spec; that is the loop self-healing.**
    - The slice's implementation is byte-identical since that verdict: `git -C <worktree_path> log --no-merges --format=%H --grep='^feat' <start_commit>..<verdict_commit>` equals `git -C <worktree_path> log --no-merges --format=%H --grep='^feat' <start_commit>..HEAD` (`<start_commit>` is the `status.json` field; equal SHA lists ⇒ no new or amended implementation commits).
@@ -97,6 +97,10 @@ Walk these in order. Detailed criteria for each are in `role-prompts/verifier.md
 4. **Reachability artefact proves the user path** — artefact file exists, names the user gesture, matches the spec outcome.
 5. **No silent deferrals or placeholder logic** — grep changed files for TODO/FIXME/deferred/placeholder; any hit not surfaced in proof.json is FAIL.
 6. **Claimed scope matches implemented scope** — each `Delivered` item has a verifiable evidence reference.
+7. **Maintainability is authoritative and final** — only after every preceding gate passes, invoke
+   the engine's `maintainability-review` operation exactly as Gate 8 in the governing Verifier role
+   prompt specifies. From that invocation onward the Verifier is read-only except for excluded
+   verdict/journal/status/board rendering. A FAIL stops without repair or another model call.
 
 ## At completion
 

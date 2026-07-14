@@ -68,7 +68,7 @@ If `<wt>/docs/baton/extensions/verifier.md` exists, read it and follow it — it
 
 Walk these in order. Stop at the first FAIL and emit the verdict.
 
-The verifier does NOT re-run planner or captain checks (traceability, spec-ambiguity, design-review). Those are upstream gates whose artefacts are committed and passed. The verifier trusts the planner and captain. The verifier independently verifies the **implementer's** work — the one role Rule 7 forbids from self-certifying. Mechanical gates (1-7) catch structural failures; LLM gates (3b, 4b, 6b) catch content failures the implementer cannot self-assess.
+The verifier does NOT re-run planner or captain checks (traceability, spec-ambiguity, design-review). Those are upstream gates whose artefacts are committed and passed. The verifier trusts the planner and captain. The verifier independently verifies the **implementer's** work — the one role Rule 7 forbids from self-certifying. Deterministic and manual gates 1-7 catch structural failures; LLM gates 3b, 4b, and 8 catch content failures the implementer cannot self-assess.
 
 ### Gate 1 — User-reachable outcome exists
 
@@ -104,25 +104,6 @@ This is the verifier's core adversarial check: the implementer self-assessed ac-
 - If the LLM provider is not configured, note it and skip (non-blocking).
 - If the check returns FAIL: at least one AC is not satisfied by the implementation. FAIL with the specific ACs and gaps.
 - If PARTIALLY_SATISFIED: investigate. If the gap is in spec ambiguity (AC unclear), BLOCKED. If the gap is in implementation (code missing features), FAIL.
-
-### Gate 3c — Maintainability (authoritative LLM gate)
-
-Run the **maintainability-review LLM check** (`sworn llm-check --check maintainability-review`;
-prompt body: `llm-checks/maintainability-review.md`) once against the implemented semantic diff.
-This fresh-context run is authoritative; the Implementer's report was readiness feedback and is
-not certification.
-
-- Run it only after the diff has passed the preceding deterministic and AC gates. Do not run it
-  repeatedly while discovering or repairing other defects.
-- A report for the same semantic bytes may not be rerun in this Verifier session. Proof/status/
-  journal-only edits do not change the review scope.
-- If it returns PASS, continue.
-- If it returns FAIL, emit a normal implementation FAIL with the concrete blocking findings and
-  STOP. The Verifier never refactors code or reruns the check in the same session.
-- If a blocking remediation requires new touchpoints or changes the planned ownership boundary,
-  apply "Before you FAIL" below and return BLOCKED with the exact proposed spec amendment.
-- The Verifier may report advisory findings, but they do not change the verdict and must not create
-  an implicit follow-up loop.
 
 **Before running E2E (browser-driven) tests, start the canonical dev stack from the worktree
 being verified, using whatever invocation the project documents (`pnpm run start:dev`,
@@ -223,9 +204,37 @@ Read the `delivered` list in `proof.json`. For each item, verify the evidence re
 - Evidence reference points to a file that doesn't exist or doesn't do what the claim says: FAIL.
 - "Delivered" list contains items not in the original `spec.json` `acceptance_criteria`: FAIL — re-slice or update spec first.
 
+### Gate 8 — Maintainability (authoritative, final read-only LLM gate)
+
+Run this only after every preceding deterministic, acceptance, reachability, semantic-coverage,
+deferral, design, guard-fidelity, and delivered-scope gate has passed. At this point the Verifier
+must be read-only. Invoke the engine's **maintainability-review operation** defined by
+`llm-checks/maintainability-review.md` once against the implemented semantic diff. Require a valid
+`llm-check-report-v1` carrying `check: maintainability-review`, `input_fingerprint`, and
+`review_scope`. The engine constructs and identifies the scope as specified in `llm-checks/README.md`.
+This fresh-context run is authoritative; the Implementer's report was readiness feedback, not
+certification.
+
+- Reuse a valid report for the same `input_fingerprint` rather than invoking the model again in
+  this role session.
+- Append the authoritative report to `status.json` `maintainability.reports` before rendering the
+  verdict records. This excluded status-only edit does not stale the semantic fingerprint.
+- If it returns PASS, set `maintainability.state: passed` and proceed directly to the verdict
+  record. Only journal/status/board rendering may change after this point.
+- If it returns FAIL, emit a normal implementation FAIL with the concrete blocking findings and
+  set `maintainability.state: pending`, and STOP. The Verifier never refactors code or reruns the
+  check in the same session; the fresh Implementer owns any remediation.
+- If scope construction, model execution, or report validation fails, fail closed using the role's
+  existing BLOCKED/INCONCLUSIVE distinction; never convert an unavailable gate into PASS.
+- If a blocking remediation requires new touchpoints or changes the planned ownership boundary,
+  apply "Before you FAIL" below and return BLOCKED with the exact proposed spec amendment.
+- Advisory findings do not change the verdict and must not create an implicit follow-up loop.
+- If any post-gate action would change authored source, tests, or configuration, the maintainability
+  evidence is stale. Do not edit or rerun; return FAIL and require a fresh Implementer cycle.
+
 ## Output format
 
-If all six gates pass:
+If all gates pass:
 
 ```
 PASS
@@ -348,7 +357,7 @@ If the track still has a further incomplete slice (auto-advance to implement):
 STATE: verified_implement_next
 SLICE: `<slice-id>`
 NEXT: /implement-slice <next-incomplete-slice-id> <release-name>
-REASON: All six gates passed. `<next-incomplete-slice-id>` is the next slice in track `<track-id>`.
+REASON: All verification gates passed. `<next-incomplete-slice-id>` is the next slice in track `<track-id>`.
 ```
 
 If every slice in the track is now verified (track ready to merge):
@@ -356,7 +365,7 @@ If every slice in the track is now verified (track ready to merge):
 STATE: verified_awaiting_approval
 SLICE: `<slice-id>`
 NEXT: /merge-track <track-id> <release-name>
-REASON: All six gates passed. Track `<track-id>` is complete — run /merge-track `<track-id>`.
+REASON: All verification gates passed. Track `<track-id>` is complete — run /merge-track `<track-id>`.
 ```
 
 For FAIL:
