@@ -128,10 +128,12 @@ directory/spec mismatch, or a non-canonical source path fails the check closed.
 Each reference object has exactly one of these schema-validated forms:
 
 - `{"kind":"contract","contract_id":"C-NN"}` loads
-  `docs/release/<spec.release>/contracts.json` and requires exactly one matching
-  entry.
+  `docs/release/<spec.release>/contracts.json`, requires its top-level `release`
+  to equal `spec.release` byte-for-byte, and requires exactly one matching entry.
 - `{"kind":"slice","slice_id":"<id>"}` loads
-  `docs/release/<spec.release>/<id>/spec.json`.
+  `docs/release/<spec.release>/<id>/spec.json`, requires its `release` to equal
+  the reviewed `spec.release` byte-for-byte, and requires its `slice_id` to equal
+  the referenced id byte-for-byte.
 - `{"kind":"file","path":"<path>"}` loads that workspace-root-relative
   regular file.
 
@@ -151,19 +153,22 @@ The same path is emitted once even when referenced repeatedly. Each typed
 reference has one fixed key: `contract:<contract_id>`, `slice:<slice_id>`, or
 `file:<path>`. Failed references follow resolved artefacts, sorted bytewise by
 that key, and render exactly
-`UNRESOLVED <reference-key>: <missing|non-regular|unreadable|invalid-utf8|invalid-json|schema-invalid|contract-id-missing|slice-id-mismatch>`.
+`UNRESOLVED <reference-key>: <missing|non-regular|unreadable|invalid-utf8|invalid-json|schema-invalid|record-release-mismatch|contract-id-missing|contract-id-duplicate|slice-id-mismatch>`.
 
 Resolution evaluates conditions in this fixed order and stops at the first:
 spec/schema validity; workspace-root and canonical source-path agreement;
 lexical path validity; lexical and physical workspace confinement; existence;
 regular-file type; readability; UTF-8 validity; JSON and applicable Baton-schema
-validity for `contracts.json` or a sibling `spec.json`; then matching contract id
-or sibling `slice_id`. The first four classes fail the check before dispatch; a
-failure in the remaining classes emits the corresponding safe `UNRESOLVED`
-reason. A reference is never silently omitted and the engine performs no network
-fetch. Resolution is one level deep: references discovered only inside a
-supplied artefact are not recursively loaded. The check may judge only the spec
-and this supplied section.
+validity for `contracts.json` or a sibling `spec.json`; loaded-record release
+identity; then matching contract-id count or sibling `slice_id`. A missing or
+non-equal loaded `release` emits `record-release-mismatch`. For a contract
+reference, zero matching IDs emits `contract-id-missing` and more than one emits
+`contract-id-duplicate`; exactly one continues. The first four classes fail the
+check before dispatch; a failure in the remaining classes emits the corresponding
+safe `UNRESOLVED` reason. A reference is never silently omitted and the engine
+performs no network fetch. Resolution is one level deep: references discovered
+only inside a supplied artefact are not recursively loaded. The check may judge
+only the spec and this supplied section.
 
 ### `{{project_context}}` and `{{project_stakes}}` — declared, not guessed
 
