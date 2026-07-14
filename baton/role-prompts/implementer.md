@@ -90,9 +90,16 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
 4. Maintain `journal.md` as you go — decisions, trade-offs, anything a verifier might need context on.
 5. When you believe the slice is done:
    - Run the **coverage gate** (reference implementation: `sworn coverage`) — every AC must have a matching test. Fix uncovered ACs before proceeding.
+   - Run all relevant deterministic checks first: targeted tests, required mutation proofs, lint, typecheck, and any contract-required full suite. The implementation diff must be stable and green before any LLM readiness check runs. Do not use maintainability review as an implementation-time design assistant.
    - Run the **ac-satisfaction LLM check** (reference implementation: `sworn llm-check --check ac-satisfaction`; prompt body: `llm-checks/ac-satisfaction.md`) — confirm every AC is genuinely satisfied by the implementation. Fix gaps before proceeding.
    - If the project has security rules in `docs/baton/architecture.json`, run the **security-review LLM check** (`sworn llm-check --check security-review`; prompt body: `llm-checks/security-review.md`) — address any findings.
-   - Run all relevant test commands and capture output.
+   - Run one **maintainability readiness preflight** (`sworn llm-check --check maintainability-review`; prompt body: `llm-checks/maintainability-review.md`) against the stable semantic diff. This is Implementer feedback, not certification — the fresh Verifier owns the authoritative maintainability gate.
+     - Compute a review-scope hash from changed source, tests, and configuration. Exclude release-mode records (`spec`, `status`, `proof`, `journal`, board/index), generated output, and lockfile-only changes. Reuse an existing report for the same hash; never pay to review identical semantic bytes twice in one role session.
+     - On FAIL, allow exactly one bounded remediation pass. Re-run the affected targeted deterministic checks, then run exactly one closure review against the updated stable diff.
+     - The closure review decides whether the original blocking findings were resolved. A new blocker is closure-relevant only when it is a regression introduced by that remediation. Unrelated new findings stop for Coach adjudication rather than opening another refactor loop.
+     - If the closure review still FAILs, remain `in_progress`, record both reports and the review-scope hashes in `journal.md`, and STOP. Page the Coach to choose an in-scope fix, re-slicing, or an explicit tracked exception. Do not run a third Implementer review and do not mark the slice `implemented`.
+   - After a maintainability remediation, run the contract-required full suite once on the final restored tree. Do not run hosted CI or the full workspace after each intermediate extraction unless the spec explicitly requires it.
+   - Capture the final test output.
    - Run the **proof-bundle verification gate** (reference implementation: `sworn verify`) and address any failures.
    - Emit `proof.json` from live repo state, valid against `proof-v1` (files changed, test results, reachability artefact, delivered, not_delivered, divergence). The human-readable `proof.md` is rendered from it.
    - Update `status.json` → `implemented`.

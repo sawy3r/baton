@@ -83,6 +83,22 @@ the model's stated verdict must fail closed.
 not make a slice verified. The checks are inputs to a role's judgement, and the
 verifier still owns the verdict.
 
+### Bounded maintainability lifecycle
+
+Maintainability has two role-specific uses; they are intentionally not equal:
+
+1. The Implementer runs one **readiness preflight** only after deterministic checks are green and
+   the semantic diff is stable. A FAIL permits one bounded remediation and one closure review.
+   The Implementer cannot certify its own maintainability.
+2. The fresh Verifier runs one **authoritative gate** against the implemented diff. It records
+   PASS or emits a verdict and stops; it never repairs and reruns inside the verifier session.
+
+Within a role session, identical semantic bytes reuse the existing report. Release records,
+generated output, and lockfile-only changes do not invalidate that report. A closure review is
+bounded to the original blockers plus regressions introduced by their remediation. A repeated
+FAIL routes to Coach adjudication (in-scope fix, re-slice, or explicit tracked exception), not an
+open-ended review/refactor loop.
+
 ## The user payload
 
 Each check file's body is the **system prompt**, verbatim. The engine assembles

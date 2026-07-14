@@ -105,6 +105,25 @@ This is the verifier's core adversarial check: the implementer self-assessed ac-
 - If the check returns FAIL: at least one AC is not satisfied by the implementation. FAIL with the specific ACs and gaps.
 - If PARTIALLY_SATISFIED: investigate. If the gap is in spec ambiguity (AC unclear), BLOCKED. If the gap is in implementation (code missing features), FAIL.
 
+### Gate 3c — Maintainability (authoritative LLM gate)
+
+Run the **maintainability-review LLM check** (`sworn llm-check --check maintainability-review`;
+prompt body: `llm-checks/maintainability-review.md`) once against the implemented semantic diff.
+This fresh-context run is authoritative; the Implementer's report was readiness feedback and is
+not certification.
+
+- Run it only after the diff has passed the preceding deterministic and AC gates. Do not run it
+  repeatedly while discovering or repairing other defects.
+- A report for the same semantic bytes may not be rerun in this Verifier session. Proof/status/
+  journal-only edits do not change the review scope.
+- If it returns PASS, continue.
+- If it returns FAIL, emit a normal implementation FAIL with the concrete blocking findings and
+  STOP. The Verifier never refactors code or reruns the check in the same session.
+- If a blocking remediation requires new touchpoints or changes the planned ownership boundary,
+  apply "Before you FAIL" below and return BLOCKED with the exact proposed spec amendment.
+- The Verifier may report advisory findings, but they do not change the verdict and must not create
+  an implicit follow-up loop.
+
 **Before running E2E (browser-driven) tests, start the canonical dev stack from the worktree
 being verified, using whatever invocation the project documents (`pnpm run start:dev`,
 `make dev`, `docker compose up`, etc.) and confirm every server the tests touch is healthy
