@@ -35,6 +35,14 @@ same verdict. A check that drifts between runs cannot gate anything.
 
 **Structured output.** Every check returns a single JSON object validating against
 [`llm-check-report-v1`](https://baton.sawy3r.net/schemas/llm-check-report-v1.json).
+
+The spec-ambiguity check additionally populates the schema's structured triage
+fields (`criterion_id`, `ambiguity_kind`, `observable_divergence`,
+`contract_surface`, `suggested_resolution`, and `fingerprint`). They make the
+material contract difference explicit and let an engine group the same finding
+across bounded remediation cycles. The fields remain optional in the shared
+schema so existing engines and the five other check types remain compatible.
+
 The report is *emitted and validated*, never prose-scraped — a check whose verdict has
 to be read out of an English paragraph is a check that will eventually be misread.
 
