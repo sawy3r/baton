@@ -73,7 +73,10 @@
       "const": "https://baton.sawy3r.net/schemas/spec-v1.json"
     },
     "slice_id": { "$ref": "#/$defs/id_token" },
-    "release": { "type": "string" },
+    "release": {
+      "$ref": "#/$defs/id_token",
+      "description": "Safe release-directory identifier. Required whenever references contains a contract or sibling-slice reference."
+    },
     "track": { "$ref": "#/$defs/id_token" },
     "user_outcome": {
       "type": "string",
@@ -171,5 +174,22 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["references"],
+        "properties": {
+          "references": {
+            "contains": {
+              "type": "object",
+              "required": ["kind"],
+              "properties": { "kind": { "enum": ["contract", "slice"] } }
+            }
+          }
+        }
+      },
+      "then": { "required": ["release"] }
+    }
+  ]
 }

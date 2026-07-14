@@ -119,6 +119,12 @@ discovery. The workspace root is the physical canonical path returned by
 `git rev-parse --show-toplevel` when run from the repository containing the
 reviewed spec; failure to obtain it fails the check closed.
 
+When `references` contains `contract` or `slice`, `spec.release` is required by
+`spec-v1` and is a single safe identifier segment. Before resolution, the engine
+requires the reviewed spec's physical repo-relative path to be exactly
+`docs/release/<spec.release>/<spec.slice_id>/spec.json`; a missing release, a
+directory/spec mismatch, or a non-canonical source path fails the check closed.
+
 Each reference object has exactly one of these schema-validated forms:
 
 - `{"kind":"contract","contract_id":"C-NN"}` loads
@@ -133,16 +139,31 @@ File paths use `/` separators; have no NUL, backslash, leading or trailing `/`,
 empty segment, `.` segment, or `..` segment; and must be unchanged by POSIX
 lexical clean. The engine joins the segments beneath the workspace root,
 resolves symlinks, and requires the physical target to remain beneath that root.
-All resolved output paths are rendered with `/` separators relative to the root.
+The generated contract and sibling-slice paths pass through the same lexical
+clean, join-beneath-root, symlink-resolution, and physical-confinement checks as
+file references. Any lexical, source-path, or confinement violation fails the
+check closed before model dispatch. All resolved output paths are rendered with
+`/` separators relative to the root.
 
 The engine emits each resolved UTF-8 artefact in bytewise repo-relative-path order as
 `--- ARTIFACT <repo-relative-path> ---`, one LF, its verbatim bytes, and one LF.
-The same path is emitted once even when referenced repeatedly. Failed references
-are sorted by their compact JSON encoding and emitted as
-`UNRESOLVED <compact-reference-json>: <missing|outside-workspace|symlink-escape|non-regular|external|unreadable|invalid-utf8|contract-id-missing|slice-id-missing>`.
-It is never silently omitted and the engine performs no network fetch. Resolution
-is one level deep: references discovered only inside a supplied artefact are not
-recursively loaded. The check may judge only the spec and this supplied section.
+The same path is emitted once even when referenced repeatedly. Each typed
+reference has one fixed key: `contract:<contract_id>`, `slice:<slice_id>`, or
+`file:<path>`. Failed references follow resolved artefacts, sorted bytewise by
+that key, and render exactly
+`UNRESOLVED <reference-key>: <missing|non-regular|unreadable|invalid-utf8|invalid-json|schema-invalid|contract-id-missing|slice-id-mismatch>`.
+
+Resolution evaluates conditions in this fixed order and stops at the first:
+spec/schema validity; workspace-root and canonical source-path agreement;
+lexical path validity; lexical and physical workspace confinement; existence;
+regular-file type; readability; UTF-8 validity; JSON and applicable Baton-schema
+validity for `contracts.json` or a sibling `spec.json`; then matching contract id
+or sibling `slice_id`. The first four classes fail the check before dispatch; a
+failure in the remaining classes emits the corresponding safe `UNRESOLVED`
+reason. A reference is never silently omitted and the engine performs no network
+fetch. Resolution is one level deep: references discovered only inside a
+supplied artefact are not recursively loaded. The check may judge only the spec
+and this supplied section.
 
 ### `{{project_context}}` and `{{project_stakes}}` — declared, not guessed
 
