@@ -21,7 +21,7 @@ The reference implementation runs them as `sworn llm-check --check <name>`.
 
 | Check | Run by | Reads | Answers |
 |---|---|---|---|
-| [`spec-ambiguity`](spec-ambiguity.md) | planner | spec | Is any acceptance criterion vague, incomplete, or underspecified? |
+| [`spec-ambiguity`](spec-ambiguity.md) | planner | spec + directly referenced artefacts | Is any acceptance criterion vague, incomplete, or underspecified? |
 | [`design-review`](design-review.md) | captain | project memory + diff | Does this change conflict with a documented decision? |
 | [`ac-satisfaction`](ac-satisfaction.md) | implementer, verifier | spec + diff | Does the code genuinely satisfy each AC? |
 | [`security-review`](security-review.md) | implementer, verifier | diff | Does the change introduce a vulnerability? |
@@ -33,15 +33,14 @@ The reference implementation runs them as `sworn llm-check --check <name>`.
 **Deterministic.** Temperature 0. The same slice and the same diff must produce the
 same verdict. A check that drifts between runs cannot gate anything.
 
-**Structured output.** Every check returns a single JSON object validating against
+**Structured output.** Five checks return a single JSON object validating against
 [`llm-check-report-v1`](https://baton.sawy3r.net/schemas/llm-check-report-v1.json).
-
-The spec-ambiguity check additionally populates the schema's structured triage
-fields (`criterion_id`, `ambiguity_kind`, `observable_divergence`,
-`contract_surface`, `suggested_resolution`, and `fingerprint`). They make the
-material contract difference explicit and let an engine group the same finding
-across bounded remediation cycles. The fields remain optional in the shared
-schema so existing engines and the five other check types remain compatible.
+The spec-ambiguity check returns
+[`spec-ambiguity-report-v1`](https://baton.sawy3r.net/schemas/spec-ambiguity-report-v1.json),
+whose fingerprint-keyed blocking/advisory maps make the material contract
+difference explicit and make duplicate triage identities unrepresentable within
+each map. Before using a report, the engine also rejects duplicate raw JSON keys
+and any fingerprint present in both maps.
 
 The report is *emitted and validated*, never prose-scraped — a check whose verdict has
 to be read out of an English paragraph is a check that will eventually be misread.
@@ -85,8 +84,8 @@ verifier still owns the verdict.
 
 ## The user payload
 
-Each check file's body is the **system prompt**, verbatim. The **user payload** is
-assembled by the engine and is common to all six:
+Each check file's body is the **system prompt**, verbatim. The engine assembles
+this common payload for all six:
 
 ```text
 You are evaluating a slice in a release of {{project_context}}.
@@ -103,6 +102,28 @@ Below is the slice specification, followed by the git diff of the code change.
 
 {{diff}}
 ```
+
+For `spec-ambiguity`, the engine appends this section:
+
+```text
+--- REFERENCED ARTIFACTS ---
+
+{{referenced_artifacts}}
+```
+
+The engine constructs `{{referenced_artifacts}}` deterministically from direct,
+explicit references in the reviewed spec. A `C-NN` reference resolves by loading
+the release's `contracts.json` and requiring one matching entry; a sibling slice
+id resolves to that slice's canonical `spec.json`; and an explicit
+workspace-relative file path resolves to that regular file. The engine emits each
+resolved UTF-8 artefact in bytewise repo-relative-path order as
+`--- ARTIFACT <repo-relative-path> ---`, one LF, its verbatim bytes, and one LF.
+The same path is emitted once even when referenced repeatedly. A failed direct
+reference is emitted in literal-reference order as
+`UNRESOLVED <literal-reference>: <missing|outside-workspace|symlink-escape|non-regular|external|unreadable|invalid-utf8|contract-id-missing|slice-id-missing>`.
+It is never silently omitted and the engine performs no network fetch. Resolution
+is one level deep: references discovered only inside a supplied artefact are not
+recursively loaded. The check may judge only the spec and this supplied section.
 
 ### `{{project_context}}` and `{{project_stakes}}` — declared, not guessed
 

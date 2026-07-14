@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://baton.sawy3r.net/schemas/llm-check-report-v1.json",
   "title": "Baton LLM Check Report",
-  "description": "The structured report returned by any of Baton's six deterministic LLM check types (spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review). Emitted as a schema-constrained structured-output call (ADR-0011), never scraped from prose. Grading uses two ORTHOGONAL fields: `severity` is impact (one scale across all six checks) and `blocking` is disposition (does this finding fail the check?). Conflating them is what allowed a critical finding to ride alongside a self-declared PASS. The verdict is therefore DERIVED, not independently asserted: it is FAIL if and only if at least one finding is blocking. Both directions are enforced below, so a PASS carrying a blocking finding is schema-invalid.",
+  "description": "The structured report returned by Baton's design-review, ac-satisfaction, security-review, semantic-coverage, and maintainability-review checks. Legacy spec-ambiguity reports remain valid for compatibility, but current spec-ambiguity uses spec-ambiguity-report-v1. Emitted as a schema-constrained structured-output call (ADR-0011), never scraped from prose. Grading uses two ORTHOGONAL fields: `severity` is impact and `blocking` is disposition. The verdict is DERIVED: FAIL if and only if at least one finding is blocking. Both directions are enforced below, so a PASS carrying a blocking finding is schema-invalid.",
   "type": "object",
   "additionalProperties": true,
   "required": ["verdict", "findings"],
@@ -46,59 +46,7 @@
           },
           "title": { "type": "string", "minLength": 1 },
           "detail": { "type": "string", "minLength": 1 },
-          "evidence": { "type": "string" },
-          "criterion_id": {
-            "description": "Acceptance criterion that owns the finding. Use cross-AC when the finding spans criteria. Published for structured spec-ambiguity triage; optional for backward compatibility and for check types without ACs.",
-            "type": "string",
-            "minLength": 1
-          },
-          "ambiguity_kind": {
-            "description": "Semantic class used to group and adjudicate spec-ambiguity findings across rechecks.",
-            "type": "string",
-            "enum": [
-              "missing-condition",
-              "missing-outcome",
-              "observable-divergence",
-              "contract-conflict",
-              "unresolvable-reference",
-              "vague-language",
-              "internal-mechanics",
-              "structure-or-wording"
-            ]
-          },
-          "observable_divergence": {
-            "description": "The materially different observable outcomes that make the finding block, or an explanation that no observable divergence exists for a non-blocking finding.",
-            "type": "string",
-            "minLength": 1
-          },
-          "contract_surface": {
-            "description": "Observable contract surface affected by the finding; internal-mechanics and spec-structure identify non-contractual observations.",
-            "type": "string",
-            "enum": [
-              "user-visible-behavior",
-              "wire-contract",
-              "persisted-record",
-              "security",
-              "fail-closed-behavior",
-              "exit-status",
-              "verification-evidence",
-              "reference-integrity",
-              "internal-mechanics",
-              "spec-structure"
-            ]
-          },
-          "suggested_resolution": {
-            "description": "Smallest clarification, normative reference, contract extraction, AC split, or slice split that would resolve the finding without gratuitously widening the contract.",
-            "type": "string",
-            "minLength": 1
-          },
-          "fingerprint": {
-            "description": "Stable lowercase semantic key for deduplicating a finding across wording-only remediation. Derived from criterion, ambiguity kind, and contract surface, never finding order.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[a-z0-9]+(?:[._:-][a-z0-9]+)*$"
-          }
+          "evidence": { "type": "string" }
         }
       }
     },
