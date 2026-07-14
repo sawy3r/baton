@@ -21,7 +21,7 @@ The reference implementation runs them as `sworn llm-check --check <name>`.
 
 | Check | Run by | Reads | Answers |
 |---|---|---|---|
-| [`spec-ambiguity`](spec-ambiguity.md) | planner | spec | Is any acceptance criterion vague, incomplete, or underspecified? |
+| [`spec-ambiguity`](spec-ambiguity.md) | planner | spec + directly referenced artefacts | Is any acceptance criterion vague, incomplete, or underspecified? |
 | [`design-review`](design-review.md) | captain | project memory + diff | Does this change conflict with a documented decision? |
 | [`ac-satisfaction`](ac-satisfaction.md) | implementer, verifier | spec + diff | Does the code genuinely satisfy each AC? |
 | [`security-review`](security-review.md) | implementer, verifier | diff | Does the change introduce a vulnerability? |
@@ -33,31 +33,39 @@ The reference implementation runs them as `sworn llm-check --check <name>`.
 **Deterministic.** Temperature 0. The same slice and the same diff must produce the
 same verdict. A check that drifts between runs cannot gate anything.
 
-**Structured output.** Every check returns a single JSON object validating against
+**Structured output.** Five checks return a single JSON object validating against
 [`llm-check-report-v1`](https://baton.sawy3r.net/schemas/llm-check-report-v1.json).
+The spec-ambiguity check returns
+[`spec-ambiguity-report-v1`](https://baton.sawy3r.net/schemas/spec-ambiguity-report-v1.json),
+whose fingerprint-keyed blocking/advisory maps make the material contract
+difference explicit and make duplicate triage identities unrepresentable within
+each map. Before using a report, the engine also rejects duplicate raw JSON keys
+and any fingerprint present in both maps.
+
 The report is *emitted and validated*, never prose-scraped — a check whose verdict has
 to be read out of an English paragraph is a check that will eventually be misread.
 
 **Fails closed.** A check that cannot run is a FAIL, not a pass. Absence of evidence
 is not evidence of absence (Rule 7).
 
-### Grading: severity and blocking are orthogonal
+### Grading: severity and disposition are orthogonal
 
-Every finding carries **two independent fields**, and keeping them apart is load-bearing:
+Every finding has an impact severity and an independent disposition. Keeping
+them apart is load-bearing; the schemas encode disposition in two forms:
 
-| Field | Question | Values |
+| Reports | Impact | Disposition |
 |---|---|---|
-| `severity` | **Impact** — how bad is this, if real? | `critical` `high` `medium` `low` `info` |
-| `blocking` | **Disposition** — does this finding fail the check? | `true` `false` |
+| `llm-check-report-v1` (five checks and legacy ambiguity output) | finding `severity`: `critical` `high` `medium` `low` `info` | finding `blocking`: `true` or `false` |
+| `spec-ambiguity-report-v1` | finding `severity`: the same five-value scale | membership in `blocking_findings` or `advisory_findings` |
 
-One severity scale across all six checks. Each check's prompt states which of its findings
-block; that is the only place the mapping lives.
+Each check's prompt states which findings block; that is the only place the
+impact-to-disposition decision lives.
 
-**The verdict is derived, not asserted.** `verdict` is `FAIL` **if and only if** at least
-one finding has `blocking: true`. The schema enforces this in *both* directions: a `FAIL`
-with no blocking finding is invalid, and — the important one — **a `PASS` carrying a
-blocking finding is invalid**. An engine whose own tally disagrees with the model's stated
-verdict must fail closed.
+**The verdict is derived, not asserted.** In `llm-check-report-v1`, `FAIL`
+means at least one finding has `blocking: true`. In
+`spec-ambiguity-report-v1`, `FAIL` means `blocking_findings` is non-empty.
+Each schema enforces both directions. An engine whose own tally disagrees with
+the model's stated verdict must fail closed.
 
 > **Why this is a contract, not a style preference.** These were originally two vocabularies
 > in one field: five checks graded `FAIL`/`WARN`/`INFO`, and `security-review` graded
@@ -77,8 +85,8 @@ verifier still owns the verdict.
 
 ## The user payload
 
-Each check file's body is the **system prompt**, verbatim. The **user payload** is
-assembled by the engine and is common to all six:
+Each check file's body is the **system prompt**, verbatim. The engine assembles
+this common payload for all six:
 
 ```text
 You are evaluating a slice in a release of {{project_context}}.
@@ -95,6 +103,72 @@ Below is the slice specification, followed by the git diff of the code change.
 
 {{diff}}
 ```
+
+For `spec-ambiguity`, the engine appends this section:
+
+```text
+--- REFERENCED ARTIFACTS ---
+
+{{referenced_artifacts}}
+```
+
+The engine constructs `{{referenced_artifacts}}` from the spec's typed
+`references` array and **only** that array. It never scans `rationale`,
+`in_scope`, `out_of_scope`, AC text, `touchpoints`, or `test_refs` for reference
+discovery. The workspace root is the physical canonical path returned by
+`git rev-parse --show-toplevel` when run from the repository containing the
+reviewed spec; failure to obtain it fails the check closed.
+
+When `references` contains `contract` or `slice`, `spec.release` is required by
+`spec-v1` and is a single safe identifier segment. Before resolution, the engine
+requires the reviewed spec's physical repo-relative path to be exactly
+`docs/release/<spec.release>/<spec.slice_id>/spec.json`; a missing release, a
+directory/spec mismatch, or a non-canonical source path fails the check closed.
+
+Each reference object has exactly one of these schema-validated forms:
+
+- `{"kind":"contract","contract_id":"C-NN"}` loads
+  `docs/release/<spec.release>/contracts.json`, requires its top-level `release`
+  to equal `spec.release` byte-for-byte, and requires exactly one matching entry.
+- `{"kind":"slice","slice_id":"<id>"}` loads
+  `docs/release/<spec.release>/<id>/spec.json`, requires its `release` to equal
+  the reviewed `spec.release` byte-for-byte, and requires its `slice_id` to equal
+  the referenced id byte-for-byte.
+- `{"kind":"file","path":"<path>"}` loads that workspace-root-relative
+  regular file.
+
+File paths use `/` separators; have no NUL, backslash, leading or trailing `/`,
+empty segment, `.` segment, or `..` segment; and must be unchanged by POSIX
+lexical clean. The engine joins the segments beneath the workspace root,
+resolves symlinks, and requires the physical target to remain beneath that root.
+The generated contract and sibling-slice paths pass through the same lexical
+clean, join-beneath-root, symlink-resolution, and physical-confinement checks as
+file references. Any lexical, source-path, or confinement violation fails the
+check closed before model dispatch. All resolved output paths are rendered with
+`/` separators relative to the root.
+
+The engine emits each resolved UTF-8 artefact in bytewise repo-relative-path order as
+`--- ARTIFACT <repo-relative-path> ---`, one LF, its verbatim bytes, and one LF.
+The same path is emitted once even when referenced repeatedly. Each typed
+reference has one fixed key: `contract:<contract_id>`, `slice:<slice_id>`, or
+`file:<path>`. Failed references follow resolved artefacts, sorted bytewise by
+that key, and render exactly
+`UNRESOLVED <reference-key>: <missing|non-regular|unreadable|invalid-utf8|invalid-json|schema-invalid|record-release-mismatch|contract-id-missing|contract-id-duplicate|slice-id-mismatch>`.
+
+Resolution evaluates conditions in this fixed order and stops at the first:
+spec/schema validity; workspace-root and canonical source-path agreement;
+lexical path validity; lexical and physical workspace confinement; existence;
+regular-file type; readability; UTF-8 validity; JSON and applicable Baton-schema
+validity for `contracts.json` or a sibling `spec.json`; loaded-record release
+identity; then matching contract-id count or sibling `slice_id`. A missing or
+non-equal loaded `release` emits `record-release-mismatch`. For a contract
+reference, zero matching IDs emits `contract-id-missing` and more than one emits
+`contract-id-duplicate`; exactly one continues. The first four classes fail the
+check before dispatch; a failure in the remaining classes emits the corresponding
+safe `UNRESOLVED` reason. A reference is never silently omitted and the engine
+performs no network fetch. Resolution is one level deep: references discovered
+only inside a supplied artefact are not recursively loaded. The check may judge
+only the spec and this supplied section.
 
 ### `{{project_context}}` and `{{project_stakes}}` — declared, not guessed
 

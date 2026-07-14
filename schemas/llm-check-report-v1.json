@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://baton.sawy3r.net/schemas/llm-check-report-v1.json",
   "title": "Baton LLM Check Report",
-  "description": "The structured report returned by any of Baton's six deterministic LLM check types (spec-ambiguity, design-review, ac-satisfaction, security-review, semantic-coverage, maintainability-review). Emitted as a schema-constrained structured-output call (ADR-0011), never scraped from prose. Grading uses two ORTHOGONAL fields: `severity` is impact (one scale across all six checks) and `blocking` is disposition (does this finding fail the check?). Conflating them is what allowed a critical finding to ride alongside a self-declared PASS. The verdict is therefore DERIVED, not independently asserted: it is FAIL if and only if at least one finding is blocking. Both directions are enforced below, so a PASS carrying a blocking finding is schema-invalid.",
+  "description": "The structured report returned by Baton's design-review, ac-satisfaction, security-review, semantic-coverage, and maintainability-review checks. Legacy spec-ambiguity reports remain valid for compatibility, but current spec-ambiguity uses spec-ambiguity-report-v1. Emitted as a schema-constrained structured-output call (ADR-0011), never scraped from prose. Grading uses two ORTHOGONAL fields: `severity` is impact and `blocking` is disposition. The verdict is DERIVED: FAIL if and only if at least one finding is blocking. Both directions are enforced below, so a PASS carrying a blocking finding is schema-invalid.",
   "type": "object",
   "additionalProperties": true,
   "required": ["verdict", "findings"],
