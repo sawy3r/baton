@@ -98,13 +98,63 @@ Maintainability has two role-specific uses; they are intentionally not equal:
 For each allowed run, a conformant engine MUST:
 
 1. Require a clean worktree and index. Resolve `review_scope.base` from the slice status
-   `start_commit` and `review_scope.head` from `HEAD`; record both as full lowercase commit object
-   ids. Candidate paths are
-   the NUL-delimited output of
-   `LC_ALL=C git diff --name-only -z --no-renames --no-relative --ignore-submodules=none <base>..<head>`,
-   interpreted as repository-relative byte strings. A path that is not valid UTF-8 fails scope
-   construction.
-2. Exclude only these path classes, recording every excluded path in `excluded_paths`:
+   `start_commit`. For an Implementer run, resolve `review_scope.head` from the clean current
+   `HEAD`; after its final PASS, persist that exact commit as
+   `status.maintainability.implementation_head`. For the authoritative Verifier run, resolve
+   `review_scope.head` only from that pinned `implementation_head`, never from the post-sync current
+   `HEAD`. Record both as full lowercase commit object ids, require `base` to lie on the
+   first-parent chain of `head`, and require the pinned Verifier head to lie on the first-parent
+   chain of the current track head. Before an authoritative run, inspect the first-parent commits
+   in `implementation_head..current HEAD`: every non-merge commit may change only paths beneath the
+   physical release-record root, and every merge must satisfy the recognized `release-wt` sync
+   test in step 2. Collect every non-record path contributed by those post-pin merges and compare it
+   with the slice-authored candidate set derived in step 2; any overlap fails scope construction.
+   Any post-pin authored source, test, configuration, unrecognized merge, or overlap makes the
+   pinned evidence stale and fails scope construction closed.
+2. Derive slice-authored candidate paths only from first-parent, non-merge commits in
+   `base..head`. Enumerate those commits in history order, and for each commit collect the
+   NUL-delimited paths changed from its first parent with rename detection disabled. Separately
+   enumerate first-parent merge commits in the range and collect the paths changed from each
+   merge's first parent to the merge result. A path present in both sets is an inseparable
+   slice/merge overlap and fails scope construction closed. Paths present only in merge
+   contributions are recorded in `excluded_paths`; they never enter the prompt or fingerprint.
+   Each merge must have exactly two parents and its second parent must appear in
+   `git rev-list --first-parent release-wt/<release>` (or equal that ref); otherwise it is not a
+   recognized synchronization merge and scope construction fails closed. Merely being reachable
+   through a merged track is insufficient. For every merge-contribution path outside the
+   physical release-record root, the merge result's mode and object id must equal parent 2's mode
+   and object id exactly (including absence for a deletion). Release-record paths may use the
+   protocol's documented conflict resolution. Any other custom merge-tree result fails scope
+   construction; implementation delivered through an arbitrary merge may not disappear from
+   review as a merge contribution.
+   Structural provenance is also required for the release branch segment newly introduced by that
+   parent. For each synchronization merge, enumerate
+   `git rev-list --first-parent <merge-parent-2> --not <merge-parent-1>`.
+   Every non-merge commit in that segment may change only the physical release-record root. Every
+   merge must have exactly two parents, and for each path outside that root changed from its first
+   parent to its result, the result mode/object id must equal its second parent's exactly. This is
+   the executable `/merge-track` shape only when that second parent equals the retained
+   `track/<release>/<track-id>` ref for a track declared by `board.json` in the integration merge's
+   first-parent tree, and every slice assigned to that track is `verified`, `deferred`, or `shipped`
+   in the second-parent tree. A slice with `maintainability.state: re_slice_required` is terminal
+   for integration only when its overall state is `deferred`, its recorded rollback slice is
+   `verified` or `shipped`, and the rollback's pinned tree restores every original candidate path
+   to the original `start_commit`; any other displayed state or missing proof fails provenance
+   closed. Planner commits may
+   change records, while production bytes arrive only through such a gated two-parent track
+   integration. A direct production commit on `release-wt`, an undeclared/deleted track ref, an
+   unverified track parent, or a custom integration tree outside the record root makes
+   synchronization unrecognized even when the later sync merge copies it exactly.
+   The normative Git operations are:
+   - `git rev-list --reverse --first-parent --no-merges <base>..<head>`;
+   - `git rev-list --reverse --first-parent --merges <base>..<head>`; and
+   - for each resulting commit,
+     `git diff-tree --no-commit-id --name-only -r -z --no-renames <commit>^1 <commit>`.
+   Interpret paths as repository-relative byte strings; invalid UTF-8 fails scope construction. A
+   slice-authored path whose base and head mode/object id are identical is a net-zero path and is
+   excluded before review.
+3. From the slice-authored candidate set, exclude only these additional path classes, recording
+   every excluded path once in `excluded_paths`:
    - every path beneath the physical release root containing the reviewed slice's `status.json`
      (resolve symlinks inside the workspace, then take the status file's grandparent directory),
      which is the release-mode record and evidence tree;
@@ -114,8 +164,9 @@ For each allowed run, a conformant engine MUST:
      `bun.lockb`, `go.sum`, `Cargo.lock`, `poetry.lock`, `Pipfile.lock`, `Gemfile.lock`, or
      `composer.lock`.
    All remaining candidate paths are `included_paths`. Sort both arrays by unsigned UTF-8 byte
-   order. Path classification is performed from the clean reviewed index at `head`.
-3. Construct the semantic manifest used for identity. Start with the exact ASCII bytes
+   order. Path classification is performed from the committed tree at the pinned `head`, never
+   from a post-synchronization worktree or index.
+4. Construct the semantic manifest used for identity. Start with the exact ASCII bytes
    `baton-maintainability-v1` followed by NUL. For each included path in byte order append: the
    base-10 UTF-8 path-byte length with no leading zero, `:`, the path bytes, NUL, the base Git mode
    or `-` when absent, NUL, the full base Git object id or `-`, NUL, the head mode or `-`, NUL,
@@ -123,7 +174,7 @@ For each allowed run, a conformant engine MUST:
    the worktree. Set `input_fingerprint` to `sha256:` plus the lowercase SHA-256 of this manifest.
    This identifies the semantic bytes and mode changes independently of diff presentation or local
    Git configuration.
-4. Construct `{{diff}}` for the prompt over the same included paths. Ignore system, global, and
+5. Construct `{{diff}}` for the prompt over the same included paths. Ignore system, global, and
    untracked local diff presentation/driver configuration. Use external diff drivers and text
    conversion disabled, full object ids, binary patches, no rename detection, no colour, the Myers
    algorithm with indent heuristics disabled, exactly three context lines, zero inter-hunk context,
@@ -134,10 +185,10 @@ For each allowed run, a conformant engine MUST:
 
    The emitted bytes must be valid UTF-8 or scope construction fails closed. An empty included set
    produces an empty `{{diff}}` and a deterministic PASS report without a model call.
-5. Pass that exact scoped diff as `{{diff}}` to `maintainability-review.md`.
-6. Emit a valid `llm-check-report-v1` with `check: maintainability-review`, `input_fingerprint`, and
+6. Pass that exact scoped diff as `{{diff}}` to `maintainability-review.md`.
+7. Emit a valid `llm-check-report-v1` with `check: maintainability-review`, `input_fingerprint`, and
    `review_scope`; set `review_scope.fingerprint_algorithm` to `baton-maintainability-v1`.
-7. Fail closed if the scope cannot be constructed, the model call fails, or the report is missing,
+8. Fail closed if the scope cannot be constructed, the model call fails, or the report is missing,
    malformed, or lacks the required scope identity.
 
 Within one role session, an existing report with the same `input_fingerprint` is reused without a
@@ -150,17 +201,50 @@ closure FAIL remains `in_progress` and routes to Coach adjudication instead of a
 refactor in the same cycle. There is no maintainability waiver.
 
 The machine-readable lifecycle lives in `status.json` `maintainability` (defined by
-`slice-status-v1`); `journal.md` may mirror it for humans but is not the transition authority. On
+`slice-status-v1`); `journal.md` may mirror it for humans but is not the transition authority.
+Before either role acts, enumerate every committed version of the physical `status.json` path with
+`git rev-list --first-parent HEAD -- <status-path>` and read each version from its committed tree.
+Once any version records a non-null `start_commit`, every later version must preserve that exact
+object id; returning it to null is invalid. While `start_commit` has never been set, maintainability
+must still equal the empty pending cycle-0 template. The current `reports` array must retain every
+earlier array as an exact prefix, `cycle` must never be less than the largest earlier cycle, and a
+prior `re_slice_required` state is terminal for that slice id. Once `adjudication` becomes non-null,
+every later version must preserve that complete object byte-for-byte. Any deletion, rewrite, or
+lifecycle regression is a hard stop. No cycle may contain more than one report for a given role/phase, and no
+cycle may contain more than one authoritative Verifier report. Validate each cycle's report suffix
+as this finite-state machine, in order: it starts with Implementer `preflight`; preflight PASS may
+be followed only by Verifier `authoritative`; preflight FAIL may be followed only by Implementer
+`closure`; closure PASS may be followed only by Verifier `authoritative`; closure FAIL and any
+authoritative report terminate the cycle. A cycle-1 entry is legal only after an immutable
+`resume_in_scope` adjudication citing the completed cycle-0 reports. No phase may be skipped,
+reordered, or appended after a terminal entry. Each appended report entry records
+its `cycle`, invocation id, durable `report_path`, committed `report_blob_oid`, `review_scope_head`,
+fingerprint, role, phase, verdict, and finding ids. `report_path` must be a committed path inside the
+reviewed slice's physical evidence root, must remain unique and immutable, and its current Git blob
+id must equal `report_blob_oid`. The referenced full report must validate and match the slice id,
+release, maintainability check id, role, phase, cycle, invocation id, scope head, fingerprint,
+verdict, and blocking finding ids. State must agree with the newest ledger entry: `pending` is either
+the empty initial record or one cycle-0 Implementer preflight FAIL awaiting its bounded remediation;
+`passed` requires a newest PASS in the current cycle and an `implementation_head` equal to that
+entry's `review_scope_head`; `needs_coach` requires a newest cycle-0 FAIL; `resume_approved` requires
+that cycle-0 FAIL plus the matching Coach adjudication; and `re_slice_required` requires a newest
+FAIL, a Coach `re_slice` adjudication, or an immediately prior `passed` state whose pinned head was
+cleared because post-PASS semantic work became necessary. These checks make the transition history
+executable from Git plus the blob-pinned ledger rather than mutable prose. On
 the initial repeated FAIL, set `state: needs_coach`, keep `cycle: 0`, and append both reports. The
 Coach may choose exactly one of:
 
-- `resume_in_scope`: write the complete adjudication object, set `cycle: 1` and
+- `resume_in_scope`: write the complete adjudication object, identifying the two source reports by
+  their unique invocation ids and recording their fingerprints (which may be identical when the
+  Implementer PASS and authoritative Verifier FAIL reviewed the same semantic bytes), set `cycle: 1` and
   `state: resume_approved`. This grants one new preflight/remediation/closure cycle in a fresh
   Implementer context, restricted to `permitted_touchpoints`. Those paths must be a non-empty
   subset of the ratified spec touchpoints; a Coach cannot expand the slice boundary through this
   transition.
 - `re_slice`: write the adjudication and set `state: re_slice_required`; `/replan-release` must
-  revise the spec before implementation continues.
+  revise the spec before implementation continues. A preflight whose disposition is already
+  boundary-expanding may route here with one cited report; `resume_in_scope` always requires the
+  normal two-report failure handoff.
 
 The Coach writes the decision atomically to status, mirrors it in `journal.md`, commits both, and
 pushes the track branch before dispatching another role. A closure-failure handoff follows the same
@@ -169,10 +253,33 @@ commit-and-push rule before the Implementer stops; a dirty worktree is never the
 If closure FAILs in cycle 1, set `state: re_slice_required`. A second `resume_in_scope` is invalid;
 re-slicing is the only transition. A resumed Implementer proceeds only when the status record is
 schema-valid, `cycle` is 1, `state` is `resume_approved`, the adjudication decision is
-`resume_in_scope`, its two fingerprints match the cycle-0 reports, and every proposed edit is in
-`permitted_touchpoints`, which are themselves a subset of the ratified spec touchpoints. Otherwise
-it stops. After re-slicing, the Planner resets maintainability
-to the template's initial `pending` cycle-0 record as part of the ratified spec transition.
+`resume_in_scope`, its two unique invocation ids and corresponding fingerprints match the cited
+cycle-0 reports (fingerprints may be equal), and every proposed edit is in `permitted_touchpoints`,
+which are themselves a subset of the ratified spec touchpoints. Otherwise
+it stops. Re-slicing replaces the exhausted slice with one or more new slice ids carrying fresh
+template lifecycle records; the original slice retains `re_slice_required` and its append-only
+history. An overall slice state of `verified` or `shipped` additionally requires the newest ledger
+entry to be a Verifier `authoritative` PASS in the current cycle; an Implementer PASS alone can only
+support `implemented`. Before functional replacements, a mandatory rollback slice restores the
+entire authored semantic envelope to its exact original `start_commit` tree and reaches `verified`.
+Derive that envelope from every first-parent non-merge commit in the original `start_commit` through
+the rollback slice's pinned implementation head, excluding only physical release-record paths and
+recognized merge-only contributions; any authored/merge overlap fails closed. Generated files and
+dependency lockfiles are excluded from model review but not from rollback: if the failed slice
+authored them, they must return to the original tree too.
+At the rollback head, every envelope path's mode/object id must equal the original start tree,
+including absence. This includes unreviewed production commits made after the failed report.
+The original records that slice in `rollback_slice_id`; `/merge-track` rechecks its pinned tree.
+Resetting the same slice id to cycle 0 or deferring the rollback is forbidden.
+
+The authoritative Verifier preserves `passed`, `cycle`, and the pinned `implementation_head` on
+PASS. On FAIL it appends the report and clears `implementation_head`: every cycle-0 failure
+transitions to `needs_coach`; the Coach must choose `re_slice` when the disposition requires new
+touchpoints or an ownership-boundary change because `resume_in_scope` cannot expand the boundary.
+Every cycle-1 failure transitions directly to `re_slice_required`.
+Maintainability FAIL remains FAIL rather than being recast as a contract BLOCKED verdict.
+An authoritative FAIL never returns to `pending`, so another Implementer cycle requires the sole
+Coach-approved `resume_in_scope` transition.
 
 ## The user payload
 

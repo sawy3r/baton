@@ -57,18 +57,33 @@ If `spec.json` is missing or ambiguous, stop and ask the human. Do not infer sco
 
 ### Maintainability resume gate
 
-Read `status.json` `maintainability` before editing. If absent on a legacy slice, initialise it from
-the current status template before the first maintainability run. Then enforce these transitions:
+Validate the complete `status.json` against `slice-status-v1` and read its required
+`maintainability` object before editing. A missing object is a hard stop and must be migrated by the
+Planner from the current status template; the Implementer must never recreate it because doing so
+could erase an exhausted cycle. Apply the committed-history integrity check in
+`llm-checks/README.md`: every earlier report array must remain an exact prefix, cycle cannot
+decrease, `start_commit` cannot be erased or changed once set, and a prior `re_slice_required` state
+is terminal for this slice id. Once non-null, the complete Coach adjudication is immutable. Any
+regression is a hard stop, not a legacy migration. Then enforce these transitions:
 
-- `pending` or `passed`: continue the normal slice workflow. `passed` is valid only when no included
-  semantic bytes have changed since its final report; otherwise reset it to `pending` before work.
+- schema-valid `pending` with `cycle: 0` and `implementation_head: null`: an empty report ledger
+  starts the normal preflight; exactly one Implementer preflight FAIL resumes only its bounded
+  remediation and closure review. Do not run another preflight. Any other `pending` record is a
+  hard stop; in particular, `pending` cycle 1 cannot reopen implementation.
+- `passed`: continue only when no included semantic bytes have changed since its final report and
+  `implementation_head` matches that report's `review_scope.head`. If semantic remediation is
+  required after any final PASS, set `re_slice_required` with `implementation_head: null` and STOP
+  before editing. A passed semantic boundary cannot be reopened under the same slice id.
 - `needs_coach`: STOP. The Coach must record `resume_in_scope` or `re_slice` in this object.
 - `re_slice_required`: STOP and route to `/replan-release`; implementation cannot continue.
 - `resume_approved`: continue only when the object is schema-valid, `cycle` is `1`, the adjudication
-  decision is `resume_in_scope`, its two fingerprints match the cycle-0 reports, and every proposed
-  edit is within `permitted_touchpoints`. Require those paths to be a non-empty subset of the
+  decision is `resume_in_scope`, its two unique invocation ids and corresponding fingerprints match
+  the two cited cycle-0 reports (the fingerprints may be equal), and every proposed edit is within
+  `permitted_touchpoints`. Require those paths to be a non-empty subset of the
   ratified spec touchpoints; any new path or ownership boundary requires re-slicing. This is the
-  only resumed maintainability cycle. A second resume is forbidden.
+  only resumed maintainability cycle. With no cycle-1 reports, start its preflight; with exactly one
+  cycle-1 Implementer preflight FAIL, resume only bounded remediation and closure. Do not rerun the
+  preflight. Any other incomplete suffix is invalid. A second resume is forbidden.
 
 ## Project extensions
 
@@ -110,19 +125,27 @@ Before touching code, confirm the slice's acceptance criteria satisfy Rule 8 (Re
    - If the project has security rules in `docs/baton/architecture.json`, run the **security-review LLM check** (`sworn llm-check --check security-review`; prompt body: `llm-checks/security-review.md`) — address any findings.
    - Capture the final test output, emit `proof.json` from live repo state, and run the **proof-bundle verification gate** (reference implementation: `sworn verify`). Fix every deterministic, proof, AC, or security failure before maintainability review. Commit and push the stable implementation and proof checkpoint, then require a clean worktree and index; the canonical review scope is commit-to-commit.
    - Invoke the engine's **maintainability-review operation** defined by `llm-checks/maintainability-review.md` once as a readiness preflight. Require a valid `llm-check-report-v1` carrying `check: maintainability-review`, `input_fingerprint`, and `review_scope`. Reuse an existing report for the same fingerprint rather than invoking the model again. This is Implementer feedback, not certification — the fresh Verifier owns the authoritative gate.
-     - Append each run to `status.json` `maintainability.reports` with its role, phase, fingerprint,
-       verdict, and blocking finding ids. On an initial PASS, set `maintainability.state: passed`.
+     - Append each run to `status.json` `maintainability.reports` with its role, phase, current
+       cycle, invocation id, durable full-report path and Git blob id, `review_scope.head`,
+       fingerprint, verdict, and blocking finding ids. The report path is unique and immutable.
+       Validate the blob-pinned full report and require every identity field to match the ledger
+       entry; reject a second entry for the same role/phase/cycle. On an initial PASS, set
+       `maintainability.state: passed` and pin
+       `maintainability.implementation_head` to that entry's `review_scope_head`.
      - On FAIL, allow exactly one bounded remediation pass. Re-run affected targeted checks and the contract-required full suite, regenerate and verify the proof bundle, and resolve any AC or security regressions. Commit and push the remediation checkpoint and require a clean worktree and index. Only then may the engine run exactly one closure review.
+       If the preflight's blocking disposition already requires a new touchpoint or ownership-boundary change, no in-scope remediation is legal: set `needs_coach`, clear the pinned head, append that one report, and STOP. The Coach's only legal decision is `re_slice`.
      - The closure review applies the same canonical prompt to the complete final semantic diff. It
        receives no hidden prior-report input. On PASS, append the report and set
-       `maintainability.state: passed`.
+       `maintainability.state: passed`, pinning `maintainability.implementation_head` to that
+       report's `review_scope.head`.
      - If closure FAILs, append the report, remain `in_progress`, and STOP. Do not run a third review
        or mark the slice `implemented`. In cycle 0 set `maintainability.state: needs_coach`; the Coach
        may approve the one cycle-1 `resume_in_scope` or require `re_slice`. In cycle 1 set
-       `maintainability.state: re_slice_required`; no further resume is legal. Before STOP, mirror
+       `maintainability.state: re_slice_required`; no further resume is legal. In either failure
+       state keep `maintainability.implementation_head: null`. Before STOP, mirror
        the handoff in `journal.md`, commit the status/journal transition, and push the track branch
        so the next fresh context starts clean. There is no waiver.
-   - After the final maintainability PASS — initial or closure — do not edit authored source, tests, or configuration. Only proof/journal/status rendering may follow. If any later step requires semantic edits, remain `in_progress`, record the stale fingerprint and reason in `journal.md`, and STOP for Coach adjudication.
+   - After the final maintainability PASS — initial or closure — do not edit authored source, tests, or configuration. Only proof/journal/status rendering may follow. If any later step requires semantic edits, remain `in_progress`, clear `implementation_head`, set `re_slice_required`, record the stale fingerprint and reason in `journal.md`, and STOP for `/replan-release`. A final PASS is a frozen boundary in either cycle.
    - Update `status.json` → `implemented`.
    - **Stop.** Do not run a verifier prompt in this session. Do not declare PASS.
 

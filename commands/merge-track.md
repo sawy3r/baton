@@ -48,9 +48,38 @@ The merge target is `release-wt/$2`, which the release worktree owns.
 Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]` (each track carries `state`, `dependsOn`, `blockedBy`, `readyToMerge`, ordered `slices`, `worktreePath`, `worktreeBranch`) and `.releases["$2"].slices[]` (per-slice `state`). The oracle resolves each slice's state from its own track branch, so the verification gate cannot misfire on a stale integration-branch `status.json`.
 
 1. Find the track entry with `.id == "$1"`. If none, BLOCK: "Track `$1` is not in release `$2`." Capture its ordered `<slices>` (`.slices`), `<worktree_branch>` (`.worktreeBranch`, = `track/$2/$1`), `<worktree_path>` (`.worktreePath`), `<blocked_by>` (`.blockedBy`), `<state>` (`.state`), and `<ready_to_merge>` (`.readyToMerge`).
-2. **Idempotency gate — already-merged is a clean no-op, never a re-merge.** The track is already integrated if EITHER `<state>` is `merged` OR `git -C <release-worktree-path> merge-base --is-ancestor track/$2/$1 release-wt/$2` succeeds (release-wt already contains the track tip — nothing left to merge). In that case do NOT re-merge and do NOT BLOCK: emit a single success-shaped completion line — `Track \`$1\` already merged into \`release-wt/$2\` — no-op (idempotent re-dispatch).` — and exit cleanly. This is load-bearing: a spurious re-dispatch (e.g. an interpreter-pipe retry) MUST NOT add a duplicate merge commit. (merge-track is otherwise non-idempotent; this gate makes it safe to call more than once.)
-3. If `<blocked_by>` is non-empty, BLOCK: "Track `$1` depends on `<blocked_by>` — not yet merged to `release-wt`. Merge those tracks first."
-4. **Verification gate.** `<ready_to_merge>` is the oracle's bundled gate: true only when every slice in the track is terminal (`verified` / `deferred` / `shipped`), the track is not already merged, and `<blocked_by>` is empty. If `<ready_to_merge>` is false and Steps 1.2-1.3 passed, the cause is unverified slices: list every slice in `<slices>` whose `.state` (from `.releases["$2"].slices[]`) is not `verified` / `deferred` / `shipped`, and BLOCK: "Cannot merge track `$1` — not verified: `<list>`. Each must complete /verify-slice with PASS first." When `<ready_to_merge>` is true, proceed.
+2. **Lifecycle-history integrity gate — before every success path.** For every slice in `<slices>`,
+   validate current `status.json` against `slice-status-v1`, then enumerate every committed version
+   of that physical path on `track/$2/$1`'s first-parent history and apply the complete canonical
+   integrity/FSM check from `llm-checks/README.md`: immutable non-null `start_commit`, append-only
+   report prefix, non-decreasing cycle, immutable non-null adjudication, blob-pinned full-report
+   identity, legal phase ordering, state/newest-report coherence, and terminal
+   `re_slice_required`. BLOCK on any regression before consulting oracle terminal state. This makes
+   a rewritten current ledger incapable of hiding an earlier exhausted lifecycle or narrowing its
+   candidate paths. Require every overall `verified` or `shipped` slice to have current
+   maintainability `passed` with the newest entry a current-cycle Verifier `authoritative` PASS.
+3. **Maintainability rollback gate.** Inspect every slice whose current or historical lifecycle is
+   `re_slice_required`, regardless of the oracle's displayed state. Require the current lifecycle to
+   preserve that terminal state, require overall state exactly `deferred`, and require a non-empty
+   `rollback_slice_id`; `verified`, `shipped`, or any other state is invalid. The rollback slice must
+   belong to this track, occur after the failed slice and before every functional replacement, and
+   be `verified` or `shipped` (never deferred). BLOCK on any missing rollback, invalid order/state,
+   report-identity failure, or tree mismatch. The rollback comparison set is the union of every
+   slice-authored non-record path from the failed slice's immutable `start_commit` through the
+   rollback slice's pinned implementation head, using the canonical first-parent non-merge and
+   merge-overlap rules. Compare that complete envelope to the original start tree; do not stop at
+   the failed report head. Thus any post-report production commit is also restored or blocks.
+4. **Idempotency gate — already-merged is a validated no-op, never a re-merge.** The track is already
+   integrated if EITHER `<state>` is `merged` OR
+   `git -C <release-worktree-path> merge-base --is-ancestor track/$2/$1 release-wt/$2` succeeds. In
+   that case, first locate the first-parent `release-wt/$2` integration merge whose second parent is
+   exactly the retained `track/$2/$1` ref and validate its complete canonical `/merge-track`
+   provenance, including Steps 1.2-1.3 above, against the committed integration tree. Missing or
+   invalid provenance BLOCKs. Only after those checks pass, emit
+   `Track \`$1\` already merged into \`release-wt/$2\` — no-op (idempotent re-dispatch).` and exit
+   cleanly. A spurious retry adds no commit, but idempotency never bypasses safety validation.
+5. If `<blocked_by>` is non-empty, BLOCK: "Track `$1` depends on `<blocked_by>` — not yet merged to `release-wt`. Merge those tracks first."
+6. **Verification gate.** `<ready_to_merge>` is the oracle's bundled gate: true only when every slice in the track is terminal (`verified` / `deferred` / `shipped`), the track is not already merged, and `<blocked_by>` is empty. If `<ready_to_merge>` is false after Steps 1.2-1.5 pass, the cause is unverified slices: list every slice in `<slices>` whose `.state` (from `.releases["$2"].slices[]`) is not `verified` / `deferred` / `shipped`, and BLOCK: "Cannot merge track `$1` — not verified: `<list>`. Each must complete /verify-slice with PASS first." When `<ready_to_merge>` is true, proceed.
 
 ## Step 2 — Drift gate (self-healing)
 
@@ -86,7 +115,7 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
 
    The per-slice verifications each ran against an *older* `release-wt`; this is the first run with the merged siblings underneath. If **either layer** fails (any command non-zero, or `sworn regress` exits non-zero), BLOCK with the failing command and its output — the forward-merge surfaced a real integration regression. The forward-merge commit stays on the track branch; fix forward, then re-run `/merge-track $1 $2`.
 
-6. **Re-confirm.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2` must now be `0`. Proceed to Step 3.
+6. **Re-confirm and re-gate.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2` must now be `0`. The synchronization merge changed the track history, so re-run Step 1's lifecycle-history/FSM and rollback gates against the new track tip, then refresh the oracle and re-check dependency/readiness state. BLOCK on any new regression; only a fully re-gated track proceeds to Step 3.
 
 ## Step 3 — Confirm scope
 
@@ -101,7 +130,7 @@ present, stalls the loop. Emit one line — `auto-confirm (BATON_AUTO_CONFIRM): 
 
 ## Step 4 — Perform the merge
 
-`git -C <release_worktree_path> merge --no-ff track/$2/$1 -m "<message>"` where the message is:
+`git -C <release_worktree_path> merge --no-ff --no-commit track/$2/$1 -m "<message>"` where the message is:
 
 ```
 Merge track $1 into release-wt/$2 — N slices verified
@@ -119,6 +148,16 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 - **Release `board.json`** — expected board reconciliation. Per-slice and per-track entries are disjoint and auto-merge; only the aggregate counts and the activity log collide. Resolve: keep both sides' entries, union the activity entries chronologically, recompute the aggregate counts, and re-render `index.md`. `git add` both files and continue.
 - **A documented shared file** (the touchpoint matrix marks it `DOCUMENTED SHARED` with each track's declared region) — the tracks were declared to edit well-separated regions. Inspect the conflict hunks: if they sit in the declared-separate regions, resolve by keeping both tracks' regions and `git add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git merge --abort` and BLOCK as a planner error.
 - **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on `<files>`, which are neither `board.json` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
+
+Before committing, validate the prospective index tree as the canonical `/merge-track` integration
+shape from `llm-checks/README.md`: exactly two parents, second parent exactly the retained
+`track/$2/$1` ref, all lifecycle/FSM/rollback gates still green in that parent, and every result
+outside the physical release-record root equal in mode/object id to that second parent. If the
+prospective tree or parent identity fails, `git merge --abort` and BLOCK; do not create a
+non-conformant integration commit. After the
+prospective tree passes, commit with the prepared merge message, capture the merge SHA, and validate
+the committed parents/tree once more before proceeding. Normal integration and idempotent re-entry
+therefore use the same provenance test.
 
 ## Step 5 — Re-render the board view
 

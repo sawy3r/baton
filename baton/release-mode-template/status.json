@@ -19,6 +19,8 @@
   "maintainability": {
     "state": "pending",
     "cycle": 0,
+    "implementation_head": null,
+    "rollback_slice_id": null,
     "reports": [],
     "adjudication": null
   },

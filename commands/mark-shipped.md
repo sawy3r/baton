@@ -91,7 +91,26 @@ the oracle.)
    `/merge-release $1` has not run."
 2. Enumerate every slice folder under `docs/release/$1/` (a subdirectory
    containing a `status.json`). For each, read `status.json` `state`.
-3. **Ship gate.** Every slice must be in a terminal state:
+3. **Authoritative maintainability gate.** Validate every current status against
+   `slice-status-v1` and validate every ledger-referenced full report against
+   `llm-check-report-v1`, including its pinned Git blob id. Locate the release integration merge in
+   `<integration>` history, walk its embedded release-assembly first-parent integrations, and for
+   each slice identify the originating track integration/second-parent commit from its board-declared
+   `track` id. Apply the complete canonical committed-history check to that durable track history:
+   immutable start, append-only reports, non-decreasing cycle, immutable adjudication, blob identity,
+   legal FSM/state coherence, terminal re-slice rollback, and canonical integration provenance.
+   Missing cleaned-up branch refs are not an excuse because the merge parents remain in release
+   ancestry. Compare the integration-branch current status to that validated integrated status;
+   before this command only existing idempotent `shipped` transition fields may differ. For each
+   `verified` or already-`shipped`
+   slice, require maintainability `passed` and require the newest ledger entry to be a Verifier
+   `authoritative` PASS whose cycle equals the current cycle and whose `review_scope_head` equals
+   `implementation_head`. Apply the canonical report FSM and reject any entries after that
+   authoritative PASS. For each deferred `re_slice_required` slice, require the rollback id and the
+   verified tree-equality proof already mandated by `/merge-track`. BLOCK on any missing,
+   malformed, Implementer-only, or incoherent lifecycle; displayed overall state alone is never
+   shipping authority.
+4. **Ship gate.** Every slice must be in a terminal state:
    - `verified` — will be flipped to `shipped` by this command.
    - `shipped` — already shipped (idempotent re-run, or a hot-patch slice
      shipped earlier); left untouched.
@@ -101,10 +120,10 @@ the oracle.)
      slices are not verified: `<list>`. A release must be fully merged and
      verified before it ships. Finish `/verify-slice` / `/merge-track` /
      `/merge-release` first."
-4. If **no** slice is in `verified` state (all already `shipped` / `deferred` /
+5. If **no** slice is in `verified` state (all already `shipped` / `deferred` /
    `superseded`), report "Release `$1` has no `verified` slices to ship —
    nothing to do." and exit cleanly. This is the idempotent no-op.
-5. Build `<to-ship>`: the list of slices currently `verified`. This is exactly
+6. Build `<to-ship>`: the list of slices currently `verified`. This is exactly
    the set this command transitions.
 
 ## Step 2 — Confirm the deploy and capture the deploy reference

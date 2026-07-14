@@ -61,11 +61,19 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
 
 - Drive the revision conversation — what new scope, what re-scope, what to drop — using `AskUserQuestion` brainstorm patterns for every decision, exactly as `/plan-release` does.
 - Write `spec.json` + `status.json` for each new slice (Phase 4), setting its `track`.
-- Place new slices into tracks: a **new track**, or **appended to the tail** of an existing track that is not `merged` and whose trailing slices have not started. **Never** insert a slice before `in_progress` / `verified` / `merged` work in a track.
-- When a ratified re-slice resolves `status.json` `maintainability.state: re_slice_required`, reset
-  `maintainability` to the current status template's `pending` cycle-0 record. Preserve the prior
-  reports and adjudication in `journal.md` before resetting; there is no `resume_in_scope` transition
-  from cycle 1.
+- Place new slices into tracks: a **new track**, or **appended to the tail** of an existing track that is not `merged` and whose trailing slices have not started. The sole insertion exception is the mandatory maintainability rollback described below: insert it immediately after its deferred failed slice and before the not-started tail. **Never** otherwise insert a slice before `in_progress` / `verified` / `merged` work in a track.
+- When a ratified re-slice resolves `status.json` `maintainability.state: re_slice_required`, retain
+  that terminal lifecycle and its report ledger on the original slice id. Insert a mandatory new
+  rollback slice immediately after it and before any not-started tail, set
+  `maintainability.rollback_slice_id` on the original, and mark the original `deferred` with a
+  Rule-2-complete replacement record. The rollback spec must restore the complete authored
+  semantic envelope from the original's immutable `start_commit` through the rollback's own pinned
+  implementation head to the exact original mode/object ids, including any post-report production
+  commits, emit that tree-equality proof, and reach `verified`; it may not be deferred.
+  Functional replacement slices with fresh pending cycle-0 records follow the rollback and cannot
+  start before it verifies. Record all replacement ids in the original journal/deferral trail.
+  Resetting the same slice id or allowing failed bytes to become a replacement baseline is
+  forbidden.
 - Re-validate the **touchpoint matrix** for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it — it cannot run in parallel.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 

@@ -22,6 +22,10 @@
     },
     "slice_id": { "type": "string", "minLength": 1 },
     "release": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "enum": ["implementer", "verifier"] },
+    "phase": { "type": "string", "enum": ["preflight", "closure", "authoritative"] },
+    "cycle": { "type": "integer", "minimum": 0, "maximum": 1 },
+    "invocation_id": { "type": "string", "minLength": 1 },
     "verdict": {
       "description": "DERIVED from the findings, never independently asserted. FAIL if and only if at least one finding has blocking: true. An engine that disagrees with the model's stated verdict must fail closed.",
       "type": "string",
@@ -91,8 +95,30 @@
         "required": ["check"]
       },
       "then": {
-        "required": ["input_fingerprint", "review_scope"]
+        "required": ["slice_id", "release", "role", "phase", "cycle", "invocation_id", "input_fingerprint", "review_scope"]
       }
+    },
+    {
+      "title": "Maintainability Implementer reports use readiness phases.",
+      "if": {
+        "properties": {
+          "check": { "const": "maintainability-review" },
+          "role": { "const": "implementer" }
+        },
+        "required": ["check", "role"]
+      },
+      "then": { "properties": { "phase": { "enum": ["preflight", "closure"] } } }
+    },
+    {
+      "title": "Maintainability Verifier reports are authoritative.",
+      "if": {
+        "properties": {
+          "check": { "const": "maintainability-review" },
+          "role": { "const": "verifier" }
+        },
+        "required": ["check", "role"]
+      },
+      "then": { "properties": { "phase": { "const": "authoritative" } } }
     },
     {
       "title": "A FAIL verdict must be backed by at least one blocking finding.",

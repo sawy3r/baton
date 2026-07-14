@@ -85,12 +85,29 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
 Read `status.json` `maintainability` from the track worktree and apply the governing role prompt's
 resume gate before implementation:
 
+First validate the complete `status.json` against `slice-status-v1`. A schema-invalid lifecycle
+record is a hard stop, not permission to fall through. In particular, `pending` is executable only
+with `cycle: 0` and `implementation_head: null`; `pending` cycle 1 must never reach implementation.
+Then run the governing contract's committed-history integrity check over every first-parent version
+of this slice's `status.json`: `start_commit` must be immutable once non-null, `reports` must be
+append-only by exact prefix, cycle may not decrease, every ledger entry must match its referenced
+blob-pinned full report, no role/phase may repeat within a cycle, and any earlier
+`re_slice_required` state is terminal for this slice id. Once non-null, Coach adjudication is
+byte-immutable. A current initial-looking record does not override exhausted committed history.
+
+- valid cycle-0 `pending` with no reports: continue normally. With exactly one Implementer
+  preflight FAIL: resume only the already-open bounded remediation and closure; do not run another
+  preflight.
 - `needs_coach`: STOP for a Coach decision; do not start another review cycle.
 - `re_slice_required`: STOP and route to `/replan-release $2`.
-- `resume_approved`: validate the schema, cycle-1 ceiling, two source fingerprints, and
-  `resume_in_scope` permitted touchpoints before continuing. Require those paths to be a non-empty
-  subset of the ratified spec touchpoints and reject any edit outside them.
-- `pending` or an unstaled `passed`: continue normally.
+- `resume_approved`: validate the schema, cycle-1 ceiling, two unique source invocation ids and
+  their corresponding fingerprints (which may be equal), and `resume_in_scope` permitted
+  touchpoints before continuing. Require those paths to be a non-empty subset of the ratified spec
+  touchpoints and reject any edit outside them. No cycle-1 reports starts its preflight; exactly one
+  cycle-1 Implementer preflight FAIL resumes only remediation and closure. Reject any other
+  incomplete sequence and never rerun a recorded phase.
+- an unstaled `passed`: continue only for non-semantic proof/status handling; any semantic work
+  follows the role prompt's cycle-aware transition before editing.
 
 This guard is independent of `verification.result`; maintainability closure failure remains
 `state: in_progress` and must not be disguised as a Verifier BLOCKED verdict.
@@ -139,8 +156,10 @@ handoff.
    lifecycle, and the final semantic freeze. This command does not provide a second or later
    completion sequence.
 2. Confirm the final `proof.json` was emitted from live repo state and that the current semantic
-   review input still matches the fingerprint of the final maintainability PASS. If it does not,
-   remain `in_progress` and follow the role prompt's Coach-adjudication path.
+   review input still matches the fingerprint of the final maintainability PASS. Require
+   `maintainability.implementation_head` to equal that report's `review_scope.head`. If either
+   identity check fails, remain `in_progress` and follow the role prompt's cycle-aware path:
+   cycle 0 stops for Coach adjudication; cycle 1 requires re-slicing.
 3. Update `status.json` → `state: implemented`, fill in `actual_files`, `test_commands`,
    `reachability_artifacts`.
 4. Append to `journal.md`: state transition entry with decisions, trade-offs, any subagent
