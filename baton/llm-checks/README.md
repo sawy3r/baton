@@ -48,23 +48,24 @@ to be read out of an English paragraph is a check that will eventually be misrea
 **Fails closed.** A check that cannot run is a FAIL, not a pass. Absence of evidence
 is not evidence of absence (Rule 7).
 
-### Grading: severity and blocking are orthogonal
+### Grading: severity and disposition are orthogonal
 
-Every finding carries **two independent fields**, and keeping them apart is load-bearing:
+Every finding has an impact severity and an independent disposition. Keeping
+them apart is load-bearing; the schemas encode disposition in two forms:
 
-| Field | Question | Values |
+| Reports | Impact | Disposition |
 |---|---|---|
-| `severity` | **Impact** — how bad is this, if real? | `critical` `high` `medium` `low` `info` |
-| `blocking` | **Disposition** — does this finding fail the check? | `true` `false` |
+| `llm-check-report-v1` (five checks and legacy ambiguity output) | finding `severity`: `critical` `high` `medium` `low` `info` | finding `blocking`: `true` or `false` |
+| `spec-ambiguity-report-v1` | finding `severity`: the same five-value scale | membership in `blocking_findings` or `advisory_findings` |
 
-One severity scale across all six checks. Each check's prompt states which of its findings
-block; that is the only place the mapping lives.
+Each check's prompt states which findings block; that is the only place the
+impact-to-disposition decision lives.
 
-**The verdict is derived, not asserted.** `verdict` is `FAIL` **if and only if** at least
-one finding has `blocking: true`. The schema enforces this in *both* directions: a `FAIL`
-with no blocking finding is invalid, and — the important one — **a `PASS` carrying a
-blocking finding is invalid**. An engine whose own tally disagrees with the model's stated
-verdict must fail closed.
+**The verdict is derived, not asserted.** In `llm-check-report-v1`, `FAIL`
+means at least one finding has `blocking: true`. In
+`spec-ambiguity-report-v1`, `FAIL` means `blocking_findings` is non-empty.
+Each schema enforces both directions. An engine whose own tally disagrees with
+the model's stated verdict must fail closed.
 
 > **Why this is a contract, not a style preference.** These were originally two vocabularies
 > in one field: five checks graded `FAIL`/`WARN`/`INFO`, and `security-review` graded
@@ -111,16 +112,34 @@ For `spec-ambiguity`, the engine appends this section:
 {{referenced_artifacts}}
 ```
 
-The engine constructs `{{referenced_artifacts}}` deterministically from direct,
-explicit references in the reviewed spec. A `C-NN` reference resolves by loading
-the release's `contracts.json` and requiring one matching entry; a sibling slice
-id resolves to that slice's canonical `spec.json`; and an explicit
-workspace-relative file path resolves to that regular file. The engine emits each
-resolved UTF-8 artefact in bytewise repo-relative-path order as
+The engine constructs `{{referenced_artifacts}}` from the spec's typed
+`references` array and **only** that array. It never scans `rationale`,
+`in_scope`, `out_of_scope`, AC text, `touchpoints`, or `test_refs` for reference
+discovery. The workspace root is the physical canonical path returned by
+`git rev-parse --show-toplevel` when run from the repository containing the
+reviewed spec; failure to obtain it fails the check closed.
+
+Each reference object has exactly one of these schema-validated forms:
+
+- `{"kind":"contract","contract_id":"C-NN"}` loads
+  `docs/release/<spec.release>/contracts.json` and requires exactly one matching
+  entry.
+- `{"kind":"slice","slice_id":"<id>"}` loads
+  `docs/release/<spec.release>/<id>/spec.json`.
+- `{"kind":"file","path":"<path>"}` loads that workspace-root-relative
+  regular file.
+
+File paths use `/` separators; have no NUL, backslash, leading or trailing `/`,
+empty segment, `.` segment, or `..` segment; and must be unchanged by POSIX
+lexical clean. The engine joins the segments beneath the workspace root,
+resolves symlinks, and requires the physical target to remain beneath that root.
+All resolved output paths are rendered with `/` separators relative to the root.
+
+The engine emits each resolved UTF-8 artefact in bytewise repo-relative-path order as
 `--- ARTIFACT <repo-relative-path> ---`, one LF, its verbatim bytes, and one LF.
-The same path is emitted once even when referenced repeatedly. A failed direct
-reference is emitted in literal-reference order as
-`UNRESOLVED <literal-reference>: <missing|outside-workspace|symlink-escape|non-regular|external|unreadable|invalid-utf8|contract-id-missing|slice-id-missing>`.
+The same path is emitted once even when referenced repeatedly. Failed references
+are sorted by their compact JSON encoding and emitted as
+`UNRESOLVED <compact-reference-json>: <missing|outside-workspace|symlink-escape|non-regular|external|unreadable|invalid-utf8|contract-id-missing|slice-id-missing>`.
 It is never silently omitted and the engine performs no network fetch. Resolution
 is one level deep: references discovered only inside a supplied artefact are not
 recursively loaded. The check may judge only the spec and this supplied section.

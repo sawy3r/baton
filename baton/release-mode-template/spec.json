@@ -6,6 +6,7 @@
   "user_outcome": "One sentence: the single user-reachable outcome this slice delivers.",
   "rationale": "Optional human-authored prose explaining the slice. Never machine-parsed.",
   "touchpoints": ["path/to/file.ext"],
+  "references": [],
   "in_scope": ["Bullet-level statement of what this slice includes."],
   "out_of_scope": ["Adjacent work this slice deliberately does not do."],
   "covers_needs": ["N-01"],
