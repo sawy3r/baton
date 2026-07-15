@@ -76,6 +76,51 @@ The state error was corrected forward, but the protocol had made the unsafe path
 - Normal `/merge-track` builds the merge with `--no-commit`, validates the prospective canonical
   parent/tree provenance, then revalidates the committed merge; idempotent re-entry uses the same
   test.
+- After `/merge-track` forward-syncs sibling work, it reruns canonical post-pin scope freshness for
+  every verified slice. Recognized non-overlapping merge contributions reuse existing evidence
+  without a model call; authored semantic work, invalid synchronization provenance, or path overlap
+  retires the old slice id to `re_slice_required` and blocks integration until newly created
+  rollback and replacement slices receive fresh Verifier PASSes.
+- `/replan-release` seeds any started-slice status mutation from the exact owner-track commit rather
+  than the normally stale release-worktree copy. The maintainability ledger propagates as an opaque
+  object; rollback replanning may add only the ratified `rollback_slice_id` before propagation.
+- Replan propagation selects in-flight tracks from oracle-derived state, and its cherry-pick range
+  begins only after base synchronization, so the fallback cannot include production or merge
+  commits. Planner worktree authority explicitly permits only release work plus the named existing
+  track propagation step.
+- `/merge-track` reruns merged-base track and affected-package tests even when another command
+  already synchronized the track and the measured drift is zero.
+- Track integration composes sequential slice scopes by a latest-reviewed path frontier, so later
+  authoritatively passed slice commits do not falsely invalidate earlier slices while a sibling
+  merge contribution after the final applicable PASS still fails closed. Rule 7 grants the Track
+  Integrator only that deterministic `verified → failed_verification` invalidation; it cannot create
+  a PASS or rewrite shipped state.
+- Disjoint sibling-only merge contributions remain excluded and do not require a current-track
+  frontier. A post-sync rollback targets the invalidating merge's exact parent-2 release tree rather
+  than the older slice start tree, preserving sibling bytes; when later slices already exist, that
+  rollback appends after the started prefix instead of rewriting committed sequence order.
+- Replanning reads the release board only from the absolute release worktree, reconciles ownership
+  through the oracle, and seeds every started unmerged status before either mutation or propagation,
+  so base-sync status changes cannot become lifecycle authority.
+- Integrator lifecycle mutation is restricted to recognized synchronization overlap with an exact
+  parent-2 baseline. Unowned commits and custom/invalid merges block without fabricated rollback
+  metadata. Post-sync rollback covers only the invalidated slice's pinned candidate paths, leaving
+  later authoritative slice intervals intact.
+- Track, release, ship, Implementer, and Verifier handoff gates share one integration-ready
+  predicate: verified/shipped, a Rule-2-complete unstarted deferral, or a terminal deferred original
+  with its verified tree-equal rollback. `superseded` is not treated as a status.
+- Replan's cherry-pick fallback uses executable shell assignment and expansion for the post-base-sync
+  `$PLANNER_START_SHA`, and standalone role prompts derive worktree identity rather than reading the
+  forbidden `board.json` worktree field.
+- Post-sync invalidation records the former authoritative pin as `invalidated_review_head` before
+  clearing the active `implementation_head`; rollback derives its candidate set from that immutable
+  recorded head. The three sync-recovery identities are schema-coupled.
+- Automatic post-sync rollback additionally requires the invalidated candidate set to be disjoint
+  from every later authoritative slice. A later-slice path overlap blocks without lifecycle mutation
+  and requires track reconstruction, avoiding rollback that would erase still-verified work.
+- Implementer predecessor detail comes from the oracle-identified owner ref via `git show`, not a
+  stale launch-directory status, and autonomous merge confirmation keys off the complete Step-1.6
+  integration-ready gate rather than the oracle's coarse terminal signal.
 
 ## Protocol and engine boundary
 
@@ -104,3 +149,6 @@ The state error was corrected forward, but the protocol had made the unsafe path
 - A temporary Git history fixture confirms first-parent slice scope, rejects an integrated track tip
   as a synchronization parent, accepts the release first-parent, and compares merge-result blobs to
   that parent.
+- Protocol inspection confirms post-sync merge-track gating now invokes the same canonical
+  post-pin overlap/provenance rules, and rollback replanning explicitly preserves the exact
+  owner-track maintainability object across release-worktree propagation.

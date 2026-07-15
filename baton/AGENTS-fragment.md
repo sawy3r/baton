@@ -102,7 +102,7 @@ No slice may transition to `verified` state without a PASS verdict from a **fres
 
 **Fail closed.** Absence of evidence is FAIL, not optimistic PASS. The verifier does not propose redesigns, does not edit production code, and does not consult the implementer for clarification.
 
-**Slice state machine:** `planned → in_progress → implemented → [fresh verifier] → verified | failed_verification`. The `implemented` checkpoint exists specifically so no agent can shortcut directly to `verified`.
+**Slice state machine:** `planned → in_progress → implemented → [fresh verifier] → verified | failed_verification`. The `implemented` checkpoint exists specifically so no agent can shortcut directly to `verified`. A Track Integrator has one fail-closed exception: a recognized synchronization merge that contributes an intersecting path after its latest reviewed frontier may invalidate `verified → failed_verification` only when that slice's complete candidate set is disjoint from every later authoritative slice, preserving the ledger and exact parent-2 baseline for rollback-backed re-slicing. It never creates `verified`, appends a Verifier report, rewrites `shipped`, or fabricates rollback metadata for unowned/custom/overlapping-later history.
 
 **Cheap-cost loop:** implementer writes the proof bundle, runs the proof-bundle verification gate (`sworn verify`) for deterministic first-pass rejection, then a fresh session with `role-prompts/verifier.md` returns the verdict. One extra session per slice. On Max-plan tooling this is effectively free; on API usage it is still cheaper than the rework cost of an overclaimed slice.
 

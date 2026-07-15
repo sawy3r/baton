@@ -1,5 +1,5 @@
 ---
-description: Merge a completed track's track/<release>/<track-id> branch into the release assembly branch release-wt/<release>. Hard-gates on every slice in the track being verified, then re-runs the track's tests AND the affected-package regression suite on the merged base. Does NOT push or delete the branch/worktree. Usage: /merge-track <track-id> [<release-name>]
+description: Merge a completed track's track/<release>/<track-id> branch into the release assembly branch release-wt/<release>. Hard-gates on every slice satisfying track-mode's canonical integration-ready predicate, then re-runs the track's tests AND the affected-package regression suite on the merged base. Does NOT push or delete the branch/worktree. Usage: /merge-track <track-id> [<release-name>]
 argument-hint: <track-id> [<release-name>] (e.g. T1-identity-account 2026-05-19-uat-bug-fix)
 ---
 
@@ -67,8 +67,22 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    report-identity failure, or tree mismatch. The rollback comparison set is the union of every
    slice-authored non-record path from the failed slice's immutable `start_commit` through the
    rollback slice's pinned implementation head, using the canonical first-parent non-merge and
-   merge-overlap rules. Compare that complete envelope to the original start tree; do not stop at
-   the failed report head. Thus any post-report production commit is also restored or blocks.
+   merge-overlap rules. For an ordinary maintainability failure, compare that complete envelope to
+   the original start tree; do not stop at the failed report head. For a deterministic Step-2.6
+   post-sync invalidation, instead require the recorded invalidating merge to be a recognized
+   `release-wt` synchronization merge. Require `invalidated_review_head` to equal the preserved
+   newest authoritative PASS `review_scope_head`; derive the affected slice's complete candidate set
+   from `start_commit..invalidated_review_head`, never the deliberately cleared
+   `implementation_head`, and compare it to that merge's exact parent-2 tree. Later authoritative
+   slice intervals remain separately owned even when rollback was appended after them; the
+   recoverability check in Step 2.6 proves they share no envelope path and are not swept into it.
+   That parent is the synchronized release baseline: restoring to it removes the invalidated track
+   bytes without deleting valid sibling-track bytes on a documented shared path. Any missing or
+   mismatched recorded merge/baseline fails closed. Thus any post-report production commit is also
+   restored to the correct durable baseline or blocks.
+   For every other `deferred` slice, require an unstarted Rule-2 deferral: `start_commit: null`, the
+   exact empty pending cycle-0 maintainability template, and at least one schema-valid
+   `open_deferrals` entry. Any authored or lifecycle-bearing ordinary deferral BLOCKs.
 4. **Idempotency gate — already-merged is a validated no-op, never a re-merge.** The track is already
    integrated if EITHER `<state>` is `merged` OR
    `git -C <release-worktree-path> merge-base --is-ancestor track/$2/$1 release-wt/$2` succeeds. In
@@ -79,7 +93,7 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    `Track \`$1\` already merged into \`release-wt/$2\` — no-op (idempotent re-dispatch).` and exit
    cleanly. A spurious retry adds no commit, but idempotency never bypasses safety validation.
 5. If `<blocked_by>` is non-empty, BLOCK: "Track `$1` depends on `<blocked_by>` — not yet merged to `release-wt`. Merge those tracks first."
-6. **Verification gate.** `<ready_to_merge>` is the oracle's bundled gate: true only when every slice in the track is terminal (`verified` / `deferred` / `shipped`), the track is not already merged, and `<blocked_by>` is empty. If `<ready_to_merge>` is false after Steps 1.2-1.5 pass, the cause is unverified slices: list every slice in `<slices>` whose `.state` (from `.releases["$2"].slices[]`) is not `verified` / `deferred` / `shipped`, and BLOCK: "Cannot merge track `$1` — not verified: `<list>`. Each must complete /verify-slice with PASS first." When `<ready_to_merge>` is true, proceed.
+6. **Verification gate.** `<ready_to_merge>` is only the oracle's coarse terminal-state gate; it is necessary but not sufficient because a displayed `deferred` state does not prove either legal deferral form. After Steps 1.2-1.5, independently require every slice to satisfy track-mode's canonical integration-ready predicate. If either gate is false, list each non-ready slice and BLOCK: "Cannot merge track `$1` — not integration-ready: `<list>`. Complete verification, the Rule-2 unstarted deferral, or the mandatory verified rollback first." When both are true, proceed.
 
 ## Step 2 — Drift gate (self-healing)
 
@@ -87,7 +101,7 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
 
 1. **Locate the track worktree.** `<worktree_path>` (= `<track-worktree-path>`) is **conventional** — `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-$1` (the oracle's `.worktreePath` is derived the same way; use the convention if null or disagreeing — invariant 5). Confirm via `git worktree list` that it exists on branch `track/$2/$1`; if absent, BLOCK: "Track `$1` has no worktree on disk — nothing has been implemented (or recreate it with `git worktree add <track-worktree-path> track/$2/$1`)." Confirm its working tree is clean (`git -C <track-worktree-path> status --short` empty); if dirty, BLOCK — never forward-merge into a dirty worktree.
 
-2. **Measure drift.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2`. If `0`, the track already carries `release-wt`'s tip — proceed to Step 3.
+2. **Measure drift.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2`. If `0`, the track already carries `release-wt`'s tip — skip merge steps 3-4 and proceed to Step 2.5. The merged-base test rerun and canonical scope-freshness gate are mandatory even when another command already performed the synchronization.
 
 3. **Forward-merge `release-wt/$2` into the track worktree.** Drift is non-zero. List the driving commits first for the audit trail (`git -C <release_worktree_path> log --oneline track/$2/$1..release-wt/$2`), then:
 
@@ -115,13 +129,59 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
 
    The per-slice verifications each ran against an *older* `release-wt`; this is the first run with the merged siblings underneath. If **either layer** fails (any command non-zero, or `sworn regress` exits non-zero), BLOCK with the failing command and its output — the forward-merge surfaced a real integration regression. The forward-merge commit stays on the track branch; fix forward, then re-run `/merge-track $1 $2`.
 
-6. **Re-confirm and re-gate.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2` must now be `0`. The synchronization merge changed the track history, so re-run Step 1's lifecycle-history/FSM and rollback gates against the new track tip, then refresh the oracle and re-check dependency/readiness state. BLOCK on any new regression; only a fully re-gated track proceeds to Step 3.
+6. **Re-confirm and re-gate, including canonical scope freshness.**
+   `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2` must now be `0`.
+   Whether this command created the synchronization merge or found it already present, re-run Step
+   1's lifecycle-history/FSM and rollback gates against the current track tip. Then run the
+   canonical **track-integration freshness composition** from `llm-checks/README.md` across the
+   track's ordered `verified` and `shipped` slices. Reconstruct every slice's first-parent non-merge
+   candidate paths and authoritative pinned head. Walk the track first-parent history in order:
+   commits inside a later verified slice's `start_commit..implementation_head` interval are covered
+   by that later slice and advance the reviewed frontier for the paths it authored; they do not stale every
+   earlier slice merely because the track is sequential. Non-record non-merge commits outside a
+   verified slice interval are unowned and fail closed. Validate every synchronization merge with
+   exact parent-2 and release provenance. Ignore disjoint sibling-only contribution paths. For each
+   contribution that intersects a current-track candidate path, compare the merge position with that
+   path's latest authoritative reviewed frontier. A contribution after the frontier is stale; one
+   followed by a later authoritative slice that authors the path is covered by that later fresh
+   verification. This composition is deterministic and makes no new model call.
+
+   An unowned semantic commit, unrecognized/custom merge, or invalid parent-2 provenance is history
+   corruption with no trustworthy release baseline. BLOCK without mutating lifecycle state and
+   require human repair/reconstruction of the track; never invent rollback metadata for it.
+
+   A contribution from a **recognized** synchronization merge after an intersecting path's latest
+   reviewed frontier is recoverable only when the affected slice's complete candidate set is
+   disjoint from every later authoritative slice candidate set. If a later slice re-authored any of
+   those paths, BLOCK without lifecycle mutation and require human track reconstruction; rollback
+   could not both restore the release baseline and preserve the later slice's verified bytes.
+
+   For the disjoint recoverable case, do not integrate on the old PASS and do not append a second
+   authoritative report to its completed cycle. Under the narrow Track
+   Integrator invalidation transition defined by Rule 7, commit the
+   invalidation on the track branch: preserve the report ledger and any Coach adjudication, clear
+   `maintainability.implementation_head`, set `maintainability.state: re_slice_required`, set the
+   affected overall slice `state: failed_verification`, set `verification.result: fail`, and record
+   the concrete stale-scope evidence in `verification.violations` and `journal.md`, including the
+   former pin as `invalidated_review_head`, `invalidating_sync_merge`, and its exact parent-2
+   `rollback_baseline_commit`. Require `invalidated_review_head` to equal the newest authoritative
+   PASS `review_scope_head` before clearing `implementation_head`. A `shipped` slice is
+   human-terminal and may not be rewritten by this role; BLOCK and escalate it instead. Commit
+   this invalidation on the local track ref; this command does not push. Then BLOCK and route to
+   `/replan-release $2`. That
+   planner must create the mandatory rollback and replacement slice ids; each new slice must reach
+   `implemented` and receive a fresh-context `/verify-slice` PASS before `/merge-track` may resume.
+   This transition spends no extra maintainability run on an inseparable old scope and cannot be
+   bypassed by re-dispatching this command.
+
+   Finally refresh the oracle and re-check dependency/readiness state. BLOCK on any new regression;
+   only a fully re-gated track proceeds to Step 3.
 
 ## Step 3 — Confirm scope
 
 **Autonomous mode — if `BATON_AUTO_CONFIRM` is set in the environment** (the autonomous loop sets it):
-do NOT call `AskUserQuestion`. The deterministic verification gate from Step 1.4 (`<ready_to_merge>` —
-true only when every slice in the track is terminal/verified, the track is not already merged, and
+do NOT call `AskUserQuestion`. The deterministic verification gate from Step 1.6 (`<ready_to_merge>` plus the canonical integration-ready check —
+true only after every slice in the track passes the canonical integration-ready gate, the track is not already merged, and
 `<blocked_by>` is empty) IS the authorization; asking a human would be redundant and, with no human
 present, stalls the loop. Emit one line — `auto-confirm (BATON_AUTO_CONFIRM): merge track/$2/$1 into release-wt/$2 — <N> commits, gate green` (cite the Step 2 forward-merge sync SHA if one was performed) — and proceed directly to Step 4.
 

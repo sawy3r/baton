@@ -114,14 +114,16 @@ the oracle.)
    - `verified` — will be flipped to `shipped` by this command.
    - `shipped` — already shipped (idempotent re-run, or a hot-patch slice
      shipped earlier); left untouched.
-   - `deferred` / `superseded` — not part of the shipped code; left untouched.
+   - `deferred` — left untouched only when it is either an unstarted Rule-2-complete deferral with
+     null `start_commit` and the empty pending cycle-0 maintainability record, or terminal
+     `re_slice_required` with the verified tree-equal rollback required above.
    - Any other state (`planned`, `in_progress`, `implemented`,
      `failed_verification`) — BLOCK: "cannot mark release `$1` shipped — these
      slices are not verified: `<list>`. A release must be fully merged and
      verified before it ships. Finish `/verify-slice` / `/merge-track` /
      `/merge-release` first."
-5. If **no** slice is in `verified` state (all already `shipped` / `deferred` /
-   `superseded`), report "Release `$1` has no `verified` slices to ship —
+   `superseded` is not a `slice-status-v1` state and BLOCKs.
+5. If **no** slice is in `verified` state (all already `shipped` or legal `deferred`), report "Release `$1` has no `verified` slices to ship —
    nothing to do." and exit cleanly. This is the idempotent no-op.
 6. Build `<to-ship>`: the list of slices currently `verified`. This is exactly
    the set this command transitions.
@@ -174,7 +176,7 @@ integration branch:
 
 Touch no other field. The `verification` block stays exactly as the verifier
 left it — `shipped` records the deploy, it does not erase the verification
-record. Leave `deferred` / `superseded` / already-`shipped` slices untouched.
+record. Leave legal `deferred` and already-`shipped` slices untouched.
 
 ## Step 4 — Update the release board
 

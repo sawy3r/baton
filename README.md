@@ -47,7 +47,7 @@ The double bar between implementer and verifier is the load-bearing piece: when 
 
 The arrows other than the double bar are read/write traffic through validated JSON records on disk (`spec.json`, `proof.json`, `status.json`). The `status.json` loop back to the planner is the state machine that tracks each slice's lifecycle (`planned` → `in_progress` → `implemented` → `verified` → `shipped`); `/replan-release` is the planner re-entry point that handles `BLOCKED` verdicts and any in-flight revision.
 
-The **integrator** role below the slice loop runs the merge pipeline on gates, not on time: `/merge-track` requires every slice in the track to be `verified`; `/merge-release` requires every track to be merged into `release-wt/<name>`; `/mark-shipped` is the after-deploy bookkeeping step that flips every `verified` slice to the terminal `shipped` state with the deployed commit as evidence. The integrator is the only role that doesn't need a fresh context — the work is mechanical (`git merge --no-ff` with the gate checks built into each command), the planner/implementer/verifier have already produced everything that matters, and the integrator's job is just to land it without breaking the gates. Same agent session can run several integrator commands in a row; one merge per shared integration branch at a time, but otherwise no Rule 7 constraint.
+The **integrator** role below the slice loop runs the merge pipeline on gates, not on time: `/merge-track` requires every slice in the track to satisfy track-mode's canonical integration-ready predicate (`verified` / `shipped`, a Rule-2-complete unstarted deferral, or a rollback-backed terminal deferral); `/merge-release` requires every track to be merged into `release-wt/<name>`; `/mark-shipped` is the after-deploy bookkeeping step that flips every `verified` slice to the terminal `shipped` state with the deployed commit as evidence. The integrator is the only role that doesn't need a fresh context — the work is mechanical (`git merge --no-ff` with the gate checks built into each command), the planner/implementer/verifier have already produced everything that matters, and the integrator's job is just to land it without breaking the gates. Same agent session can run several integrator commands in a row; one merge per shared integration branch at a time, but otherwise no Rule 7 constraint.
 
 **License:** [MIT](LICENSE) — permissive, attribution-only. Use it in any project, commercial or otherwise.
 
@@ -217,7 +217,7 @@ flowchart TD
     dreview["/design-review &lt;slice&gt;<br/><i>fresh window — captain (Rule 9)</i>"]:::cmd
     coach{{"Coach — the human-in-the-loop<br/>holds authority; acks pins / decides"}}:::branch
     subgraph integrator["integrator role (no Rule 7 constraint — mechanical)"]
-        mtrack["/merge-track &lt;track-id&gt;<br/><i>gate: every slice verified</i>"]:::cmd
+        mtrack["/merge-track &lt;track-id&gt;<br/><i>gate: every slice integration-ready</i>"]:::cmd
         mrelease["/merge-release &lt;name&gt;<br/><i>gate: every track merged</i>"]:::cmd
         shipped["/mark-shipped &lt;name&gt;<br/><i>after deploy — bookkeeping</i>"]:::cmd
     end
@@ -266,8 +266,8 @@ For each release:
 4. **Replan in flight, when needed** — `/replan-release <name>` is the planner re-entry point for any in-flight revision: adding unplanned scope, dropping a not-started slice, re-grouping tracks, or clearing a BLOCKED verdict. It reconciles board state from `release-wt/<name>` and every `track/<name>/*` branch (not a stale `board.json` on the integration branch) before proposing changes, and propagates the revised plan back out to in-flight track branches so the verifier doesn't loop on a stale spec.
 The next three steps are the **integrator** role — the only role that doesn't need a fresh context. The work is mechanical (`git merge --no-ff` with the gate checks built into each command), the planner/implementer/verifier have already produced everything that matters, and the integrator's job is to land it without breaking the gates. Same agent session can run several integrator commands in a row; one merge per shared integration branch at a time, but otherwise no Rule 7 constraint.
 
-5. **Merge a track** (integrator) — when every slice in a track is `verified`, `/merge-track <track-id>` merges the track branch into the release assembly branch `release-wt/<name>` with `--no-ff`. Gate: every slice in the track verified; a planner-domain conflict (cross-track touchpoint collision) BLOCKs and routes to `/replan-release`.
-6. **Merge the release** (integrator) — when every track is merged into `release-wt/<name>`, `/merge-release <name>` merges the assembly branch into the version integration branch (e.g. `release/v0.5.0`) with `--no-ff`. Gate: every track merged (which implies every slice verified).
+5. **Merge a track** (integrator) — when every slice is integration-ready, `/merge-track <track-id>` merges the track branch into the release assembly branch `release-wt/<name>` with `--no-ff`. Ready means `verified` / `shipped`, a Rule-2-complete unstarted deferral, or a terminal deferred original whose mandatory rollback is verified and tree-equal; a planner-domain conflict BLOCKs and routes to `/replan-release`.
+6. **Merge the release** (integrator) — when every track is merged into `release-wt/<name>`, `/merge-release <name>` merges the assembly branch into the version integration branch (e.g. `release/v0.5.0`) with `--no-ff`. Gate: every track merged (which implies every slice passed the integration-ready predicate).
 7. **Mark it shipped** (integrator) — once the integration branch has actually deployed to production, `/mark-shipped <name>` flips every `verified` slice to the terminal `shipped` state, recording the deployed commit as evidence. Bookkeeping only — it does not deploy.
 
 Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`baton/track-mode.md`](baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
@@ -278,7 +278,7 @@ Tracks run in parallel — one implement/verify session line per track, each in 
 
 Baton specifies the board record (`board.json`) and the oracle's state-resolution rules; the reference implementation reads it. The open `sworn` binary reports release progress straight from git — no database, no state file — resolving every slice's authoritative `status.json` from the `track/*` and `release-wt/*` branches, so every view agrees by construction:
 
-- a terminal **go/no-go verdict** — exit `0` when every slice is in a terminal state (`verified` / `shipped` / `deferred`), `1` otherwise — scriptable as a ship gate.
+- a terminal **go/no-go verdict** — exit `0` when every slice is integration-ready (`verified` / `shipped`, a Rule-2-complete unstarted deferral, or a rollback-backed terminal deferral), `1` otherwise — scriptable as a ship gate.
 - `sworn top` — a live evidence surface for the active release.
 
 The board oracle used to ship as a Node script in this repo; per the open-core seam it now lives in `sworn`. The contract (`board-v1` + the state-resolution rules) stays here.

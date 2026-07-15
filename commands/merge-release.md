@@ -1,5 +1,5 @@
 ---
-description: Merge a completed release's release-wt/<name> branch back into the integration branch. Hard-gates on every slice being verified. Does NOT push, delete the branch, or remove the worktree — those stay explicit. Usage: /merge-release <release-name>
+description: Merge a completed release's release-wt/<name> branch back into the integration branch. Hard-gates on every track having passed track-mode's canonical integration-ready slice gate and merged to release-wt. Does NOT push, delete the branch, or remove the worktree — those stay explicit. Usage: /merge-release <release-name>
 argument-hint: <release-name> (e.g. 2026-05-20-billing-redesign)
 ---
 
@@ -34,14 +34,20 @@ Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktre
 
 Run the **board oracle** (reference implementation: `sworn board --json`) from the primary worktree. It resolves every slice's `status.json` and the `tracks` board straight from the `release-wt/$1` and `track/$1/*` **git refs** — the per-slice `state` transitions that `/verify-slice` and `/implement-slice` commit onto the track branches, which the integration-branch copies do not yet carry. This is exactly the "read from the worktree branch, not the stale primary checkout" rule, done mechanically — the most common false-BLOCK (reading stale integration-branch `status.json`) is structurally impossible. It also discovers slice folders that exist only on a track branch (e.g. an `S06 → S06a/b/c` split not yet on the integration branch). Do not read `status.json` or `board.json` by hand. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
 
-1. **Slice gate.** From `.releases["$1"].slices[]`, build a state table. Every slice must be in one of these terminal-or-acceptable states:
-   - `verified` — OK to merge
-   - `deferred` — explicitly excluded from this release; OK
-   - `superseded` — slice replaced by a re-spec; OK (folder retained for journal continuity)
-   - `shipped` — already merged + deployed via a prior pathway; OK (rare)
+1. **Slice gate.** From `.releases["$1"].slices[]`, build a state table and validate each complete
+   `status.json` from `release-wt/$1`. Every slice must satisfy track-mode's canonical
+   integration-ready predicate:
+   - `verified` / `shipped` — OK to merge.
+   - `deferred` with null `start_commit`, the empty pending cycle-0 maintainability template, and a
+     non-empty Rule-2-complete deferral — unstarted scope excluded from this release; OK.
+   - `deferred` with terminal `re_slice_required` — OK only when its recorded rollback is
+     `verified` / `shipped` and the originating `/merge-track` provenance contains the applicable
+     passing tree-equality gate.
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
 
-   If any slice is in a blocking state, return: `BLOCKED: cannot merge release '$1' — the following slices are not verified: <list>. Each must complete /verify-slice with PASS before /merge-release.` Do not proceed.
+   `superseded` is not a `slice-status-v1` state and never passes. If any slice is not ready, return:
+   `BLOCKED: cannot merge release '$1' — the following slices are not integration-ready: <list>.`
+   Do not proceed.
 2. **Track merge gate.** From `.releases["$1"].tracks[]`, every track must have `state == "merged"` — i.e. its `/merge-track` has run and its slices are already on `release-wt/$1`. A track whose slices are all `verified` but whose `state` is still `planned` / `in_progress` has **not** had its commits merged into `release-wt` and would be silently omitted from this release merge. If any track is not `merged`, BLOCK: `cannot merge release '$1' — these tracks are verified but not yet merged to release-wt: <list>. Run /merge-track <track-id> $1 for each before /merge-release.`
 3. **Assembly gate (Rule 10 assembly stage).** Read `docs/release/$1/assembly-proof.json` from the `release-wt/$1` ref (`git show release-wt/$1:docs/release/$1/assembly-proof.json`). Three outcomes:
    - **Present with a passing verdict** — the release is `assembled`; note it in the Step 2 scope summary.

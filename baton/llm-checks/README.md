@@ -135,16 +135,32 @@ For each allowed run, a conformant engine MUST:
    parent to its result, the result mode/object id must equal its second parent's exactly. This is
    the executable `/merge-track` shape only when that second parent equals the retained
    `track/<release>/<track-id>` ref for a track declared by `board.json` in the integration merge's
-   first-parent tree, and every slice assigned to that track is `verified`, `deferred`, or `shipped`
-   in the second-parent tree. A slice with `maintainability.state: re_slice_required` is terminal
-   for integration only when its overall state is `deferred`, its recorded rollback slice is
-   `verified` or `shipped`, and the rollback's pinned tree restores every original candidate path
-   to the original `start_commit`; any other displayed state or missing proof fails provenance
-   closed. Planner commits may
+   first-parent tree, and every slice assigned to that track satisfies track-mode's canonical
+   integration-ready predicate in the second-parent tree. In particular, an ordinary `deferred`
+   slice requires null `start_commit`, the empty pending cycle-0 maintainability record, and a
+   non-empty Rule-2-complete deferral. A slice with `maintainability.state: re_slice_required` is
+   terminal for integration only when its overall state is `deferred`, its recorded rollback slice
+   is `verified` or `shipped`, and the rollback's pinned tree restores the applicable canonical
+   baseline; any other displayed state or missing proof fails provenance closed. Planner commits may
    change records, while production bytes arrive only through such a gated two-parent track
    integration. A direct production commit on `release-wt`, an undeclared/deleted track ref, an
    unverified track parent, or a custom integration tree outside the record root makes
    synchronization unrecognized even when the later sync merge copies it exactly.
+   This post-pin rule governs one slice's authoritative run. At `/merge-track`, do not naively apply
+   `implementation_head..current HEAD` to every earlier slice in a sequential track: ordinary later
+   slices would appear as foreign authored commits and make every multi-slice track unmergeable.
+   Instead compose the canonical scopes in track order. Require each non-record non-merge commit to
+   fall inside exactly one later slice's `start_commit..implementation_head` interval whose current
+   lifecycle carries an authoritative PASS. That later scope advances the reviewed frontier for its
+   candidate paths. For each recognized synchronization merge, validate the same parent-2,
+   structural-provenance, and exact-tree rules above, then compare each contributed path with its
+   latest reviewed frontier for the **intersection** with current-track candidate paths. A disjoint
+   sibling-only contribution has no current-track frontier by design and remains excluded; it does
+   not fail integration. For an intersecting path, a merge contribution after the frontier
+   invalidates that path's old evidence, while a later authoritatively passed slice that starts after
+   the merge and authors the path becomes its fresh frontier. Unowned current-track semantic
+   commits, gaps, custom merges, or intersecting paths with no later frontier fail integration
+   closed. This track-level composition is deterministic report reuse, not another model invocation.
    The normative Git operations are:
    - `git rev-list --reverse --first-parent --no-merges <base>..<head>`;
    - `git rev-list --reverse --first-parent --merges <base>..<head>`; and
@@ -260,15 +276,28 @@ it stops. Re-slicing replaces the exhausted slice with one or more new slice ids
 template lifecycle records; the original slice retains `re_slice_required` and its append-only
 history. An overall slice state of `verified` or `shipped` additionally requires the newest ledger
 entry to be a Verifier `authoritative` PASS in the current cycle; an Implementer PASS alone can only
-support `implemented`. Before functional replacements, a mandatory rollback slice restores the
-entire authored semantic envelope to its exact original `start_commit` tree and reaches `verified`.
-Derive that envelope from every first-parent non-merge commit in the original `start_commit` through
-the rollback slice's pinned implementation head, excluding only physical release-record paths and
-recognized merge-only contributions; any authored/merge overlap fails closed. Generated files and
-dependency lockfiles are excluded from model review but not from rollback: if the failed slice
-authored them, they must return to the original tree too.
-At the rollback head, every envelope path's mode/object id must equal the original start tree,
-including absence. This includes unreviewed production commits made after the failed report.
+   support `implemented`. Before functional replacements, a mandatory rollback slice restores the
+   entire authored semantic envelope to its canonical rollback baseline and reaches `verified`.
+   Derive that envelope from every first-parent non-merge commit in the original `start_commit`
+   through the rollback slice's pinned implementation head, excluding physical release-record paths.
+   For an ordinary maintainability failure, recognized merge-only contributions remain excluded,
+   authored/merge overlap fails closed, and the baseline is the exact original `start_commit` tree.
+   For a deterministic Track Integrator post-sync invalidation, the recorded overlap is the reason
+   rollback exists rather than an error in rollback scope: require the recorded merge to satisfy the
+   recognized synchronization contract, require `invalidated_review_head` to equal the newest
+   preserved authoritative PASS `review_scope_head`, take the affected slice's complete candidate
+   set from `start_commit..invalidated_review_head` (including generated/lock paths it authored),
+   and use the merge's exact parent-2 `rollback_baseline_commit` tree. Require that complete
+   candidate set to be disjoint from every later authoritative slice candidate set; otherwise
+   automatic rollback is forbidden and track reconstruction is required. The active
+   `implementation_head` remains null in terminal `re_slice_required`; rollback never depends on it.
+   Later authoritative slice intervals are
+   separately owned and must not enter this rollback envelope merely because the rollback was
+   appended after them. No other overlap exception is legal.
+   Generated files and dependency lockfiles are excluded from model review but not from rollback: if
+   the failed slice authored them, they must return to the applicable baseline too.
+   At the rollback head, every envelope path's mode/object id must equal that baseline tree,
+   including absence. This includes unreviewed production commits made after the failed report.
 The original records that slice in `rollback_slice_id`; `/merge-track` rechecks its pinned tree.
 Resetting the same slice id to cycle 0 or deferring the rollback is forbidden.
 

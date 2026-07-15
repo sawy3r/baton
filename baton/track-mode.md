@@ -32,7 +32,7 @@ A track of one slice is normal and fine. A track is the unit of parallelism; a s
   ▲   /merge-release   gate: every track merged
   │
 release-wt/<release>                     the release assembly branch — ONE worktree
-  ▲   /merge-track     gate: every slice in the track verified
+  ▲   /merge-track     gate: every slice integration-ready
   │
   ├── track/<release>/T1-<name>          worktree A ┐
   ├── track/<release>/T2-<name>          worktree B ├─ run in parallel
@@ -64,8 +64,23 @@ Parallelism is safe **only** while all five hold. Every command enforces one or 
 
 A `deferred` slice whose maintainability lifecycle is `re_slice_required` is not sufficient evidence
 for integration by itself. Its mandatory `rollback_slice_id` must be verified and must prove the
-failed slice's authored paths were restored to their original base before replacement functionality
-was added. `/merge-track` enforces this exception to the ordinary terminal-state rule.
+failed slice's authored paths were restored before replacement functionality was added. For an
+ordinary maintainability failure, the target is the original `start_commit` tree. For a deterministic
+post-sync Track Integrator invalidation, the target is the invalidating recognized synchronization
+merge's exact parent-2 tree, so rollback removes the track's invalidated bytes without deleting
+already-integrated sibling bytes. This automatic path is legal only when the invalidated slice's
+complete candidate set is disjoint from every later authoritative slice; otherwise track
+reconstruction is required. If later disjoint slices were already started when integration invalidated
+an earlier slice, append the rollback after the started prefix and before its functional
+replacements; never rewrite committed board/first-parent order. `/merge-track` enforces this
+exception to the ordinary terminal-state rule.
+
+**Integration-ready, canonical:** a slice is ready for track/release integration only when it is
+`verified` / `shipped`; or it is an unstarted Rule-2-complete `deferred` slice with null
+`start_commit`, the empty pending cycle-0 maintainability record, and a non-empty valid deferral; or
+it is a `deferred` terminal `re_slice_required` original whose recorded rollback is `verified` /
+`shipped` and passes the applicable tree-equality gate. A displayed `deferred` value alone is never
+authority, and `superseded` is not a slice-status state.
 
 ## The touchpoint matrix — the planner's load-bearing artefact
 
@@ -98,8 +113,8 @@ Independent tracks are the common case; dependencies are the exception and must 
 2. **`/implement-slice <slice>`** — discovers the slice's track from `index.md`; materialises the release worktree (if first slice in the release) and the track worktree (if first slice in the track); implements one slice; terminal state `implemented`.
 3. **`/verify-slice <slice>`** — fresh context; discovers and operates inside the track worktree; adversarial verification; terminal state `verified` or `failed_verification`.
 4. Repeat 2-3 for each slice of the track, **in order**, in the **same track worktree**.
-5. **`/merge-track <track-id>`** — gate: every slice in the track is `verified`. Merges `track/<release>/<track-id>` → `release-wt/<release>` with `--no-ff`. Conflict ⇒ BLOCK (invariant 4).
-6. **`/merge-release`** — gate: every track is merged into `release-wt/<release>` (which implies every slice verified). Merges `release-wt/<release>` → version branch with `--no-ff`.
+5. **`/merge-track <track-id>`** — gate: every slice satisfies the canonical integration-ready predicate above. Merges `track/<release>/<track-id>` → `release-wt/<release>` with `--no-ff`. Conflict ⇒ BLOCK (invariant 4).
+6. **`/merge-release`** — gate: every track is merged into `release-wt/<release>` (which implies every slice is integration-ready). Merges `release-wt/<release>` → version branch with `--no-ff`.
 
 `/replan-release` revises a release that is already in flight — adding unplanned scope, re-scoping or dropping slices, re-grouping tracks. It reconciles true board state from both the integration branch and the track worktrees before proposing changes.
 

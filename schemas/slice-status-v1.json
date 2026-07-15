@@ -97,7 +97,7 @@
           "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
         },
         "rollback_slice_id": {
-          "description": "Planner-created rollback slice that restores a maintainability-failed slice's semantic paths to start_commit before functional replacements begin.",
+          "description": "Planner-created rollback slice. Ordinary maintainability failure restores the failed semantic paths to start_commit; deterministic post-sync invalidation restores the invalidated reviewed candidate paths to the recorded recognized synchronization parent-2 baseline before replacements begin.",
           "type": ["string", "null"],
           "minLength": 1
         },
@@ -413,11 +413,31 @@
           "items": {
             "type": "object",
             "additionalProperties": true,
+            "dependentRequired": {
+              "invalidating_sync_merge": ["rollback_baseline_commit", "invalidated_review_head"],
+              "rollback_baseline_commit": ["invalidating_sync_merge", "invalidated_review_head"],
+              "invalidated_review_head": ["invalidating_sync_merge", "rollback_baseline_commit"]
+            },
             "properties": {
               "gate": { "type": "string" },
               "description": { "type": "string" },
               "evidence": { "type": "string" },
-              "proposed_amendment": { "type": "string" }
+              "proposed_amendment": { "type": "string" },
+              "invalidating_sync_merge": {
+                "description": "Recognized release-wt synchronization merge that invalidated a previously verified path during track integration.",
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+              },
+              "rollback_baseline_commit": {
+                "description": "Exact parent-2 commit of invalidating_sync_merge whose tree a post-sync rollback must preserve.",
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+              },
+              "invalidated_review_head": {
+                "description": "Former implementation_head whose candidate paths were invalidated. Must equal the newest authoritative PASS review_scope_head and remains the rollback scope head after implementation_head is cleared.",
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+              }
             }
           }
         }
