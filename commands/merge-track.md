@@ -127,7 +127,12 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    authority. On `git -C <track-worktree-path> diff --name-only --diff-filter=U`:
 
    - **No conflicts** — the merge is staged but uncommitted because step 3 used `--no-commit`. Continue to the prospective-index check below.
-   - **Release `board.json`** — expected board reconciliation. Per-slice and per-track entries are disjoint and auto-merge; only the aggregate counts and the activity log collide. Resolve: keep both sides' entries, union the activity entries chronologically, recompute the aggregate counts, and re-render `index.md`. `git -C <track-worktree-path> add` both files.
+   - **Release `index.md` only** — discard both rendered versions and re-render
+     it from the unchanged pure-plan `board.json` plus the authoritative
+     statuses/ref-derived state after the merge. Stage only `index.md`.
+   - **Release `board.json`** — take the exact `release-wt/$2` version (the
+     planner authority being forward-merged), validate it against `board-v1`,
+     and stage it. Do not union the two objects or add lifecycle/activity data.
    - **A documented shared file** with a preflight `E` tuple — ignore the configured driver's staged or conflicted result. Materialise the exact committed bytes from `git cat-file blob <E-oid>` to a temporary file in the path's directory, set its executable bit from `<E-mode>`, and atomically rename it over `<path>`; do not pass it through checkout/smudge filters or hand-edit it. Then feed exactly `<E-mode> <E-oid>\t<path>\0` to `git -C <track-worktree-path> update-index -z --index-info`, clearing conflict stages and installing the canonical blob. If `E` is absent, malformed, or was not produced by the both-parents-changed rule, abort and BLOCK.
    - **Any other file** — `git -C <track-worktree-path> merge --abort` and BLOCK: "Forward-merge of `release-wt/$2` into track `$1` conflicted on undeclared production path `<files>`. The touchpoint plan was wrong. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 
@@ -246,7 +251,13 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 **Conflict handling — the touchpoint matrix is the contract.** By invariant 2 of track-mode.md, code and test files cannot conflict between disjoint tracks. Only release-record conflicts are resolvable; a production conflict, including on a documented shared path, BLOCKs. On `git diff --name-only --diff-filter=U`:
 
-- **Release `board.json`** — expected board reconciliation. Per-slice and per-track entries are disjoint and auto-merge; only the aggregate counts and the activity log collide. Resolve: keep both sides' entries, union the activity entries chronologically, recompute the aggregate counts, and re-render `index.md`. `git add` both files and continue.
+- **Release `index.md` only** — discard both rendered versions and re-render it
+  from the unchanged pure-plan `board.json` plus the authoritative
+  statuses/ref-derived state after the merge. Stage only `index.md` and
+  continue.
+- **Release `board.json`** — keep the exact pre-merge `release-wt/$2` version
+  (the planner authority and first parent), validate it against `board-v1`, and
+  stage it. Do not union plan variants or add lifecycle/activity data.
 - **A documented shared file** (one exact `board.json.shared_touchpoints` entry names every contributing track and region, and the matrix renders it `DOCUMENTED SHARED`) — the exception is valid only when Git composes the regions without a conflict. `git merge --abort` and BLOCK as a planner error; never create a hand-resolved production blob in the release integration merge.
 - **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on production path `<files>`. The touchpoint plan was wrong — only release-record conflicts are resolvable, and even a documented shared path must compose without conflict. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 

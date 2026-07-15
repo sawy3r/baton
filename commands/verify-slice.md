@@ -52,8 +52,8 @@ Release work runs under **track mode** (`$HOME/.claude/baton/track-mode.md`). Ea
 5. **Drift gate — forward-merge `release-wt/$2` into the track worktree (self-healing).** Before any artefact is read, sync the track to the release assembly branch — the same self-healing merge `/implement-slice` Step 0 and `/merge-track` Step 0 already run. A `/replan-release` re-scope commits the corrected `spec.json` to `release-wt/$2`; it reaches the track branch *only* via this merge. A verifier that reads `spec.json` **without** this step reads a stale spec, re-derives the same BLOCKED, and the slice re-enters an unbreakable `/verify-slice` ↔ `/replan-release` loop. `/verify-slice` was historically the lone track-worktree command that read track artefacts without first forward-merging `release-wt` — this step removes that asymmetry.
    - Confirm the track worktree is clean: `git -C <worktree_path> status --short` must be empty. If dirty, return `BLOCKED: track worktree at <worktree_path> has uncommitted changes — cannot forward-merge release-wt safely.` (The implementer leaves a clean tree at `state: implemented`; a dirty tree is itself a fault.)
    - Measure drift: `git -C <worktree_path> rev-list --count <track-branch>..release-wt/$2`, where `<track-branch>` is `track/$2/<track-id>`. If `0`, the track already carries `release-wt`'s tip — skip to step 6.
-   - Otherwise forward-merge: `git -C <worktree_path> merge release-wt/$2 --no-edit`. By track-mode invariant 2 the in-flight `release-wt` delta is touchpoint-disjoint from this track, so the merge is **conflict-free on code** — a docs-only merge (`spec.json`, `board.json`) is expected and proceeds silently.
-   - On `git -C <worktree_path> diff --name-only --diff-filter=U` reporting a **code or test** conflict: `git -C <worktree_path> merge --abort` and return `BLOCKED: forward-merge of release-wt/$2 into <track-branch> conflicted on <files> — the touchpoint matrix was wrong (track-mode invariant 4). Route to /replan-release $2 to re-group.` A docs-only conflict (`board.json`) you resolve in favour of the union of both sides and continue.
+   - Otherwise forward-merge: `git -C <worktree_path> merge release-wt/$2 --no-edit`. By track-mode invariant 2 the in-flight `release-wt` delta is touchpoint-disjoint from this track, so the merge is **conflict-free on code** — a docs-only merge (`spec.json`, `board.json`, `index.md`) may require mechanical reconciliation.
+   - On `git -C <worktree_path> diff --name-only --diff-filter=U` reporting a **code or test** conflict: `git -C <worktree_path> merge --abort` and return `BLOCKED: forward-merge of release-wt/$2 into <track-branch> conflicted on <files> — the touchpoint matrix was wrong (track-mode invariant 4). Route to /replan-release $2 to re-group.` For a `board.json` conflict, take the exact `release-wt/$2` version and validate it against `board-v1`; never union it or add lifecycle fields. Discard and re-render a conflicted `index.md` from that board plus authoritative statuses/ref-derived state.
    - Push the synced track branch so the merge is durable: `git -C <worktree_path> push origin HEAD:refs/heads/<track-branch>` (`origin/<track-branch>` is the track's durable home; a push failure is environmental, not a verdict input).
 6. **Idempotent BLOCKED short-circuit.** A fresh verifier (Rule 7) otherwise re-derives an identical BLOCKED every session. After the drift gate above, read `<worktree_path>/docs/release/$2/$1/status.json`. If **all three** of the following hold, do not re-run the verification gates — re-emit the recorded verdict verbatim and STOP:
    - `verification.result == "blocked"`.
@@ -106,7 +106,7 @@ Walk these in order. Detailed criteria for each are in `role-prompts/verifier.md
 7. **Maintainability is authoritative and final** — only after every preceding gate passes, invoke
    the engine's `maintainability-review` operation exactly as Gate 8 in the governing Verifier role
    prompt specifies. From that invocation onward the Verifier is read-only except for excluded
-   verdict/journal/status/board rendering. A FAIL stops without repair or another model call.
+   verdict/journal/status/index rendering. A FAIL stops without repair or another model call.
 
 ## At completion
 
@@ -117,7 +117,11 @@ All artefact edits below land **inside the track worktree** (`<wt>/docs/release/
    - On PASS: `state: verified`, fill `verification.result: pass`, `verifier_was_fresh_context: true`, `verifier_verdict_at: <ISO timestamp>`.
    - On FAIL: `state: failed_verification`, fill `verification.violations` with the numbered list, `verification.result: fail`. If Gate 8 failed, clear `implementation_head`; every cycle-0 failure becomes `needs_coach` (a boundary-expanding disposition permits only Coach `re_slice`), while every cycle-1 failure becomes `re_slice_required`. Never reclassify a Gate-8 maintainability FAIL as BLOCKED.
    - On BLOCKED: `state` unchanged, fill `verification.result: blocked` with reason.
-3. Update the release board record `<wt>/docs/release/$2/board.json` — the slice's state + Recent activity entry + aggregate counts — then re-render `index.md` from it. Validate the result against `board-v1` before committing.
+3. Leave `<wt>/docs/release/$2/board.json` byte-identical: it is the validated,
+   state-free release plan. Re-render `index.md` from that board plus the
+   authoritative `status.json` records in the track worktree so the slice and
+   aggregate views reflect the verdict. Validate the unchanged board against
+   `board-v1` before committing.
 4. Commit on the worktree branch: `git -C <wt> commit -m "chore(release/$2/$1): verifier verdict — <PASS|FAIL|BLOCKED>"` with the verdict body in the commit message body.
 
 ## Output to human at session end

@@ -27,7 +27,7 @@ Examples of well-formed release names:
 1. Confirm the release name with the human in one sentence: "Planning release **$1**. Is that right?"
 2. Check whether `docs/release/$1/` already exists.
    - If it does not exist, create the directory. Copy `$HOME/.claude/baton/release-mode-template/intake.md` to `docs/release/$1/intake.md` and `$HOME/.claude/baton/release-mode-template/board.json` to `docs/release/$1/board.json` (the human-readable `index.md` is rendered from `board.json`, never hand-authored). Create `docs/release/$1/screenshots/` (empty directory; touch a `.gitkeep` so git tracks it).
-   - If it does exist, read `intake.md` and `board.json` in full before responding. The release is mid-planning; you are continuing, not starting. State the current slice count and any slices not yet at `verified` state in your first message back.
+   - If it does exist, read `intake.md` and `board.json` in full before responding. The release is mid-planning; you are continuing, not starting. State the current slice count from the board and summarise lifecycle from the slices' `status.json` records (or the board oracle for an in-flight release); never infer lifecycle state from `board.json`.
 3. If this tool maintains per-project persistent memory (Claude Code stores it under `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md`, where `<encoded-cwd>` is the current repo's absolute path with `/` replaced by `-`), read the most recent 3 entries and consult any that look relevant to the release name (e.g. if the release name mentions "portfolio" or "workspace", load those entries). If no such memory store exists, skip this step.
 4. Begin the discovery conversation.
 

@@ -169,7 +169,10 @@ The full loop, per release, is:
 
 3. **Verifier session (per slice, fresh context)**. Human opens **another** fresh session — new terminal, no inherited transcript — and pastes `role-prompts/verifier.md`. The verifier reads only `spec.json`, `proof.json`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`. Verdict goes to `journal.md`.
 
-4. **Human approval**. Verified slices wait for explicit human approval before being marked `shipped`. The release board record (`board.json`, rendered to `index.md`) is the single source of truth for state.
+4. **Deploy attestation**. Verified slices remain `verified` until the integration
+branch is deployed and `/mark-shipped` records the deployed commit. Each
+slice's `status.json` is the source of truth for lifecycle state; `board.json`
+is the state-free release plan, and `index.md` is a rendered view of both.
 
 ### Step E — Set per-project memory expectations
 

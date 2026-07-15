@@ -293,10 +293,11 @@ The planner does not re-engage during implementation. If the implementer or veri
 
 ### State reconciliation comes first — check both places
 
-A release in flight has work in two places, and `board.json` may be stale about both:
+A release in flight has work in two places. `board.json` remains the state-free
+plan; runtime truth comes from the status records and refs in both places:
 
 - **On the integration branch / `release-wt/<release-name>`** — slices whose track has been merged via `/merge-track`, or that were merged individually.
-- **On the track branches / track worktrees** — slices that are `in_progress` or `verified` but whose track has not merged yet. Their true `status.json` state lives on the **track branch**, not the integration branch. The integration-branch `board.json` under-reports them — the classic failure is a slice verified on its track branch still showing `planned` on the board.
+- **On the track branches / track worktrees** — slices that are `in_progress` or `verified` but whose track has not merged yet. Their true `status.json` state lives on the **track branch**, not the integration branch. A stale integration-branch `status.json` copy may still say `planned`; `board.json` says neither because lifecycle fields are forbidden there.
 
 Before proposing any revision, rebuild the true state table:
 
@@ -309,7 +310,12 @@ Before proposing any revision, rebuild the true state table:
    worktree paths against `git worktree list`; disk existence is the final worktree check.
 3. **Spec drift.** For each oracle-derived in-flight track, diff every slice's `spec.json` between `release-wt/<release-name>` and the track branch (`git diff release-wt/<release-name> <track-branch> -- docs/release/<release-name>/<slice>/spec.json`). A non-empty diff means an earlier re-scope landed on `release-wt` but never reached the track, so the verifier has been reading a stale spec. Name the slice, track, and diff size — this is the signature of the `/verify-slice` ↔ `/replan-release` loop, where each `/replan-release` re-scopes the spec, each `/verify-slice` reads the stale track copy and re-BLOCKs. `/verify-slice` Step 0 now forward-merges `release-wt` and self-heals this; report it regardless so the human sees why the slice was stuck.
 4. Cross-check `git log` on the integration branch and `release-wt/<release-name>` for merged work.
-5. Surface every drift between `board.json` and oracle/branch reality to the human, including every spec-drift slice from step 3. Re-planning proceeds from oracle-derived branch reality, and the same pass corrects `board.json` (re-rendering `index.md`).
+5. Surface every spec/status/ref discrepancy to the human, including every
+   spec-drift slice from step 3 and every ghost or pending plan record. Do not
+   describe lifecycle as `board.json` drift. Re-planning proceeds from
+   oracle-derived branch reality; change `board.json` only when the ratified
+   plan changes, then re-render `index.md` from the plan plus authoritative
+   statuses/ref-derived state.
 6. Before mutating or propagating any started slice's status on an unmerged track, copy the exact
    `status.json` from the oracle-identified owner track ref and validate it against `slice-status-v1`
    plus the canonical history/blob/FSM checks. The release-worktree or base-merge copy is normally
