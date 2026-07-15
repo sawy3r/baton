@@ -35,7 +35,7 @@ Read `$HOME/.claude/baton/role-prompts/implementer.md` and follow it as your gov
 
 ## Step 0 — Track worktree auto-discovery (no human handoff)
 
-Release work runs under **track mode** — read `$HOME/.claude/baton/track-mode.md`. Each track has its own worktree on branch `track/$2/<track-id>`, cut from the release assembly branch `release-wt/$2`. Slices in a track are implemented sequentially in that worktree; `/merge-track` lands the track branch on `release-wt/$2` once every slice in it is verified.
+Release work runs under **track mode** — read `$HOME/.claude/baton/track-mode.md`. Each track has its own worktree on branch `track/$2/<track-id>`, cut from the release assembly branch `release-wt/$2`. Slices in a track are implemented sequentially in that worktree; `/merge-track` lands the track branch on `release-wt/$2` once every slice is integration-ready under track-mode's rollback-backed deferred exception.
 
 **Launch-directory discipline — read this first.** This session is launched from whatever directory the human's terminal happens to be in — almost always the primary repo (`<REPO_ROOT>`), checked out on the integration branch. **That is not where this slice's work belongs.** Do not build, test, edit files, or run `git` writes in the launch directory. Step 0 discovers the correct **track worktree**; from that point on every Bash command is `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`) and every Read/Write/Edit uses an absolute path under `<worktree_path>`. If you ever run a mutating command without a `<worktree_path>` anchor, stop — you are in the wrong tree. You never ask the human to `cd`; discovery is silent and automatic.
 
@@ -45,10 +45,10 @@ Release work runs under **track mode** — read `$HOME/.claude/baton/track-mode.
 sworn board --json
 ```
 
-Run it from anywhere inside the repo — it resolves the repo from cwd and reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` **git refs**, so it is correct regardless of which branch the launch directory sits on. Parse `.releases["$2"]` from its output. **Do not read `docs/release/$2/board.json` or any `status.json` by hand in this step** — a launch-directory read silently misses every track and slice a `/replan-release` added after the release was cut (the recurring stale-branch trap). The branch-aware state resolution is the oracle's contract (board-v1 + the `release-wt`/`track/*` ref read); the reference implementation is the open `sworn` binary. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
+Run it from anywhere inside the repo — it resolves the repo from cwd and reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` **git refs**, so it is correct regardless of which branch the launch directory sits on. Parse `.releases["$2"]` from its output. **Do not read launch-directory-relative `board.json` or `status.json` files in this step.** After the oracle identifies the owner track, the predecessor gate below may read a complete status only with `git show <worktree_branch>:<status-path>`; that branch-pinned read supplies fields the oracle summary does not expose without reintroducing the stale-launch-directory bug. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
 
 1. **Find the slice's track.** In the oracle JSON, take `.releases["$2"].tracks[]` and find the entry whose `.slices` array contains `$1`. If `$1` is in no track (or has no slice object under `.releases["$2"].slices[]`), BLOCK: "Slice `$1` is not assigned to a track — re-run `/plan-release $2` (or `/replan-release $2`) to group it." From the track entry capture `<track-id>` (`.id`), `<worktree_path>` (`.worktreePath`), `<worktree_branch>` (`.worktreeBranch`), `<blocked_by>` (`.blockedBy`), and the ordered `<slices>` (`.slices`).
-2. **Enforce sequential order within the track.** For every slice listed *before* `$1` in the track's `.slices`, read its `.state` from `.releases["$2"].slices[]`. If any is not `verified` (nor `deferred` / `shipped`), BLOCK: "Slice `<earlier>` precedes `$1` in track `<track-id>` (state `<state>`). Slices in a track are implemented in order — finish and verify `<earlier>` first."
+2. **Enforce sequential order within the track.** For every slice listed *before* `$1` in the track's `.slices`, read its complete status with `git show <worktree_branch>:docs/release/$2/<earlier>/status.json`. Accept `verified` / `shipped` and a legal unstarted Rule-2 deferral. Accept a `deferred` terminal `re_slice_required` original when `$1` is its recorded rollback; for any other later slice, require that rollback already to be `verified` / `shipped` and ordered before `$1`. Otherwise BLOCK: "Slice `<earlier>` precedes `$1` in track `<track-id>` (state `<state>`) and is not integration-ready. Finish its verification or mandatory rollback first."
 The worktree path and branch are **conventional, not read from a board field an implementer wrote**: `<worktree_branch>` = `track/$2/<track-id>` and `<worktree_path>` = `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-<track-id>`. The oracle reports these as `.worktreeBranch` / `.worktreePath`, derived the same way; trust the convention if they are null or disagree. (This is the Option-1 invariant: an implementer never writes `release-wt` — see track-mode.md "release-wt is written only by /merge-track and the planner". The materialisation record is the `track/$2/<track-id>` **branch ref**, not a `release-wt` board write.)
 
 3. **Track worktree already materialised** — `git worktree list` shows a worktree at the conventional `<worktree_path>` on `<worktree_branch>`:
@@ -80,6 +80,41 @@ If you do need to halt, surface:
 
 A BLOCKED verdict means a fresh-context verifier found a spec defect or external gap that only the planner can resolve; an implementer session cannot clear it. Picking the slice up here would re-enter the verifier → planner → verifier loop this guard exists to break — the handoff routes forward to `/replan-release`, never back to the implementer (handoff directionality is canonical in `$HOME/.claude/baton/session-discipline.md`). Stop here; do not run the session start handshake.
 
+## Step 0c — Maintainability adjudication guard
+
+Read `status.json` `maintainability` from the track worktree and apply the governing role prompt's
+resume gate before implementation:
+
+First validate the complete `status.json` against `slice-status-v1`. A schema-invalid lifecycle
+record is a hard stop, not permission to fall through. In particular, `pending` is executable only
+with `cycle: 0` and `implementation_head: null`; `pending` cycle 1 must never reach implementation.
+Then run the governing contract's committed-history integrity check over every first-parent version
+of this slice's `status.json`: `start_commit` must be immutable once non-null, `reports` must be
+append-only by exact prefix, cycle may not decrease, every ledger entry must match its referenced
+blob-pinned full report, no role/phase may repeat within a cycle, and any earlier
+`re_slice_required` state is terminal for this slice id. Once non-null, Coach adjudication is
+byte-immutable. A current initial-looking record does not override exhausted committed history.
+
+- valid cycle-0 `pending` with no reports: continue normally. With exactly one Implementer
+  preflight FAIL: resume only the already-open bounded remediation and closure; do not run another
+  preflight.
+- `needs_coach`: STOP for a Coach decision; do not start another review cycle.
+- `re_slice_required`: STOP and route to `/replan-release $2`.
+- `resume_approved`: validate the schema, cycle-1 ceiling, two unique source invocation ids and
+  their corresponding fingerprints (which may be equal), and `resume_in_scope` permitted
+  touchpoints before continuing. Require those paths to be a non-empty subset of the ratified spec
+  touchpoints and reject any edit outside them. No cycle-1 reports starts its preflight; exactly one
+  cycle-1 Implementer preflight FAIL resumes only remediation and closure. Reject any other
+  incomplete sequence and never rerun a recorded phase.
+- an unstaled `passed`: continue only for non-semantic proof/status handling; any semantic work
+  follows the role prompt's cycle-aware transition before editing.
+
+This guard is independent of `verification.result`; maintainability closure failure remains
+`state: in_progress` and must not be disguised as a Verifier BLOCKED verdict.
+Both the closure-failure handoff and the Coach decision must already be committed and pushed; if
+their status/journal files are dirty, stop because the prior role did not complete its durable
+handoff.
+
 ## Session start handshake
 
 > **All paths in this section MUST be anchored at `<worktree_path>` from Step 0** (`<wt>` for short). The primary-repo working copy is on the integration branch and may carry a planner re-spec that has NOT yet been forward-ported to `release-wt/$2` — or vice versa. Reading `docs/release/...` without the `<wt>/` prefix can return stale content from the wrong branch. See `feedback_release_spec_forward_port` for the recurring incident pattern.
@@ -99,7 +134,7 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
    - **`state: design_review`, review NOT yet acknowledged** (no `review.md` carrying `DECISION: PROCEED`, or the Coach has not acknowledged per the orchestrator's ack convention — e.g. an `approved-ack.md` marker, or a human Coach confirmation): **STOP** — output: "design review pending — run `/design-review $1 $2`, then the Coach acknowledges (PROCEED) before implementation resumes." Do not write code.
    - **`state: design_review` WITH an acknowledged `DECISION: PROCEED`**, OR **`state: in_progress` / `failed_verification`** (already past the gate): the gate is satisfied — continue to step 4. (Apply any inline `IMPLEMENTER_FIX` pins from `review.md` as you implement; a design revised after a decline must be re-reviewed — re-enter `design_review`, do not jump to code.)
 
-4. **(Design-review gate satisfied — see step 3.)** Update `status.json` → `state: in_progress`. Commit: `docs(release/$2/$1): start implementation`. Capture that commit's SHA (`git -C <wt> rev-parse HEAD`) and write it to `status.json` `start_commit` — it lands with your first implementation commit and is the verifier's exact diff base. **Then push the track branch so the work is durable:**
+4. **(Design-review gate satisfied — see step 3.)** If `status.json` `start_commit` is null, update `status.json` → `state: in_progress`, commit `docs(release/$2/$1): start implementation`, capture that commit's SHA (`git -C <wt> rev-parse HEAD`), and write it to `start_commit` with the first implementation commit. If `start_commit` is already set for an `in_progress` or `failed_verification` slice, require it to resolve and preserve it byte-for-byte; never reset the slice's diff base on resume. **Then push the track branch so the work is durable:**
    ```
    git -C <wt> push origin HEAD:refs/heads/track/$2/<track-id>
    ```
@@ -115,13 +150,21 @@ A BLOCKED verdict means a fresh-context verifier found a spec defect or external
 
 ## At completion
 
-1. Run all test commands cited in `spec.json` "Required tests". Capture full output.
-2. Emit `proof.json` from live repo state, valid against `proof-v1`, using `$HOME/.claude/baton/release-mode-template/proof.json` as the template. Every section must be from a live command run. The human-readable `proof.md` is rendered from it.
-3. Run the **proof-bundle verification gate** (reference implementation: `sworn verify $1 $2`) and capture its output into the proof bundle's first-pass verdict.
-4. If the gate returns FAIL, address the failures and re-run. Do not proceed until first-pass is green.
-5. Update `status.json` → `state: implemented`, fill in `actual_files`, `test_commands`, `reachability_artifacts`.
-6. Append to `journal.md`: state transition entry with decisions, trade-offs, and any subagent dispatches.
-7. Commit: `feat(<slice-area>): land $1 — <user outcome>` with a Rule 4 body restating the decisions made during implementation.
+1. Complete Workflow step 5 in the governing Implementer role prompt in its stated order. That
+   sequence owns deterministic tests, AC/security checks, proof emission and verification, the
+   clean committed review checkpoints, bounded maintainability preflight/remediation/closure
+   lifecycle, and the final semantic freeze. This command does not provide a second or later
+   completion sequence.
+2. Confirm the final `proof.json` was emitted from live repo state and that the current semantic
+   review input still matches the fingerprint of the final maintainability PASS. Require
+   `maintainability.implementation_head` to equal that report's `review_scope.head`. If either
+   identity check fails, remain `in_progress` and follow the role prompt's cycle-aware path:
+   cycle 0 stops for Coach adjudication; cycle 1 requires re-slicing.
+3. Update `status.json` → `state: implemented`, fill in `actual_files`, `test_commands`,
+   `reachability_artifacts`.
+4. Append to `journal.md`: state transition entry with decisions, trade-offs, any subagent
+   dispatches, and the final maintainability report fingerprint.
+5. Commit: `feat(<slice-area>): land $1 — <user outcome>` with a Rule 4 body restating the decisions made during implementation.
 
 ## Output to human at session end
 

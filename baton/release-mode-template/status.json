@@ -16,6 +16,14 @@
   "actual_files": [],
   "test_commands": [],
   "reachability_artifacts": [],
+  "maintainability": {
+    "state": "pending",
+    "cycle": 0,
+    "implementation_head": null,
+    "rollback_slice_id": null,
+    "reports": [],
+    "adjudication": null
+  },
   "open_deferrals": [],
   "verification": {
     "result": "pending",

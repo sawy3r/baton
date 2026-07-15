@@ -13,26 +13,40 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
 
 `/replan-release` runs on a release that is **in flight**, so the release worktree already exists. Every planning-artefact commit — new `spec.json` / `status.json`, `board.json`, `intake.md` — goes to the **release assembly branch `release-wt/$1`**, never to the version integration branch (`release/v*` or `main`).
 
-- Operate in the **release worktree** — conventional path `$HOME/projects/<REPO_BASENAME>-worktrees/release-` on branch `release-wt/` (derived, not stored in `board.json`). `cd` there before writing or committing.
+- Operate in the **release worktree** — conventional path `$HOME/projects/<REPO_BASENAME>-worktrees/release-$1` on branch `release-wt/$1` (derived, not stored in `board.json`). `cd` there before writing or committing.
 - The version integration branch sits *above* `release-wt` in the track-mode hierarchy; the release reaches it only via `/merge-release`, gated on every track verified. Committing replan artefacts straight to the integration branch jumps that gate, puts unverified in-flight scope on the production-bound branch, and forces a backwards `integration → release-wt` sync to undo.
 - A new slice's `spec.json` lands on `release-wt/$1`. **Step 6** then propagates it out to every in-flight track branch, so no track is left reading a stale spec.
 
 ## Step 0 — Confirm the release is planned and in flight
 
-1. Read `docs/release/$1/board.json`. If it does not exist, STOP: "Release `$1` has no plan — use `/plan-release $1`, not `/replan-release`."
-2. If `board.json` exists but has an empty or absent `tracks` array, the release was planned under the pre-track-mode model. STOP and tell the human: this release needs a one-time track grouping first — run `/plan-release $1` to add tracks and the touchpoint matrix, then use `/replan-release` for subsequent revisions.
-3. Confirm in one sentence: "Re-planning **$1** — it currently has N slices across M tracks. What has changed?"
+1. Derive the release worktree path by convention
+   (`$HOME/projects/<REPO_BASENAME>-worktrees/release-$1`) and confirm `git worktree list` maps that
+   exact path to `release-wt/$1`. If it does not, STOP: "Release `$1` has no release worktree — use
+   `/plan-release $1` for a new release or restore the missing `release-wt/$1` worktree."
+2. Read the absolute `<release-worktree>/docs/release/$1/board.json`, never the launch-directory
+   relative copy. If it does not exist, STOP: "Release `$1` has no plan — use `/plan-release $1`,
+   not `/replan-release`."
+3. If that `board.json` has an empty or absent `tracks` array, the release was planned under the
+   pre-track-mode model. STOP and tell the human: this release needs a one-time track grouping first
+   — run `/plan-release $1` to add tracks and the touchpoint matrix, then use `/replan-release` for
+   subsequent revisions.
+4. Confirm in one sentence: "Re-planning **$1** — it currently has N slices across M tracks. What has changed?"
 
 ## Step 1 — Sync the release worktree with its base branch (hygiene)
 
 Before reconciling state or revising anything, bring `release-wt/$1` up to date with the version integration branch it was cut from. An in-flight release that has drifted behind its base replans against a stale picture — the touchpoint matrix, the schema-vs-spec audits, and any new slice you scope can all be wrong if the base has moved underneath them.
 
-1. Derive the release worktree path by convention (`$HOME/projects/<REPO_BASENAME>-worktrees/release-`, branch `release-wt/`), and read the **base branch** from `board.json` (`release.integration_branch`, e.g. `release/v0.5.0` — this field stays; only worktree path + state are derived).
-2. `cd` into the release worktree. Confirm it is on `release-wt/$1` and the working tree is clean (`git status --porcelain` is empty). If it is dirty, STOP and surface — uncommitted state in the release worktree is itself a finding the human must resolve before replanning. **Then capture `PLANNER_START_SHA = $(git rev-parse HEAD)`** — Step 6 uses this as the lower bound when cherry-picking *this session's* planning-artefact commits onto track branches.
-3. Has the base branch moved? `git rev-list --count release-wt/$1..<base-branch>`. Zero ⇒ already current; skip to Step 2.
+1. Derive the release worktree path by convention (`$HOME/projects/<REPO_BASENAME>-worktrees/release-$1`, branch `release-wt/$1`), and read the **base branch** from `board.json` (`release.integration_branch`, e.g. `release/v0.5.0` — this field stays; only worktree path + state are derived).
+2. `cd` into the release worktree. Confirm it is on `release-wt/$1` and the working tree is clean (`git status --porcelain` is empty). If it is dirty, STOP and surface — uncommitted state in the release worktree is itself a finding the human must resolve before replanning.
+3. Has the base branch moved? `git rev-list --count release-wt/$1..<base-branch>`. Zero ⇒ already current; skip step 4 and continue to step 5.
 4. Non-zero ⇒ forward-merge the base in: `git merge --no-ff <base-branch>`.
-   - **Clean merge, or conflicts only in planning artefacts** (`docs/release/**`, `board.json`, `intake.md`, `spec.json`, `status.json`): resolve the planning-artefact conflicts with planner judgement, commit the merge, and note it.
+   - **Clean merge, or conflicts only in planning artefacts** (`docs/release/**`, `board.json`, `intake.md`, `spec.json`, `status.json`): resolve the planning-artefact conflicts with planner judgement, commit the merge, and note it. Any `status.json` resolution here is temporary release-worktree hygiene, never lifecycle authority; Step 2.6 replaces every started unmerged slice's status with its exact owner-track record before mutation or propagation.
    - **Any conflict in production code** (`apps/`, `go/`, `packages/` source, config, CI, lockfiles): `git merge --abort` and **STOP**. Resolving production code is outside the planner's remit. Surface to the human as a key blocker: "`release-wt/$1` is behind `<base-branch>` and the catch-up merge conflicts in production code — resolve the base sync, then re-run `/replan-release`." Replanning does not proceed on an un-synced base.
+5. Only after the base sync is complete, capture
+   `PLANNER_START_SHA=$(git rev-parse HEAD)`. Step 6 uses this as the exclusive lower bound when
+   cherry-picking this session's later planning-artefact commits. The base merge itself is therefore
+   outside `PLANNER_START_SHA..release-wt/$1`; the fallback range contains no base production commit
+   or merge commit.
 
 ## Step 2 — Reconcile true state via the board oracle (do not trust board.json)
 
@@ -43,6 +57,18 @@ Before reconciling state or revising anything, bring `release-wt/$1` up to date 
 3. **Spec-drift check — has a prior re-scope failed to reach a track?** For each in-flight track with a `worktreePath`, for each slice in that track, run `git diff release-wt/$1 <track-branch> -- docs/release/$1/<slice>/spec.json` (`<track-branch>` = the track's `worktreeBranch`). A non-empty diff means an **earlier `/replan-release` committed a re-scoped `spec.json` to `release-wt/$1` that the track branch never synced** — the verifier has been reading a stale spec, the signature of the `/verify-slice` ↔ `/replan-release` loop. Report it explicitly: "Track `<track-id>`'s `spec.json` for `<slice>` is out of sync (N diff lines)." Step 6 of this command resolves it by forward-merging `release-wt → <track-branch>`; still surface it so the human understands why the slice looked stuck. (The oracle reports *state*, not spec-content drift — this git-diff check stays a separate pass.)
 4. Print the reconciled state table — slice → true state, track → `planned` / `in_progress` / `merged` — and call out every drift from what the integration-branch `board.json` records, including every spec-drift slice found in step 3 and every ghost slice / pending spec the oracle flagged. The revision and the `board.json` correction are done in the same pass.
 5. **Diagnose why the replan was called — read the journals, not just the oracle.** The oracle reports each slice's `state` but not *why* it is there: it has no blocked-reason field and never reads journals. A slice the oracle shows as `in_progress` may actually be a stalled BLOCKED handoff routed back to the planner. For every slice the oracle reports as `in_progress` or `failed_verification` — plus any the human's request points at — read its `status.json` **`blocked` block** and **`verification.result`**, and the tail of its `journal.md`. These carry the implementer's or verifier's BLOCKED diagnosis, the recommended action, and the spec defect (if any) that routed the work here. Summarise the diagnosed trigger before proposing any revision — the revision must answer it.
+
+6. **Seed every started unmerged slice from its authoritative owner track.** Before changing or
+   propagating any started slice's `status.json` on `release-wt/$1`, iterate every started slice in
+   every oracle-derived unmerged track and copy the exact committed file from that owner track ref
+   into the release worktree:
+   `git show <owner-track-ref>:docs/release/$1/<slice-id>/status.json`. Validate that copy against
+   `slice-status-v1` and the canonical committed-history/blob/FSM checks before editing it. The stale
+   release-worktree or base-merge copy is never a mutation or propagation source. Record each source
+   ref and object id in the planner journal so propagation can prove which authoritative record was seeded.
+   For a maintainability rollback, preserve the seeded `maintainability` object exactly except for
+   the single ratified addition of `rollback_slice_id`; do not reconstruct its reports,
+   adjudication, cycle, state, or implementation head from the oracle summary or prose.
 
 ## Step 2b — Resolve any inbound BLOCKED slice
 
@@ -61,25 +87,54 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
 
 - Drive the revision conversation — what new scope, what re-scope, what to drop — using `AskUserQuestion` brainstorm patterns for every decision, exactly as `/plan-release` does.
 - Write `spec.json` + `status.json` for each new slice (Phase 4), setting its `track`.
-- Place new slices into tracks: a **new track**, or **appended to the tail** of an existing track that is not `merged` and whose trailing slices have not started. **Never** insert a slice before `in_progress` / `verified` / `merged` work in a track.
-- Re-validate the **touchpoint matrix** for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it — it cannot run in parallel.
+- Place new slices into tracks: a **new track**, or **appended to the tail** of an existing track that is not `merged` and whose trailing slices have not started. A mandatory maintainability rollback normally sits immediately after its deferred failed slice and before the not-started tail. If Step 2.6 invalidated an earlier slice only after later slices had already started or verified, preserve committed first-parent order: place the rollback after the last started slice and before the not-started tail, with all functional replacements after the rollback. **Never** insert new work before an already `in_progress` / `verified` / `merged` slice.
+- When a ratified re-slice resolves `status.json` `maintainability.state: re_slice_required`, first
+  apply Step 2.6's exact owner-track status seeding, then retain
+  that terminal lifecycle and its report ledger on the original slice id. Insert a mandatory new
+  rollback slice immediately after it when no later slice has started; for a Step-2.6 integration
+  invalidation discovered after later work, append the rollback after the last started slice and
+  before any not-started tail. Set
+  `maintainability.rollback_slice_id` on the original, and mark the original `deferred` with a
+  Rule-2-complete replacement record. The rollback spec must restore the complete authored
+  semantic envelope from the original's immutable `start_commit` through the rollback's own pinned
+  implementation head. For an ordinary failure the target is the exact original mode/object ids;
+  for a Step-2.6 post-sync invalidation the envelope is restricted to the invalidated slice's
+  `start_commit..invalidated_review_head` candidate set (where that head must equal its newest
+  preserved authoritative PASS scope) and the target is the exact parent-2 tree of the recorded recognized
+  synchronization merge, preserving sibling bytes and later authoritative slice paths while
+  removing invalidated track bytes. Include any unowned post-report production commit for an
+  ordinary failure, emit the applicable tree-equality proof, and reach
+  `verified`; it may not be deferred.
+  Functional replacement slices with fresh pending cycle-0 records follow the rollback and cannot
+  start before it verifies. Record all replacement ids in the original journal/deferral trail.
+  Resetting the same slice id or allowing failed bytes to become a replacement baseline is
+  forbidden.
+- Re-validate the **touchpoint matrix** and `board.json.shared_touchpoints` for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it unless the human ratifies the narrow machine-readable documented-shared exception from `track-mode.md`; a Markdown row alone cannot license it.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 
 ## Step 6 — Propagate the revised plan to the track branches (hygiene)
 
 Once the revision is committed to `release-wt/$1`, push it out to every in-flight track branch so no track is left reading a stale spec. This closes the `/verify-slice` ↔ `/replan-release` drift loop at its source, instead of waiting for each track's next `/implement-slice` Step 0 to self-heal.
 
-For each track in the `board.json` `tracks` array whose `state` is **not `merged`**:
+**Status conflict rule for every propagation path.** Whether propagation uses the normal
+forward-merge or the production-conflict cherry-pick fallback, treat `maintainability` as one opaque
+authoritative object, never a field-by-field merge. Normally preserve the exact owner-track object
+seeded in Step 2.6 byte-for-byte. For a ratified rollback re-slice, take the planner copy seeded from
+that owner object and changed only by adding `rollback_slice_id`. Validate the resolved status
+against the recorded source object and `slice-status-v1` before committing.
+
+For each track in the Step 2 oracle result `.releases["$1"].tracks[]` whose derived `.state` is **not
+`merged`** (never read a `state` field from `board.json`; `board-v1` deliberately has none):
 
 1. **No worktree yet** (`planned`, never started — the `track/$1/<track-id>` branch does not exist): skip — its first `/implement-slice` will branch from the now-current `release-wt/$1`. Note it.
 2. `cd` into the track worktree. If its working tree is **dirty** (`git status --porcelain` non-empty — an implementer has uncommitted work in flight): **skip** the merge and note it: "track `<id>` has uncommitted work; its next `/implement-slice` / `/verify-slice` Step 0 will forward-merge `release-wt` and resolve." Never merge into a dirty track worktree.
 3. **Clean worktree**: forward-merge `git merge --no-ff release-wt/$1`.
-   - **Clean, or conflicts only in planning artefacts** (`docs/release/**`, `board.json`, `intake.md`, `spec.json`, `status.json`): resolve and commit.
+   - **Clean, or conflicts only in planning artefacts** (`docs/release/**`, `board.json`, `intake.md`, `spec.json`, `status.json`): resolve and commit, applying the status conflict rule above to every `status.json` conflict.
    - **Any production-code conflict**: `git merge --abort`, then **fall back to a planning-artefact-only propagation** — cherry-pick this session's planner commits so the track branch still receives the ratified state (especially a cleared `verification.result`), even though sibling-track production code remains deferred to the implementer's Step 0 self-heal:
      ```
-     git cherry-pick PLANNER_START_SHA..release-wt/$1
+     git cherry-pick "$PLANNER_START_SHA"..release-wt/$1
      ```
-     Because the planner role forbids production code (see "Strict role boundaries"), every commit in `PLANNER_START_SHA..release-wt/$1` is planning-artefact-only by construction — the cherry-pick can only conflict on planning artefacts, which are squarely planner remit. Resolve any conflicts with planner judgement (a journal-entry conflict is usually additive — keep both sides; a `status.json` conflict takes planner authority for `state` / `owner` / `last_updated_*` / `verification.*` while preserving any track-only fields like `start_commit` / `actual_files`; a `board.json` slice-state or aggregate-count conflict takes the planner side; a `board.json` activity-log conflict is additive — keep both entries and mark the track's pre-existing entry as "Resolved by replan above" where applicable). Commit the cherry-pick result.
+     Because the planner role forbids production code (see "Strict role boundaries"), every commit in `$PLANNER_START_SHA..release-wt/$1` is planning-artefact-only by construction — the cherry-pick can only conflict on planning artefacts, which are squarely planner remit. Resolve any conflicts with planner judgement (a journal-entry conflict is usually additive — keep both sides; a `status.json` conflict takes planner authority only for the fields deliberately changed by this replan, such as `state` / `owner` / `last_updated_*` / `verification.*`, while preserving track-only fields like `start_commit` / `actual_files` and applying the status conflict rule above to `maintainability`; a `board.json` slice-state or aggregate-count conflict takes the planner side; a `board.json` activity-log conflict is additive — keep both entries and mark the track's pre-existing entry as "Resolved by replan above" where applicable). Commit the cherry-pick result.
      Note this as: "track `<id>`: production-code merge deferred to Step 0 self-heal; planning artefacts propagated via cherry-pick." Sibling-track production code (the rest of the would-have-been forward-merge) is still picked up by the implementer's next `/implement-slice` / `/verify-slice` Step 0 — that part of the design is unchanged. What this fallback prevents is the Step 6/Step 0b deadlock where a planner-cleared `verification.result` strands on release-wt and leaves Step 0b halting forever on the stale track-branch BLOCKED verdict. (See baton#16.)
 4. Push the updated track branch: `git push origin HEAD:refs/heads/track/$1/<track-id>` — the track branch is the durable recovery anchor (track-mode).
 
@@ -88,7 +143,7 @@ Surface, in the handoff, every track synced, skipped (dirty), skipped (no worktr
 ## Strict role boundaries
 
 - **No production code.** The planner writes and resolves only planning artefacts.
-- **Steps 1 and 6 forward-merge branches** (`base → release-wt`, `release-wt → track/*`). The planner MAY perform these merges and resolve **planning-artefact** conflicts, but never resolves a production-code conflict — Step 1 aborts and surfaces it as a blocker; Step 6 aborts that track's merge and falls back to a planning-artefact-only cherry-pick of *this session's* planner commits (`PLANNER_START_SHA..release-wt/$1`), then defers the production-code merge to the downstream Step 0 self-heal. The cherry-pick fallback is safe because the planner role forbids production code, so this session's commits are planning-artefact-only by construction.
+- **Steps 1 and 6 forward-merge branches** (`base → release-wt`, `release-wt → track/*`). The planner MAY perform these merges and resolve **planning-artefact** conflicts, but never resolves a production-code conflict — Step 1 aborts and surfaces it as a blocker; Step 6 aborts that track's merge and falls back to a planning-artefact-only cherry-pick of *this session's* planner commits (`$PLANNER_START_SHA..release-wt/$1`), then defers the production-code merge to the downstream Step 0 self-heal. The cherry-pick fallback is safe because the planner role forbids production code, so this session's commits are planning-artefact-only by construction.
 - **No worktree *creation*.** Step 6 merges into *existing* track worktrees; it does not create them, and outside Steps 1/6 it makes no edits to track worktrees' working trees.
 - Never edit the spec of a `verified` or `merged` slice — a materially changed spec is a new slice with a new id.
 - Never insert a slice before `in_progress` / `verified` / `merged` work in a track.

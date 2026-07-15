@@ -15,5 +15,6 @@
       "slices": ["S01-example-slice"],
       "depends_on": []
     }
-  ]
+  ],
+  "shared_touchpoints": {}
 }
