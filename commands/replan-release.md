@@ -109,7 +109,7 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
   start before it verifies. Record all replacement ids in the original journal/deferral trail.
   Resetting the same slice id or allowing failed bytes to become a replacement baseline is
   forbidden.
-- Re-validate the **touchpoint matrix** for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it — it cannot run in parallel.
+- Re-validate the **touchpoint matrix** and `board.json.shared_touchpoints` for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it unless the human ratifies the narrow machine-readable documented-shared exception from `track-mode.md`; a Markdown row alone cannot license it.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 
 ## Step 6 — Propagate the revised plan to the track branches (hygiene)

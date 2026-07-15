@@ -28,8 +28,10 @@ The state error was corrected forward, but the protocol had made the unsafe path
   paths are excluded and any merge/slice path overlap fails closed.
 - After the pin, only release-record commits and recognized `release-wt` synchronization merges are
   legal before the authoritative gate. A recognized merge's second parent must be on the current
-  release branch's first-parent chain and its non-record merge result must match that parent exactly;
-  any later semantic path or custom merge tree stales the evidence and fails closed.
+  release branch's first-parent chain. Ordinary non-record contributions match that parent exactly;
+  a board-declared shared path may instead equal Baton's reproducible conflict-free blob-level merge
+  result. Any later semantic path, manual composition, or other custom merge tree stales the evidence
+  and fails closed.
 - Newly introduced release history is provenance-checked: planner first-parent commits are
   record-only, and production bytes must arrive through a two-parent integration whose second parent
   is the retained, board-declared, verified track ref.
@@ -118,6 +120,18 @@ The state error was corrected forward, but the protocol had made the unsafe path
 - Automatic post-sync rollback additionally requires the invalidated candidate set to be disjoint
   from every later authoritative slice. A later-slice path overlap blocks without lifecycle mutation
   and requires track reconstruction, avoiding rollback that would erase still-verified work.
+- Track freshness composition retains a terminal deferred original's historical interval using
+  `invalidated_review_head`, or the newest immutable report head present when an ordinary failure
+  first entered `re_slice_required`. That
+  interval owns history only after its linked rollback proof passes; it never supplies PASS evidence
+  or advances the active reviewed frontier.
+- Documented shared-file composition is accepted only when the committed third blob equals the
+  canonical `git merge-file --object-id` result and the exact path/track/region declarations exist in
+  `board.json.shared_touchpoints`. The operation consumes the committed base and parent blobs and is
+  independent of attributes, union/custom merge drivers, filters, and local merge configuration. The matrix is only its rendered
+  human view. Forward-sync writes that tuple directly to the index whether the configured driver
+  reports a conflict or a clean result; only the canonical blob operation's own conflict blocks.
+  The recovery path is therefore reachable and mechanically bounded without hand resolution.
 - Implementer predecessor detail comes from the oracle-identified owner ref via `git show`, not a
   stale launch-directory status, and autonomous merge confirmation keys off the complete Step-1.6
   integration-ready gate rather than the oracle's coarse terminal signal.
@@ -149,6 +163,16 @@ The state error was corrected forward, but the protocol had made the unsafe path
 - A temporary Git history fixture confirms first-parent slice scope, rejects an integrated track tip
   as a synchronization parent, accepts the release first-parent, and compares merge-result blobs to
   that parent.
+- A distinct-region Git fixture confirms the canonical blob merge creates a third shared-file blob
+  containing both tracks' bytes. The blob differs from both parents and is reproducible by
+  `git merge-file --object-id` even when repository config defines a custom merge driver. A live
+  merge forced to conflict by that driver becomes a clean two-parent commit after the canonical blob
+  is materialised and installed with NUL-delimited `update-index`; the worktree hash and committed
+  object id both equal `E`.
+- `board-v1` accepts the object-keyed two-track shared declaration and rejects absolute paths,
+  dot-segment paths, and a declaration with fewer than two tracks. All six JSON release templates
+  validate against their declared schema, and isolated Claude and Codex installs carry the updated
+  board template, schema, and merge-track instructions.
 - Protocol inspection confirms post-sync merge-track gating now invokes the same canonical
   post-pin overlap/provenance rules, and rollback replanning explicitly preserves the exact
   owner-track maintainability object across release-worktree propagation.

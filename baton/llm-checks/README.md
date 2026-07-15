@@ -121,12 +121,49 @@ For each allowed run, a conformant engine MUST:
    Each merge must have exactly two parents and its second parent must appear in
    `git rev-list --first-parent release-wt/<release>` (or equal that ref); otherwise it is not a
    recognized synchronization merge and scope construction fails closed. Merely being reachable
-   through a merged track is insufficient. For every merge-contribution path outside the
-   physical release-record root, the merge result's mode and object id must equal parent 2's mode
-   and object id exactly (including absence for a deletion). Release-record paths may use the
-   protocol's documented conflict resolution. Any other custom merge-tree result fails scope
-   construction; implementation delivered through an arbitrary merge may not disappear from
-   review as a merge contribution.
+   through a merged track is insufficient. Let the synchronization merge be `M`, with first parent
+   `P1` and second parent `P2`. Require `git merge-base --all P1 P2` to return exactly one commit
+   `B`; ambiguity fails recognition.
+
+   Validate the entire `board.json.shared_touchpoints` object in
+   `P2`'s release record. Each key is one exact repository-relative path and its value maps every
+   contributing track id to a distinct non-empty region/symbol. The object shape makes path and
+   track ids unique; additionally reject duplicate region strings, absolute paths, and `.` or `..`
+   path segments. Each track id must resolve to a board-declared track, and the path must appear in a
+   slice touchpoint for every named track. For a path that reaches the both-parents-changed case
+   below, derive the actual contributor set path-by-path: include the current `P1` track only when
+   `B..P1` changes that path, and include each validated `/merge-track` second-parent track in
+   `B..P2` whose integration changes it. Require every actual contributor to be named by the member;
+   additional named tracks are permitted because their declared regions may be implemented or
+   integrated later in the same release.
+
+   Build the canonical expected non-record tree path-by-path, independently of Git attributes,
+   custom merge drivers, and local merge configuration. Let `C` be the byte-sorted union of the
+   NUL-delimited, no-renames paths changed by `B..P1`, `B..P2`, or `P1..M`, after removing every
+   path beneath the physical release-record root. For every path in `C`,
+   read its `(mode, object id)` tuple (or absence) from `B`, `P1`, `P2`, and `M`, then derive expected
+   tuple `E`:
+   - if `P1 == P2`, `E = P1`;
+   - otherwise, if `P1 == B`, `E = P2`;
+   - otherwise, if `P2 == B`, `E = P1`;
+   - otherwise both parents changed the path. Require it to be one validated shared-touchpoint member
+     that appears in both parent change sets; require `B`, `P1`, and `P2` to be regular blobs with
+     one identical mode (`100644` or `100755`); then run
+     `git -c diff.algorithm=myers merge-file --object-id <P1-oid> <B-oid> <P2-oid>`. Exit 0 and one
+     lowercase object id define `E = (<common-mode>, <output-oid>)`; conflict or malformed output
+     fails recognition.
+
+   Require `M == E` for every path in `C`, including absence. This catches omitted parent-2 changes
+   and extra merge-result edits as well as altered blobs. The final case is the sole recognized
+   third-blob path: the built-in, conflict-free composition of the declared regions. Because
+   `merge-file --object-id` consumes committed blobs directly, `.gitattributes`, `merge.default`,
+   `merge.<driver>.*`, union drivers, and working-tree filters cannot change `E`. The rendered
+   touchpoint matrix is a human view of board authority and cannot independently license a
+   composition.
+   Release-record paths may use the protocol's documented conflict resolution.
+   A hand-resolved shared-file conflict, an undeclared composed path, or any other mismatch with
+   `E` is a custom merge result and fails scope construction; implementation delivered through
+   an arbitrary merge may not disappear from review as a merge contribution.
    Structural provenance is also required for the release branch segment newly introduced by that
    parent. For each synchronization merge, enumerate
    `git rev-list --first-parent <merge-parent-2> --not <merge-parent-1>`.
@@ -149,17 +186,34 @@ For each allowed run, a conformant engine MUST:
    This post-pin rule governs one slice's authoritative run. At `/merge-track`, do not naively apply
    `implementation_head..current HEAD` to every earlier slice in a sequential track: ordinary later
    slices would appear as foreign authored commits and make every multi-slice track unmergeable.
-   Instead compose the canonical scopes in track order. Require each non-record non-merge commit to
-   fall inside exactly one later slice's `start_commit..implementation_head` interval whose current
-   lifecycle carries an authoritative PASS. That later scope advances the reviewed frontier for its
-   candidate paths. For each recognized synchronization merge, validate the same parent-2,
-   structural-provenance, and exact-tree rules above, then compare each contributed path with its
+   Instead compose the canonical evidence intervals in track order. Active intervals are
+   `start_commit..implementation_head` ranges for `verified` or `shipped` slices whose current
+   lifecycle carries an authoritative PASS. A terminal deferred `re_slice_required` original has a
+   retired-ownership interval: `start_commit..invalidated_review_head` for a deterministic Track
+   Integrator invalidation, or `start_commit..review_scope_head` using the newest immutable report
+   present in the first committed status version that entered `re_slice_required` for any other
+   terminal transition. Admit a retired interval only when its linked
+   rollback slice is `verified` or `shipped` and the complete applicable rollback tree proof above
+   passes. The retired interval makes its historical commits owned, but supplies no PASS and never
+   advances a reviewed frontier. The rollback and functional replacement slices are ordinary active
+   intervals. For an ordinary failure, an otherwise-unowned semantic commit after the retired head
+   and through the rollback slice's `start_commit` is admitted only when it lies in the complete
+   rollback envelope and its final tree restores it to baseline. For
+   a post-sync invalidation, later authoritative intervals remain separately owned; any other
+   semantic gap fails closed.
+
+   Require each non-record non-merge commit to fall inside exactly one active or admitted retired
+   interval. Classify an otherwise-unowned commit in the narrow ordinary rollback gap separately only
+   after its complete tree proof passes; never double-count a commit already owned by an interval. An active scope advances
+   the reviewed frontier for its candidate paths; a retired scope does not. For each recognized
+   synchronization merge, validate the same virtual-merge, structural-provenance, and tree rules
+   above, then compare each contributed path with its
    latest reviewed frontier for the **intersection** with current-track candidate paths. A disjoint
    sibling-only contribution has no current-track frontier by design and remains excluded; it does
    not fail integration. For an intersecting path, a merge contribution after the frontier
    invalidates that path's old evidence, while a later authoritatively passed slice that starts after
    the merge and authors the path becomes its fresh frontier. Unowned current-track semantic
-   commits, gaps, custom merges, or intersecting paths with no later frontier fail integration
+   commits, unproven gaps, custom merges, or intersecting paths with no later active frontier fail integration
    closed. This track-level composition is deterministic report reuse, not another model invocation.
    The normative Git operations are:
    - `git rev-list --reverse --first-parent --no-merges <base>..<head>`;

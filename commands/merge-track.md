@@ -103,10 +103,17 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
 
 2. **Measure drift.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2`. If `0`, the track already carries `release-wt`'s tip — skip merge steps 3-4 and proceed to Step 2.5. The merged-base test rerun and canonical scope-freshness gate are mandatory even when another command already performed the synchronization.
 
-3. **Forward-merge `release-wt/$2` into the track worktree.** Drift is non-zero. List the driving commits first for the audit trail (`git -C <release_worktree_path> log --oneline track/$2/$1..release-wt/$2`), then:
+3. **Forward-merge `release-wt/$2` into the track worktree.** Drift is non-zero. List the
+   driving commits first for the audit trail
+   (`git -C <release_worktree_path> log --oneline track/$2/$1..release-wt/$2`). Before mutating the
+   branch, treat the current track tip as `P1` and the current release tip as `P2`, construct `B` and
+   the canonical per-path expected map `E` for the union of `B..P1` and `B..P2` exactly as
+   `llm-checks/README.md` specifies, and validate every `P2` `board.json.shared_touchpoints` member.
+   Any ambiguous base, invalid declaration, or non-record composition conflict BLOCKs before
+   `git merge`; retain `E` for the prospective-index identity check. Then:
 
    ```
-   git -C <track-worktree-path> merge --no-ff release-wt/$2 -m "Merge release-wt/$2 into track/$2/$1 — sync before track merge
+   git -C <track-worktree-path> merge --no-ff --no-commit -Xno-renames release-wt/$2 -m "Merge release-wt/$2 into track/$2/$1 — sync before track merge
 
    Forward-merge so the track branch carries release-wt's tip before
    /merge-track integrates it back. Drift reconciled: <N> sibling commits.
@@ -114,14 +121,29 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
    ```
 
-4. **Resolve conflicts — identical touchpoint contract to Step 4.** By invariant 2 of track-mode.md, disjoint tracks never write the same code/test file, so the forward-merge is conflict-free on code — expect at most a `board.json` reconciliation. On `git -C <track-worktree-path> diff --name-only --diff-filter=U`:
+4. **Resolve conflicts against canonical `E`.** By invariant 2 of track-mode.md, disjoint tracks do
+   not both change a production path except a declared shared file. The ordinary merge may still
+   conflict on that file because repository or local merge-driver configuration is not protocol
+   authority. On `git -C <track-worktree-path> diff --name-only --diff-filter=U`:
 
-   - **No conflicts** — `git merge` already created the merge commit. Continue to step 5.
+   - **No conflicts** — the merge is staged but uncommitted because step 3 used `--no-commit`. Continue to the prospective-index check below.
    - **Release `board.json`** — expected board reconciliation. Per-slice and per-track entries are disjoint and auto-merge; only the aggregate counts and the activity log collide. Resolve: keep both sides' entries, union the activity entries chronologically, recompute the aggregate counts, and re-render `index.md`. `git -C <track-worktree-path> add` both files.
-   - **A documented shared file** (matrix row marked `DOCUMENTED SHARED` with each track's declared region) — inspect the hunks: if they sit in the declared-separate regions, keep both tracks' regions and `git -C <track-worktree-path> add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git -C <track-worktree-path> merge --abort` and BLOCK as a planner error.
-   - **Any other file** — `git -C <track-worktree-path> merge --abort` and BLOCK: "Forward-merge of `release-wt/$2` into track `$1` conflicted on `<files>`, which are neither `board.json` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a merged sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
+   - **A documented shared file** with a preflight `E` tuple — ignore the configured driver's staged or conflicted result. Materialise the exact committed bytes from `git cat-file blob <E-oid>` to a temporary file in the path's directory, set its executable bit from `<E-mode>`, and atomically rename it over `<path>`; do not pass it through checkout/smudge filters or hand-edit it. Then feed exactly `<E-mode> <E-oid>\t<path>\0` to `git -C <track-worktree-path> update-index -z --index-info`, clearing conflict stages and installing the canonical blob. If `E` is absent, malformed, or was not produced by the both-parents-changed rule, abort and BLOCK.
+   - **Any other file** — `git -C <track-worktree-path> merge --abort` and BLOCK: "Forward-merge of `release-wt/$2` into track `$1` conflicted on undeclared production path `<files>`. The touchpoint plan was wrong. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 
-   After resolving any conflicts, commit the merge: `git -C <track-worktree-path> commit --no-edit` (retains the message from step 3).
+   Whether or not Git reported a conflict, overwrite every both-parents-changed documented shared
+   path in the worktree and prospective index with its exact `E` bytes/mode/tuple using the same
+   atomic materialisation and NUL-delimited `--index-info` operation. Thus a configured driver cannot
+   supply either a false conflict or a false clean blob.
+   After resolving release-record conflicts, extend the canonical path set with every non-record path
+   changed from `P1` to the prospective index, assigning `P1` as the expected tuple for any new path,
+   then compare that index against `E`. Any missing parent-2 change, extra edit, manual composition, custom
+   driver result, mode mismatch, or object mismatch aborts and BLOCKs before a commit. Only after the
+   index passes, commit the merge: `git -C <track-worktree-path> commit --no-edit` (retains the message
+   from step 3). For each canonical shared path, require
+   `git hash-object --no-filters -- <path>` to equal its `E` object id, then require empty staged and
+   unstaged diffs before running tests; a configured filter or worktree rewrite may not replace the
+   reviewed bytes.
 
 5. **Re-run the track's tests AND the affected-package suite in the track worktree.** Two layers, both from `<track-worktree-path>`, on the merged base:
    - **Per-slice commands.** The deduplicated union of every track slice's `status.json` `test_commands`.
@@ -134,13 +156,32 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    Whether this command created the synchronization merge or found it already present, re-run Step
    1's lifecycle-history/FSM and rollback gates against the current track tip. Then run the
    canonical **track-integration freshness composition** from `llm-checks/README.md` across the
-   track's ordered `verified` and `shipped` slices. Reconstruct every slice's first-parent non-merge
-   candidate paths and authoritative pinned head. Walk the track first-parent history in order:
-   commits inside a later verified slice's `start_commit..implementation_head` interval are covered
-   by that later slice and advance the reviewed frontier for the paths it authored; they do not stale every
-   earlier slice merely because the track is sequential. Non-record non-merge commits outside a
-   verified slice interval are unowned and fail closed. Validate every synchronization merge with
-   exact parent-2 and release provenance. Ignore disjoint sibling-only contribution paths. For each
+   track's ordered evidence intervals. An active interval belongs to a `verified` or `shipped` slice
+   and ends at its authoritative `implementation_head`. A retired-ownership interval belongs to a
+   terminal deferred `re_slice_required` original: it ends at `invalidated_review_head` for a
+   Step-2.6 invalidation, otherwise at the `review_scope_head` in the newest immutable report present
+   in the first committed status version that entered `re_slice_required`. Admit that retired
+   interval only after Step 1's linked verified-rollback
+   tree proof passes. It owns historical commits but never advances a reviewed frontier or supplies
+   PASS evidence. The verified rollback and any replacement slices remain ordinary active intervals.
+   For an ordinary failure, an otherwise-unowned semantic commit after the retired head and through
+   the rollback slice's `start_commit` is legal only inside the complete rollback envelope proven
+   restored by Step 1; for a post-sync invalidation, later authoritative
+   intervals remain separately owned and every other semantic gap fails closed.
+
+   Reconstruct each interval's first-parent non-merge candidate paths and immutable head. Walk the
+   track first-parent history in order: commits inside a later active interval are covered by that
+   slice and advance the reviewed frontier for the paths it authored; they do not stale every earlier
+   slice merely because the track is sequential. Commits inside an admitted retired interval are
+   owned but do not become a frontier. Classify each commit once: the ordinary rollback-gap exception
+   covers only commits not already owned by an active or retired interval. Other non-record non-merge
+   commits are unowned and fail closed.
+
+   Validate every synchronization merge with release provenance and the canonical per-path
+   composition rule from `llm-checks/README.md`. Ordinary contribution paths must equal parent 2. A result that
+   differs from both parents is recognized only on an exact board-declared `shared_touchpoints`
+   path and only when its mode/object id equals the conflict-free `merge-file --object-id` result;
+   manual composition is custom and fails. Ignore disjoint sibling-only contribution paths. For each
    contribution that intersects a current-track candidate path, compare the merge position with that
    path's latest authoritative reviewed frontier. A contribution after the frontier is stale; one
    followed by a later authoritative slice that authors the path is covered by that later fresh
@@ -190,7 +231,7 @@ present, stalls the loop. Emit one line — `auto-confirm (BATON_AUTO_CONFIRM): 
 
 ## Step 4 — Perform the merge
 
-`git -C <release_worktree_path> merge --no-ff --no-commit track/$2/$1 -m "<message>"` where the message is:
+`git -C <release_worktree_path> merge --no-ff --no-commit -Xno-renames track/$2/$1 -m "<message>"` where the message is:
 
 ```
 Merge track $1 into release-wt/$2 — N slices verified
@@ -203,11 +244,11 @@ Slices merged (all verified):
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 
-**Conflict handling — the touchpoint matrix is the contract.** By invariant 2 of track-mode.md, code and test files cannot conflict between disjoint tracks. The only legitimate conflicts are `board.json` and **documented shared files** (rows the matrix marks `DOCUMENTED SHARED`). On `git diff --name-only --diff-filter=U`:
+**Conflict handling — the touchpoint matrix is the contract.** By invariant 2 of track-mode.md, code and test files cannot conflict between disjoint tracks. Only release-record conflicts are resolvable; a production conflict, including on a documented shared path, BLOCKs. On `git diff --name-only --diff-filter=U`:
 
 - **Release `board.json`** — expected board reconciliation. Per-slice and per-track entries are disjoint and auto-merge; only the aggregate counts and the activity log collide. Resolve: keep both sides' entries, union the activity entries chronologically, recompute the aggregate counts, and re-render `index.md`. `git add` both files and continue.
-- **A documented shared file** (the touchpoint matrix marks it `DOCUMENTED SHARED` with each track's declared region) — the tracks were declared to edit well-separated regions. Inspect the conflict hunks: if they sit in the declared-separate regions, resolve by keeping both tracks' regions and `git add`. If the hunks actually overlap, the matrix's region declaration was wrong — `git merge --abort` and BLOCK as a planner error.
-- **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on `<files>`, which are neither `board.json` nor matrix-documented shared files. The touchpoint matrix was wrong — track `$1` and a sibling track both wrote `<file>`. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
+- **A documented shared file** (one exact `board.json.shared_touchpoints` entry names every contributing track and region, and the matrix renders it `DOCUMENTED SHARED`) — the exception is valid only when Git composes the regions without a conflict. `git merge --abort` and BLOCK as a planner error; never create a hand-resolved production blob in the release integration merge.
+- **Any other file** — `git merge --abort` and BLOCK: "Merge of track `$1` conflicted on production path `<files>`. The touchpoint plan was wrong — only release-record conflicts are resolvable, and even a documented shared path must compose without conflict. Return to `/plan-release $2` or `/replan-release $2` to re-group before merging. (track-mode.md invariant 4.)"
 
 Before committing, validate the prospective index tree as the canonical `/merge-track` integration
 shape from `llm-checks/README.md`: exactly two parents, second parent exactly the retained
