@@ -25,10 +25,13 @@ This command runs in the **primary worktree** (`<REPO_ROOT>`), not the release w
 Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktree_branch>` and `<worktree_path>` by pattern-matching the release name against git's worktree registry. The defined format is **`release-wt/$1`** for the branch and a sibling worktree path checked out on that branch.
 
 1. Run `git worktree list --porcelain` and scan for a stanza whose `branch` line ends in `refs/heads/release-wt/$1`. Capture its `worktree <path>` line as `<worktree_path>` and `release-wt/$1` as `<worktree_branch>`.
-2. If no matching stanza, fall back to `docs/release/$1/board.json` `release.worktree` (`.path` + `.branch`). Treat any mismatch between the two sources as docs drift — git wins; record the divergence in your Step 4 board update.
-3. If neither source produces a result, BLOCK with: "Release `$1` has no `release-wt/$1` worktree registered with git and no recorded worktree in `docs/release/$1/board.json`. Nothing to merge — either no implementation happened, or this release was abandoned."
-4. Confirm current branch is the release's integration branch. The integration branch is read from `docs/release/$1/board.json` `release.integration_branch`. If on a different branch, BLOCK with: "/merge-release must run on the integration branch `<integration>`. Switch to it and re-run."
-5. `git fetch origin` and confirm the integration branch is at or ahead of `origin/<integration>`. If behind, BLOCK with: "Local `<integration>` is behind origin. Run `git pull --ff-only origin <integration>` and re-run."
+2. If no matching stanza exists, BLOCK with: "Release `$1` has no
+   `release-wt/$1` worktree registered with git. Nothing to merge — either no
+   implementation happened, the worktree was removed prematurely, or this
+   release was abandoned." `board-v1` deliberately stores no worktree path or
+   branch fallback.
+3. Confirm current branch is the release's integration branch. The integration branch is read from `docs/release/$1/board.json` `release.integration_branch`. If on a different branch, BLOCK with: "/merge-release must run on the integration branch `<integration>`. Switch to it and re-run."
+4. `git fetch origin` and confirm the integration branch is at or ahead of `origin/<integration>`. If behind, BLOCK with: "Local `<integration>` is behind origin. Run `git pull --ff-only origin <integration>` and re-run."
 
 ## Step 1 — Read release state via the board oracle
 
@@ -124,15 +127,15 @@ Question: "Merge `<worktree_branch>` into `<integration>` now?" Options: "Yes, m
 
 2. Step 1.5 has already pulled `<integration>` into `<worktree_branch>`, so this merge should apply cleanly. If it nonetheless conflicts, the integration branch advanced *again* between Step 1.5 and here (a sibling release or direct fix landed mid-command). Abort: `git merge --abort`. BLOCK with: "Merge of `<worktree_branch>` into `<integration>` conflicted on: `<list>` despite the Step 1.5 forward-merge — `<integration>` advanced again mid-command. Re-run /merge-release $1 so Step 1.5 re-syncs the new drift."
 
-## Step 4 — Update the release board
+## Step 4 — Re-render the release view
 
-Append an activity entry to `docs/release/$1/board.json` recording the merge:
-
-- **Actor**: release integrator (/merge-release)
-- **Note**: `N verified slices merged. Slices remain in 'verified' state until <integration> ships to production; at that point each slice's status.json flips to 'shipped'. Branch <worktree_branch> retained; remove with 'git branch -D <worktree_branch>' once you're sure no more work belongs to this release.`
-- Dated, and tagged with the merge commit `<SHA>`.
-
-Validate `board.json` against `board-v1`, then re-render `index.md` from it (the Recent activity section is a view). Commit both on the integration branch: `docs(release/$1): record merge to <integration>`.
+Leave `docs/release/$1/board.json` byte-identical: it is the state-free release
+plan, and the release merge commit is the durable integration activity record.
+Validate the unchanged board against `board-v1`, then re-render `index.md` from
+the board plus the now-integrated authoritative `status.json` records and
+ref-derived track state. If the rendered bytes change, commit only `index.md` on
+the integration branch as `docs(release/$1): re-render board — merged to
+<integration>`. If they do not change, do not create an empty metadata commit.
 
 ## Step 5 — Hand off
 

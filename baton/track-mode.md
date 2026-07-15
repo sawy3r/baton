@@ -116,7 +116,7 @@ Independent tracks are the common case; dependencies are the exception and must 
 5. **`/merge-track <track-id>`** — gate: every slice satisfies the canonical integration-ready predicate above. Merges `track/<release>/<track-id>` → `release-wt/<release>` with `--no-ff`. Conflict ⇒ BLOCK (invariant 4).
 6. **`/merge-release`** — gate: every track is merged into `release-wt/<release>` (which implies every slice is integration-ready). Merges `release-wt/<release>` → version branch with `--no-ff`.
 
-`/replan-release` revises a release that is already in flight — adding unplanned scope, re-scoping or dropping slices, re-grouping tracks. It reconciles true board state from both the integration branch and the track worktrees before proposing changes.
+`/replan-release` revises a release that is already in flight — adding unplanned scope, re-scoping or dropping slices, re-grouping tracks. It reconciles true lifecycle state from authoritative `status.json` records on the release and track refs while retaining `board.json` as the pure plan.
 
 ## Naming, locked
 

@@ -1,5 +1,5 @@
 ---
-description: Revise an already-planned release that is in flight — add unplanned scope, re-scope or drop slices, re-group tracks. Reconciles board state from BOTH the integration branch and the track worktrees, forward-syncs the base branch in and the revised plan out to every track branch. Usage: /replan-release <release-name>
+description: Revise an already-planned release that is in flight — add unplanned scope, re-scope or drop slices, re-group tracks. Reconciles lifecycle state from authoritative status records across release and track refs, forward-syncs the base branch in and the revised plan out to every track branch. Usage: /replan-release <release-name>
 argument-hint: <release-name> (e.g. 2026-05-19-uat-bug-fix)
 ---
 
@@ -48,14 +48,25 @@ Before reconciling state or revising anything, bring `release-wt/$1` up to date 
    outside `PLANNER_START_SHA..release-wt/$1`; the fallback range contains no base production commit
    or merge commit.
 
-## Step 2 — Reconcile true state via the board oracle (do not trust board.json)
+## Step 2 — Reconcile true state via the board oracle
 
-`board.json` on the integration branch is frequently stale for an in-flight release — work lands on track branches and only reaches the board at `/merge-track`. The board oracle rebuilds the real state table for you: it resolves every slice's `status.json` and the `tracks` board straight from the `release-wt/$1` and `track/$1/*` **git refs**, ownership-keyed (a slice's authoritative state is the copy on its own track branch). Do not hand-reconcile by reading `status.json` from each branch yourself — that by-hand pass is the recurring source of false-stale reads; the oracle does exactly it, correctly.
+`board.json` is the state-free release plan, so it cannot be stale about
+lifecycle. The board oracle combines that plan with every slice's
+`status.json` from `release-wt/$1` and `track/$1/*` **git refs**,
+ownership-keyed (a slice's authoritative state is the copy on its own track
+branch). Do not hand-reconcile by reading `status.json` from each branch
+yourself — that by-hand pass is the recurring source of false-stale reads; the
+oracle does exactly it, correctly.
 
 1. Run the **board oracle** (reference implementation: `sworn board --json`). Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, STOP: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: STOP with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error. From `.releases["$1"]` you have, branch-accurate: every slice's true `state` and `track`; every track's `state` (`planned` / `in_progress` / `merged`), `dependsOn`, `blockedBy`, `readyToMerge`, `worktreePath`, `worktreeBranch`; and the release's `releaseWorktreePath`. The top-level `.ghostSlices` / `.pendingSpecs` flag `board.json` entries the committed branches cannot back.
 2. Run `git worktree list` and confirm each track's `worktreePath` actually exists on disk; note any recorded-but-missing worktree as drift.
 3. **Spec-drift check — has a prior re-scope failed to reach a track?** For each in-flight track with a `worktreePath`, for each slice in that track, run `git diff release-wt/$1 <track-branch> -- docs/release/$1/<slice>/spec.json` (`<track-branch>` = the track's `worktreeBranch`). A non-empty diff means an **earlier `/replan-release` committed a re-scoped `spec.json` to `release-wt/$1` that the track branch never synced** — the verifier has been reading a stale spec, the signature of the `/verify-slice` ↔ `/replan-release` loop. Report it explicitly: "Track `<track-id>`'s `spec.json` for `<slice>` is out of sync (N diff lines)." Step 6 of this command resolves it by forward-merging `release-wt → <track-branch>`; still surface it so the human understands why the slice looked stuck. (The oracle reports *state*, not spec-content drift — this git-diff check stays a separate pass.)
-4. Print the reconciled state table — slice → true state, track → `planned` / `in_progress` / `merged` — and call out every drift from what the integration-branch `board.json` records, including every spec-drift slice found in step 3 and every ghost slice / pending spec the oracle flagged. The revision and the `board.json` correction are done in the same pass.
+4. Print the reconciled state table — slice → true state, track → `planned` /
+   `in_progress` / `merged` — and call out every spec/status/ref discrepancy,
+   including every spec-drift slice found in step 3 and every ghost slice /
+   pending spec the oracle flagged. Do not call a lifecycle difference
+   `board.json` drift: the board deliberately stores no lifecycle. Amend the
+   board only when the ratified plan itself changes.
 5. **Diagnose why the replan was called — read the journals, not just the oracle.** The oracle reports each slice's `state` but not *why* it is there: it has no blocked-reason field and never reads journals. A slice the oracle shows as `in_progress` may actually be a stalled BLOCKED handoff routed back to the planner. For every slice the oracle reports as `in_progress` or `failed_verification` — plus any the human's request points at — read its `status.json` **`blocked` block** and **`verification.result`**, and the tail of its `journal.md`. These carry the implementer's or verifier's BLOCKED diagnosis, the recommended action, and the spec defect (if any) that routed the work here. Summarise the diagnosed trigger before proposing any revision — the revision must answer it.
 
 6. **Seed every started unmerged slice from its authoritative owner track.** Before changing or
@@ -134,7 +145,7 @@ For each track in the Step 2 oracle result `.releases["$1"].tracks[]` whose deri
      ```
      git cherry-pick "$PLANNER_START_SHA"..release-wt/$1
      ```
-     Because the planner role forbids production code (see "Strict role boundaries"), every commit in `$PLANNER_START_SHA..release-wt/$1` is planning-artefact-only by construction — the cherry-pick can only conflict on planning artefacts, which are squarely planner remit. Resolve any conflicts with planner judgement (a journal-entry conflict is usually additive — keep both sides; a `status.json` conflict takes planner authority only for the fields deliberately changed by this replan, such as `state` / `owner` / `last_updated_*` / `verification.*`, while preserving track-only fields like `start_commit` / `actual_files` and applying the status conflict rule above to `maintainability`; a `board.json` slice-state or aggregate-count conflict takes the planner side; a `board.json` activity-log conflict is additive — keep both entries and mark the track's pre-existing entry as "Resolved by replan above" where applicable). Commit the cherry-pick result.
+     Because the planner role forbids production code (see "Strict role boundaries"), every commit in `$PLANNER_START_SHA..release-wt/$1` is planning-artefact-only by construction — the cherry-pick can only conflict on planning artefacts, which are squarely planner remit. Resolve any conflicts with planner judgement (a journal-entry conflict is usually additive — keep both sides; a `status.json` conflict takes planner authority only for the fields deliberately changed by this replan, such as `state` / `owner` / `last_updated_*` / `verification.*`, while preserving track-only fields like `start_commit` / `actual_files` and applying the status conflict rule above to `maintainability`; a `board.json` conflict can concern only the pure plan, so take the ratified planner copy exactly and validate it against `board-v1`; discard and re-render any conflicted `index.md` from that board plus authoritative statuses/ref-derived state). Commit the cherry-pick result.
      Note this as: "track `<id>`: production-code merge deferred to Step 0 self-heal; planning artefacts propagated via cherry-pick." Sibling-track production code (the rest of the would-have-been forward-merge) is still picked up by the implementer's next `/implement-slice` / `/verify-slice` Step 0 — that part of the design is unchanged. What this fallback prevents is the Step 6/Step 0b deadlock where a planner-cleared `verification.result` strands on release-wt and leaves Step 0b halting forever on the stale track-branch BLOCKED verdict. (See baton#16.)
 4. Push the updated track branch: `git push origin HEAD:refs/heads/track/$1/<track-id>` — the track branch is the durable recovery anchor (track-mode).
 
@@ -155,6 +166,6 @@ A single message with:
 
 - Release name; slices added / re-scoped / dropped; tracks added / changed.
 - **Base-branch sync (Step 1)**: already-current, merged cleanly, or stopped for a production-code conflict.
-- The reconciled state table, the **diagnosed replan trigger** (Step 2.5), the resolution of any inbound BLOCKED slice (Step 2b — spec corrected, or escalated to the human), and every `board.json` drift correction made this session.
+- The reconciled state table, the **diagnosed replan trigger** (Step 2.5), the resolution of any inbound BLOCKED slice (Step 2b — spec corrected, or escalated to the human), every spec/status/ref discrepancy corrected, and every ratified pure-plan `board.json` change made this session.
 - **Track propagation (Step 6)**: which track branches were synced, skipped (dirty / no worktree), or left for downstream Step 0 self-heal.
 - Handoff: which tracks are now ready for a fresh `/implement-slice` session, and any new `depends_on` ordering. With Step 6 done, tracks no longer need a manual `release-wt → track` sync before `/implement-slice` — call out any exception left for self-heal.

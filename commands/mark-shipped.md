@@ -176,30 +176,32 @@ integration branch:
 
 Touch no other field. The `verification` block stays exactly as the verifier
 left it — `shipped` records the deploy, it does not erase the verification
-record. Leave legal `deferred` and already-`shipped` slices untouched.
+record. Leave legal `deferred` and already-`shipped` slices untouched. Validate
+every changed status against `slice-status-v1` before proceeding.
 
-## Step 4 — Update the release board
+## Step 4 — Re-render the release view
 
-In `docs/release/$1/board.json` on the integration branch:
+Leave `docs/release/$1/board.json` byte-identical. `board-v1` is a strict,
+state-free plan: slice lifecycle belongs only in each `status.json`, and the
+schema has no aggregate-count or activity-log fields.
 
-1. **Slice states** — change every `<to-ship>` slice's `state` from
-   `verified` to `shipped`.
-2. **Aggregate counts** — recompute: move the `<to-ship>` count out of the
-   verified total into the shipped total.
-3. **Activity log** — prepend an entry: actor `release shipper (/mark-shipped)`,
-   note `N slices transitioned verified -> shipped. Deployed commit <deployed-commit>; deploy ref <deploy_ref or 'none recorded'>. This is the terminal state — release $1 is live in production.`, dated and tagged with the deployed-commit short SHA.
-
-Validate `board.json` against `board-v1`, then re-render `index.md` from it (the
-Slices table, Aggregate state, and Recent activity sections are views).
+Validate the unchanged board against `board-v1`, then re-render `index.md` from
+that board plus the integration-branch `status.json` records. The Slices and
+Aggregate state sections are derived views, and Recent activity derives the
+ship event from the new `ship` blocks. The durable activity is the per-slice
+ship evidence and the Step 5 commit itself. Before committing, require
+`git diff --quiet HEAD -- docs/release/$1/board.json`; if it is non-zero, BLOCK
+and restore the board to `HEAD` before re-rendering. A state-only ship operation
+has no authority to change the plan.
 
 ## Step 5 — Commit
 
-One commit on the integration branch, **no push**. Stage only the board and the
-slice status files, by explicit path, so no unrelated working-tree change is
+One commit on the integration branch, **no push**. Stage only the rendered view
+and the slice status files, by explicit path, so no unrelated working-tree change is
 swept in (see `$HOME/.claude/baton/multi-worktree-resilience.md`):
 
 ```
-git commit -o docs/release/$1/board.json docs/release/$1/index.md docs/release/$1/*/status.json -m "docs(release/$1): mark N slices shipped — deployed <short SHA>
+git commit -o docs/release/$1/index.md docs/release/$1/<slice-id-1>/status.json docs/release/$1/<slice-id-2>/status.json ... -m "docs(release/$1): mark N slices shipped — deployed <short SHA>
 
 Release $1 is live in production. N slices transitioned verified -> shipped.
 
@@ -233,6 +235,8 @@ Tell the human, in one short message:
   command.
 - Do not edit slice `spec.json`, `proof.json`, or the `verification` block of
   `status.json`. The verification record is immutable history.
+- Do not edit `board.json`. It is the state-free plan; this command may only
+  validate it and use it as an input when rendering `index.md`.
 - Do not delete branches or worktrees — recommend the cleanup, let the human
   run it.
 - Do not invoke `/plan-release`, `/replan-release`, `/implement-slice`,
