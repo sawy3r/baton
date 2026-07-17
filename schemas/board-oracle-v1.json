@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baton.sawy3r.net/schemas/board-oracle-v1.json",
+  "title": "Baton Board Oracle Projection",
+  "description": "Portable public JSON projection emitted by a conformant Baton board oracle. The aggregate catalog form carries sourceRef topology identity for every discovered release; the named-release form intentionally retains its established top-level release/tracks shape and omits sourceRef. This is a derived read model, not the persisted board-v1 plan record.",
+  "$comment": "Cross-node semantic invariants not expressible in JSON Schema remain mandatory: track ids are unique within a release; each slice id occurs exactly once; every slice.track equals its enclosing track id; every slice in one track has the same normalized dependsOnTracks set; and every aggregate map key equals its entry.release. Engines must emit these invariants and consumers must fail closed before acting when any is violated.",
+  "oneOf": [
+    { "$ref": "#/$defs/catalog" },
+    { "$ref": "#/$defs/named_release" }
+  ],
+  "$defs": {
+    "id_token": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "minLength": 1
+    },
+    "projection_state": {
+      "type": "string",
+      "description": "A slice-status-v1 lifecycle state, or the projection-only unknown sentinel when no valid status evidence exists.",
+      "enum": [
+        "planned",
+        "design_review",
+        "in_progress",
+        "implemented",
+        "verified",
+        "failed_verification",
+        "blocked",
+        "deferred",
+        "shipped",
+        "unknown"
+      ]
+    },
+    "dependencies": {
+      "description": "Declared predecessor track ids. Null is the compatibility spelling of an empty dependency list and consumers MUST normalize it to an empty array.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id_token" },
+          "uniqueItems": true
+        },
+        { "type": "null" }
+      ]
+    },
+    "slice": {
+      "type": "object",
+      "description": "Branch-accurate slice summary nested under its topology-owning track. Engines may add convenience or provenance fields; commands may require only the fields declared required here.",
+      "required": ["id", "state", "track", "dependsOnTracks"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id_token" },
+        "state": { "$ref": "#/$defs/projection_state" },
+        "track": { "$ref": "#/$defs/id_token" },
+        "dependsOnTracks": { "$ref": "#/$defs/dependencies" },
+        "owner": { "type": "string" },
+        "lastUpdated": { "type": "string" },
+        "actionable": { "type": "boolean" },
+        "blocked": { "type": "boolean" },
+        "blocked_reason": { "type": "string" },
+        "blocked_owner": { "type": "string" },
+        "stateSource": { "type": "string" },
+        "stateDurability": {
+          "type": "string",
+          "description": "Evidence durability. Empty only when state is unknown and no evidence source was selected.",
+          "enum": ["committed", "uncommitted", ""]
+        }
+      },
+      "additionalProperties": true
+    },
+    "track": {
+      "type": "object",
+      "description": "Track topology plus ordered nested slice summaries. Track lifecycle and operational convenience fields are optional and never command authority.",
+      "required": ["id", "slices"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id_token" },
+        "slices": {
+          "description": "Ordered slice summaries. Null is the compatibility spelling of an empty track and consumers MUST normalize it to an empty array.",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/slice" },
+              "uniqueItems": true
+            },
+            {
+              "type": "null",
+              "deprecated": true
+            }
+          ]
+        },
+        "state": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "tracks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/track" },
+      "uniqueItems": true
+    },
+    "catalog_release": {
+      "type": "object",
+      "required": ["release", "sourceRef", "tracks"],
+      "properties": {
+        "release": { "$ref": "#/$defs/id_token" },
+        "sourceRef": {
+          "description": "Fully qualified selected topology ref under refs/heads or refs/remotes. Empty only for the read-only no-HEAD filesystem fallback and never valid as a mutating-command object selector.",
+          "oneOf": [
+            { "const": "" },
+            {
+              "type": "string",
+              "pattern": "^refs/(heads|remotes)/(?!\\.)(?!.*(?:/\\.|//|\\.\\.|@\\{|\\.lock(?:/|$)))(?!.*[./]$)[A-Za-z0-9._/-]+$"
+            }
+          ]
+        },
+        "tracks": { "$ref": "#/$defs/tracks" }
+      },
+      "additionalProperties": true
+    },
+    "catalog": {
+      "type": "object",
+      "required": ["releases"],
+      "properties": {
+        "releases": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/catalog_release" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "named_release": {
+      "type": "object",
+      "description": "Compatibility shape for an explicitly named release. sourceRef is intentionally absent at the top level.",
+      "required": ["release", "tracks"],
+      "properties": {
+        "release": { "$ref": "#/$defs/id_token" },
+        "tracks": { "$ref": "#/$defs/tracks" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -301,23 +301,35 @@ plan; runtime truth comes from the status records and refs in both places:
 
 Before proposing any revision, rebuild the true state table:
 
-1. Run the board oracle (reference implementation: `sworn board --json`) and use
-   `.releases["<release-name>"]` as the sole state/ownership authority. It resolves slice state from
-   each owner track ref and derives track state/worktree metadata. Do not reconstruct state by
-   iterating `board.json` or manually reading branch statuses. If the engine is missing or the oracle
-   fails, stop under `/replan-release`'s fail-closed error contract.
-2. Use the oracle-derived tracks to identify planned, started, and merged work. Confirm reported
-   worktree paths against `git worktree list`; disk existence is the final worktree check.
-3. **Spec drift.** For each oracle-derived in-flight track, diff every slice's `spec.json` between `release-wt/<release-name>` and the track branch (`git diff release-wt/<release-name> <track-branch> -- docs/release/<release-name>/<slice>/spec.json`). A non-empty diff means an earlier re-scope landed on `release-wt` but never reached the track, so the verifier has been reading a stale spec. Name the slice, track, and diff size — this is the signature of the `/verify-slice` ↔ `/replan-release` loop, where each `/replan-release` re-scopes the spec, each `/verify-slice` reads the stale track copy and re-BLOCKs. `/verify-slice` Step 0 now forward-merges `release-wt` and self-heals this; report it regardless so the human sees why the slice was stuck.
+1. Before `/replan-release` forward-syncs or otherwise mutates `release-wt`, run
+   the board oracle (reference implementation: `sworn board --json`) as a
+   read-only preflight and require track-mode's full projection integrity gate
+   to pass. After any base sync, rerun and revalidate the oracle; never use the
+   pre-sync result as the lifecycle snapshot. Use
+   `.releases["<release-name>"].tracks[] | (.slices // [])[]` as the branch-accurate
+   slice state/ownership authority only after track-mode's full projection
+   integrity gate passes. Duplicate ownership, row/parent mismatch,
+   inconsistent normalized dependencies, duplicate track ids, or a release-key
+   mismatch fail closed as malformed oracle output. Do not require a
+   release-level `slices` array, worktree metadata, `blockedBy`,
+   `readyToMerge`, or merge-oriented track state. If the engine is missing or
+   the oracle fails, stop under `/replan-release`'s fail-closed error contract.
+2. For every oracle track id, derive `track/<release-name>/<track-id>` and the
+   conventional worktree path. Derive runtime track state from Git: `merged`
+   when that track ref is an ancestor of `release-wt/<release-name>`, `planned`
+   when the ref is absent, otherwise `in_progress`. Confirm materialised branch
+   and path pairs with `git worktree list --porcelain`; the Git registry is the
+   final worktree check.
+3. **Spec drift.** For each Git-derived in-flight track, diff every nested slice's `spec.json` between `release-wt/<release-name>` and the track branch (`git diff release-wt/<release-name> <track-branch> -- docs/release/<release-name>/<slice>/spec.json`). A non-empty diff means an earlier re-scope landed on `release-wt` but never reached the track, so the verifier has been reading a stale spec. Name the slice, track, and diff size — this is the signature of the `/verify-slice` ↔ `/replan-release` loop, where each `/replan-release` re-scopes the spec, each `/verify-slice` reads the stale track copy and re-BLOCKs. `/verify-slice` Step 0 now forward-merges `release-wt` and self-heals this; report it regardless so the human sees why the slice was stuck.
 4. Cross-check `git log` on the integration branch and `release-wt/<release-name>` for merged work.
 5. Surface every spec/status/ref discrepancy to the human, including every
    spec-drift slice from step 3 and every ghost or pending plan record. Do not
    describe lifecycle as `board.json` drift. Re-planning proceeds from
-   oracle-derived branch reality; change `board.json` only when the ratified
+   oracle slice state plus Git-derived branch reality; change `board.json` only when the ratified
    plan changes, then re-render `index.md` from the plan plus authoritative
    statuses/ref-derived state.
 6. Before mutating or propagating any started slice's status on an unmerged track, copy the exact
-   `status.json` from the oracle-identified owner track ref and validate it against `slice-status-v1`
+   `status.json` from the Git-derived owner track ref and validate it against `slice-status-v1`
    plus the canonical history/blob/FSM checks. The release-worktree or base-merge copy is normally
    stale and is not a legal mutation or propagation source. Record the source ref and object id for
    every seeded status. Preserve the seeded

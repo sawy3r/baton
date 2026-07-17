@@ -39,7 +39,12 @@ Release work runs under **track mode** — read `$HOME/.claude/baton/track-mode.
 
 **Launch-directory discipline — read this first.** This session is launched from whatever directory the human's terminal happens to be in — almost always the primary repo (`<REPO_ROOT>`), checked out on the integration branch. **That is not where this slice's work belongs.** Do not build, test, edit files, or run `git` writes in the launch directory. Step 0 discovers the correct **track worktree**; from that point on every Bash command is `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`) and every Read/Write/Edit uses an absolute path under `<worktree_path>`. If you ever run a mutating command without a `<worktree_path>` anchor, stop — you are in the wrong tree. You never ask the human to `cd`; discovery is silent and automatic.
 
-**Read the board through the oracle — never by hand.** Every fact Step 0 needs (which track owns the slice, the track's state, its dependency gate, the sequential order of its slices, the worktree to operate in) comes from one branch-aware read. Invoke the **board oracle** (reference implementation: `sworn board --json`):
+**Read the board through the oracle — never by hand.** Track membership,
+ordered slice state, and declared dependencies come from one branch-aware read.
+Worktree identity and dependency satisfaction are then derived from the locked
+branch convention plus Git, as track-mode's board-oracle projection boundary
+requires. Invoke the **board oracle** (reference implementation: `sworn board
+--json`):
 
 ```
 sworn board --json
@@ -47,17 +52,68 @@ sworn board --json
 
 Run it from anywhere inside the repo — it resolves the repo from cwd and reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` **git refs**, so it is correct regardless of which branch the launch directory sits on. Parse `.releases["$2"]` from its output. **Do not read launch-directory-relative `board.json` or `status.json` files in this step.** After the oracle identifies the owner track, the predecessor gate below may read a complete status only with `git show <worktree_branch>:<status-path>`; that branch-pinned read supplies fields the oracle summary does not expose without reintroducing the stale-launch-directory bug. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
 
-1. **Find the slice's track.** In the oracle JSON, take `.releases["$2"].tracks[]` and find the entry whose `.slices` array contains `$1`. If `$1` is in no track (or has no slice object under `.releases["$2"].slices[]`), BLOCK: "Slice `$1` is not assigned to a track — re-run `/plan-release $2` (or `/replan-release $2`) to group it." From the track entry capture `<track-id>` (`.id`), `<worktree_path>` (`.worktreePath`), `<worktree_branch>` (`.worktreeBranch`), `<blocked_by>` (`.blockedBy`), and the ordered `<slices>` (`.slices`).
+1. **Validate ownership, then find the slice's one track.** Apply track-mode's
+   projection integrity gate to `.releases["$2"]` before selecting anything:
+   the entry's `release` equals `$2`; track ids are unique; every slice id
+   occurs exactly once across normalized nested slice arrays; every row's
+   `track` equals its enclosing track id; and every row in one track has the
+   same normalized, bytewise-sorted `dependsOnTracks` set. BLOCK on the first
+   violation with the conflicting ids/values — malformed projection data must
+   never become a first-match selection. Then build all matches for `$1`
+   across `.tracks[] | (.slices // [])[]`. Zero matches BLOCK: "Slice `$1` is
+   not assigned to a track — re-run `/plan-release $2` (or `/replan-release
+   $2`) to group it." More than one match BLOCK: "Slice `$1` has ambiguous
+   ownership in the board-oracle projection: <enclosing-track ids>." Require
+   the sole row's `track` to equal its enclosing `<track-id>`, then capture the
+   target row and ordered `<slices>` (`.slices // []`). A release-level
+   `.slices[]` array is not part of the required oracle contract.
+   Derive `<worktree_branch>` as `track/$2/<track-id>` and
+   `<worktree_path>` as
+   `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-<track-id>`.
 2. **Enforce sequential order within the track.** For every slice listed *before* `$1` in the track's `.slices`, read its complete status with `git show <worktree_branch>:docs/release/$2/<earlier>/status.json`. Accept `verified` / `shipped` and a legal unstarted Rule-2 deferral. Accept a `deferred` terminal `re_slice_required` original when `$1` is its recorded rollback; for any other later slice, require that rollback already to be `verified` / `shipped` and ordered before `$1`. Otherwise BLOCK: "Slice `<earlier>` precedes `$1` in track `<track-id>` (state `<state>`) and is not integration-ready. Finish its verification or mandatory rollback first."
-The worktree path and branch are **conventional, not read from a board field an implementer wrote**: `<worktree_branch>` = `track/$2/<track-id>` and `<worktree_path>` = `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-<track-id>`. The oracle reports these as `.worktreeBranch` / `.worktreePath`, derived the same way; trust the convention if they are null or disagree. (This is the Option-1 invariant: an implementer never writes `release-wt` — see track-mode.md "release-wt is written only by /merge-track and the planner". The materialisation record is the `track/$2/<track-id>` **branch ref**, not a `release-wt` board write.)
+The worktree path and branch are **conventional, never required oracle
+fields**. Confirm them with `git worktree list --porcelain`; the convention and
+Git registry win if optional oracle convenience metadata is absent or disagrees.
+This is the Option-1 invariant: an implementer never writes `release-wt`; the
+materialisation record is the `track/$2/<track-id>` branch ref.
 
-3. **Track worktree already materialised** — `git worktree list` shows a worktree at the conventional `<worktree_path>` on `<worktree_branch>`:
+3. **Track worktree already materialised** — `git worktree list --porcelain` shows the exact conventional `<worktree_path>` / `refs/heads/<worktree_branch>` pair:
    - Capture `<worktree_path>`. **For the rest of this session, every Bash command runs `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`); every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`.** Skip to Step 0b (the BLOCKED-verdict guard) below.
-4. **Track worktree absent** from `git worktree list` (first `/implement-slice` for this track): materialise it — **writing nothing to `release-wt`**.
-   - **Dependency gate.** If the oracle reports a non-empty `.blockedBy` for this track, BLOCK: "Track `<track-id>` depends on `<blocked_by>` — not yet merged to `release-wt`. A dependent track may only start once its predecessors have merged." (`blockedBy` is exactly the subset of the track's `depends_on` whose tracks are not in state `merged`; an empty list means the gate is clear.)
-   - **Release worktree first.** If the release worktree (conventional path `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2`, branch `release-wt/$2`) is absent from `git worktree list`, this is also the first `/implement-slice` in the release: read the integration branch from the oracle's `board.json` `release.integration_branch` (e.g. `release/v0.5.0`), then `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2 -b release-wt/$2 <integration-branch>`. This creates the `release-wt/$2` branch at the integration tip; it does **not** commit to it.
+4. **Track worktree absent** from `git worktree list --porcelain` (first `/implement-slice` for this track): materialise it — **writing nothing to `release-wt`**.
+   - **Dependency gate.** Read the target slice row's `dependsOnTracks`,
+     normalizing `null` to an empty array.
+     For every dependency `<dep>`, run
+     `git merge-base --is-ancestor track/$2/<dep> release-wt/$2`; a missing
+     dependency ref or non-zero ancestry result makes `<dep>` unmet. If any are
+     unmet, BLOCK: "Track `<track-id>` depends on `<blocked_by>` — not yet
+     merged to `release-wt`. A dependent track may only start once its
+     predecessors have merged." Do not require the optional track-level
+     `blockedBy` oracle convenience field.
+   - **Release worktree first.** If the release worktree (conventional path
+     `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2`, branch
+     `release-wt/$2`) is absent from `git worktree list --porcelain`, this is also the
+     first `/implement-slice` in the release. Capture the oracle-selected
+     `.releases["$2"].sourceRef`. It must be non-empty, match the
+     `board-oracle-v1` safe fully qualified `refs/heads/...` or
+     `refs/remotes/...` grammar, and pass
+     `git show-ref --verify --quiet <sourceRef>` exactly. Otherwise BLOCK:
+     "Release `$2` has no safe committed topology ref for worktree
+     materialisation." Never accept a short ref, revision expression, object
+     suffix, or the empty filesystem-fallback sentinel in this mutating path.
+     Only after that check, read the integration branch from
+     the board at `<sourceRef>` using
+     `git show <sourceRef>:<release-docs-prefix>/$2/board.json | jq -r
+     '.release.integration_branch'`; probe the protocol's supported docs
+     prefixes and fail closed on a missing or malformed board. Then run
+     `git worktree add $HOME/projects/<REPO_BASENAME>-worktrees/release-$2 -b
+     release-wt/$2 <integration-branch>`. This creates the `release-wt/$2`
+     branch at the integration tip; it does **not** commit to it.
    - **Materialise the track worktree** from the release branch: `git worktree add <worktree_path> -b <worktree_branch> release-wt/$2`. This creates the `track/$2/<track-id>` branch off `release-wt`'s tip; it does **not** commit to `release-wt`.
-   - **No board write, no `release-wt` commit.** The local `track/$2/<track-id>` branch ref is the materialisation record the oracle reads (it resolves track existence + worktree path from the branch and the naming convention — track-mode.md "Where the discovery data lives"); it becomes durable when the first commit (the design TL;DR, step 3 of the implementation loop) pushes the track branch. The worktree path is conventional, so nothing is persisted to the board; the track's live `in_progress` state is **derived** by the oracle from the branch, never stamped onto `release-wt`.
+   - **No board write, no `release-wt` commit.** The local
+     `track/$2/<track-id>` branch ref is the materialisation record; it becomes
+     durable when the first commit (the Design TL;DR) pushes the track branch.
+     The worktree path and runtime state are derived from Git, never persisted
+     to the board.
    - Treat the new worktree as `<worktree_path>` per step 3. Continue silently — no human handoff.
 
 Briefly tell the human in one sentence what you did ("Using track worktree at `<worktree_path>`" or "Materialised track worktree at `<worktree_path>` for track `<track-id>`"). Then continue.

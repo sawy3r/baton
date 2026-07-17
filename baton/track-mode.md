@@ -1,11 +1,11 @@
 ---
 title: Track mode — safe parallelism for release work
-description: The canonical model for running release slices in parallel. Tracks group slices into disjoint, sequentially-implemented units, each in its own worktree. Referenced by /plan-release, /implement-slice, /verify-slice, /merge-track, /merge-release.
+description: The canonical model for running release slices in parallel. Tracks group slices into disjoint, sequentially-implemented units, each in its own worktree. Referenced by /plan-release, /replan-release, /implement-slice, /design-review, /verify-slice, /merge-track, /merge-release.
 ---
 
 # Track Mode
 
-This document is the **single source of truth** for how release work is parallelised. The role prompts (`role-prompts/planner.md`, `implementer.md`, `verifier.md`) and the slash commands (`/plan-release`, `/implement-slice`, `/verify-slice`, `/merge-track`, `/merge-release`) all defer to the definitions here. When they disagree with this file, this file wins — fix the role prompt.
+This document is the **single source of truth** for how release work is parallelised. The role prompts (`role-prompts/planner.md`, `implementer.md`, `captain.md`, `verifier.md`) and the slash commands (`/plan-release`, `/replan-release`, `/implement-slice`, `/design-review`, `/verify-slice`, `/merge-track`, `/merge-release`) all defer to the definitions here. When they disagree with this file, this file wins — fix the role prompt.
 
 ## The problem track mode solves
 
@@ -110,11 +110,13 @@ Independent tracks are the common case; dependencies are the exception and must 
 ## Lifecycle
 
 1. **`/plan-release`** — planner decomposes into slices, groups slices into tracks, builds the touchpoint matrix, records tracks + slices in `index.md`. No worktrees, no code.
-2. **`/implement-slice <slice>`** — discovers the slice's track from `index.md`; materialises the release worktree (if first slice in the release) and the track worktree (if first slice in the track); implements one slice; terminal state `implemented`.
-3. **`/verify-slice <slice>`** — fresh context; discovers and operates inside the track worktree; adversarial verification; terminal state `verified` or `failed_verification`.
-4. Repeat 2-3 for each slice of the track, **in order**, in the **same track worktree**.
-5. **`/merge-track <track-id>`** — gate: every slice satisfies the canonical integration-ready predicate above. Merges `track/<release>/<track-id>` → `release-wt/<release>` with `--no-ff`. Conflict ⇒ BLOCK (invariant 4).
-6. **`/merge-release`** — gate: every track is merged into `release-wt/<release>` (which implies every slice is integration-ready). Merges `release-wt/<release>` → version branch with `--no-ff`.
+2. **`/implement-slice <slice>`** — discovers the slice's track; materialises the release worktree (if first slice in the release) and the track worktree (if first slice in the track). On a planned slice, writes `design.md`, transitions to `design_review`, and halts before code.
+3. **`/design-review <slice>`** — fresh Captain context in the same track worktree; either authorises `in_progress`, routes design corrections back to the Implementer, or escalates pins to the Coach.
+4. **`/implement-slice <slice>` resumed** — implements the authorised design; terminal state `implemented`.
+5. **`/verify-slice <slice>`** — fresh context; discovers and operates inside the track worktree; adversarial verification; terminal state `verified` or `failed_verification`.
+6. Repeat 2-5 for each slice of the track, **in order**, in the **same track worktree**.
+7. **`/merge-track <track-id>`** — gate: every slice satisfies the canonical integration-ready predicate above. Merges `track/<release>/<track-id>` → `release-wt/<release>` with `--no-ff`. Conflict ⇒ BLOCK (invariant 4).
+8. **`/merge-release`** — gate: every track is merged into `release-wt/<release>` (which implies every slice is integration-ready). Merges `release-wt/<release>` → version branch with `--no-ff`.
 
 `/replan-release` revises a release that is already in flight — adding unplanned scope, re-scoping or dropping slices, re-grouping tracks. It reconciles true lifecycle state from authoritative `status.json` records on the release and track refs while retaining `board.json` as the pure plan.
 
@@ -164,7 +166,7 @@ When the blocker clears, the next `/implement-slice <slice-id>` session resumes 
 tracks:
   - id: T1-identity-account
     slices: [S03-..., S07-...]      # ordered
-    depends_on: null                 # or another track id
+    depends_on: []                   # or [T0-foundation]
 ```
 
 **Worktree paths AND track state are derived, never stored (invariant 5).** The oracle computes them:
@@ -172,5 +174,52 @@ tracks:
 - **Track state** — from refs alone: `merged` iff the track branch is an ancestor of `release-wt/<release>` (`git merge-base --is-ancestor`); else `in_progress` iff the track branch exists with commits beyond `release-wt`'s cut; else `planned` (no branch, or branch at the cut). `/merge-track`'s merge commit *is* the `merged` signal — no `state` field is written to record it.
 
 Because neither is persisted, there is no field for a stale value to live in — the class of "board says `planned`, the branch says `verified`" bugs is gone by construction, not by discipline.
+
+### Board-oracle projection boundary
+
+Release-mode commands must treat the public board-oracle JSON as a **summary
+projection**, not as a worktree registry. The portable contract needed by the
+commands is validated by [`board-oracle-v1`](../schemas/board-oracle-v1.json):
+
+- `.releases[release]` carries the selected topology `sourceRef`;
+- `.releases[release].tracks[]` carries `id` and ordered `slices`;
+- each nested slice carries at least `id`, `state`, `track`, and
+  `dependsOnTracks`;
+- slice rows are nested under their track — a release-level `.slices[]` array is
+  not required.
+
+The aggregate `sworn board --json`-style form carries `sourceRef`; the named
+release compatibility form intentionally contains only top-level `release` and
+`tracks`. `dependsOnTracks: null` is the compatibility spelling of an empty
+dependency list, and `tracks[].slices: null` is the deprecated compatibility
+spelling of an empty track; every consumer normalizes either value to `[]`.
+Slice `state` is a `slice-status-v1` lifecycle state or the projection-only
+`unknown` sentinel when no valid status evidence exists. Neither compatibility
+case changes a persisted record.
+
+**Projection integrity gate — before any command acts.** Within one release,
+track ids are unique; each slice id occurs exactly once across all tracks; each
+slice row's `track` equals its enclosing track id; and every row in one track
+has the same dependency set after `null → []` normalization and bytewise sort.
+The aggregate release-map key also equals the entry's `release`. JSON Schema
+cannot express these cross-node equality and uniqueness rules, so
+`board-oracle-v1` records them as semantic invariants and every consumer checks
+the relevant release before deriving a path, testing a dependency, or invoking
+Git. Ambiguous ownership is malformed oracle output, never a first-match rule.
+
+Aggregate `sourceRef` is either the empty read-only filesystem-fallback sentinel
+or a syntactically safe fully qualified `refs/heads/...` / `refs/remotes/...`
+name. A mutating command rejects the empty sentinel, verifies the exact ref with
+`git show-ref --verify`, and only then uses it in an object selector.
+
+An engine MAY expose convenience fields such as `worktreePath`,
+`worktreeBranch`, `releaseWorktreePath`, `blockedBy`, `readyToMerge`, or a
+track-level lifecycle state. No Baton command may require those optional fields.
+Commands derive branch and worktree identity from the locked naming convention,
+confirm materialisation with `git worktree list --porcelain`, derive dependency
+and merge satisfaction with `git merge-base --is-ancestor`, and derive readiness
+from the nested slice states plus the canonical status-record gates. The Git
+checks are authoritative even when an engine emits a disagreeing convenience
+field.
 
 The **Tracks table** and **touchpoint matrix** in the body of `index.md` are the human-readable mirror, kept in sync the same way the slice table mirrors each `status.json`. Each slice's `status.json` carries its `track` id, immutable `start_commit`, and, after the final Implementer maintainability PASS, `maintainability.implementation_head`. The verifier derives slice-authored paths from first-parent non-merge commits in that pinned range rather than diffing the post-synchronization track `HEAD`.

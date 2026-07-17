@@ -92,7 +92,7 @@ Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / 
 
 ## Baton is pure spec
 
-Baton ships **no binaries**. It is the specification: the twelve rules, the four role prompts, the [six LLM check prompts](baton/llm-checks/), the JSON-record schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
+Baton ships **no binaries**. It is the specification: the twelve rules, the four role prompts, the [six LLM check prompts](baton/llm-checks/), the protocol schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
 
 The **reference implementation is [SwornAgent](https://github.com/swornagent/sworn)** — an open, single, zero-dependency Go binary that runs every gate and the board oracle, and adds the autonomous orchestration loop (`sworn run`) on top. *Baton specifies; Sworn implements.* They are separate and at arm's length: the contract is the schemas, the check prompts, and the rule semantics, so Sworn is the canonical engine, not the only possible one.
 
@@ -173,7 +173,7 @@ Preview with `./install-claude.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / 
 | -------------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
 | `commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
 | `baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, JSON record templates      |
-| `schemas/*.json`                       | `~/.claude/baton/schemas/` (also hosted at baton.sawy3r.net/schemas/) | Record schemas: board, spec, proof, status, journeys, attestations (+ design/architecture config). The JSON-record contracts the roles emit against. |
+| `schemas/*.json`                       | `~/.claude/baton/schemas/` (also hosted at baton.sawy3r.net/schemas/) | Protocol schemas: emitted records, design/architecture config, and the public board-oracle read model. |
 
 Baton installs **no binaries**, and adopts in two tiers.
 
@@ -258,21 +258,22 @@ flowchart TD
 For each release:
 
 1. **Planner session** — fresh window. Human pastes `/plan-release <name>`. Conversational discovery; planner writes `intake.md`, decomposes into slices, groups the slices into touchpoint-disjoint **tracks**, emits `spec.json` per slice. No code written here.
-2. **Implementer session, per slice** — fresh window. Human runs `/implement-slice <slice-id>`. Implementer reads `spec.json`, makes changes, emits `proof.json` from live repo state, runs the proof-bundle verification gate, stops at state `implemented`. **Never marks `verified`.**
-3. **Verifier session, per slice** — *another* fresh window with no inherited context. Human runs `/verify-slice <slice-id>`. Verifier reads only `spec.json`, `proof.json`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`.
+2. **Implementer design pass, per slice** — fresh window. Human runs `/implement-slice <slice-id>`. On a planned slice, the Implementer reads `spec.json`, writes `design.md`, transitions the slice to `design_review`, and halts before code.
+3. **Captain design review, per slice** — another fresh window. Human runs `/design-review <slice-id>`. The Captain checks the design against the spec and architecture rules, then returns `PROCEED`, `IMPLEMENTER_FIX`, or `NEEDS_COACH`. `PROCEED` authorises the slice to enter `in_progress`; the Implementer can then resume `/implement-slice`, make the changes, emit `proof.json` from live repo state, run the proof-bundle verification gate, and stop at `implemented`. **The Implementer never marks `verified`.**
+4. **Verifier session, per slice** — *another* fresh window with no inherited context. Human runs `/verify-slice <slice-id>`. Verifier reads only `spec.json`, `proof.json`, `status.json`, and live repo state. Returns `PASS` / `FAIL: <numbered violations>` / `BLOCKED: <reason>`.
    - **PASS** → slice transitions to `verified`, available for `/merge-track`.
    - **FAIL** → slice goes to `failed_verification`; back to the implementer with the verifier's numbered violations.
    - **BLOCKED** → spec defect or external gap the implementer can't resolve. Handoff routes *forward* (never back to the implementer) to `/replan-release <name>` — the only command authorised to amend a spec or re-group tracks on an in-flight release. Once the planner ratifies the resolution, the slice re-enters at `/implement-slice`.
-4. **Replan in flight, when needed** — `/replan-release <name>` is the planner re-entry point for any in-flight revision: adding unplanned scope, dropping a not-started slice, re-grouping tracks, or clearing a BLOCKED verdict. It reconciles runtime state from `status.json` on `release-wt/<name>` and every `track/<name>/*` branch while treating `board.json` as the pure plan, then propagates the revised plan back out to in-flight track branches so the verifier doesn't loop on a stale spec.
+5. **Replan in flight, when needed** — `/replan-release <name>` is the planner re-entry point for any in-flight revision: adding unplanned scope, dropping a not-started slice, re-grouping tracks, or clearing a BLOCKED verdict. It reconciles runtime state from the board oracle's nested slice projection plus authoritative Git refs while treating `board.json` as the pure plan, then propagates the revised plan back out to in-flight track branches so the verifier doesn't loop on a stale spec.
 The next three steps are the **integrator** role — the only role that doesn't need a fresh context. The work is mechanical (`git merge --no-ff` with the gate checks built into each command), the planner/implementer/verifier have already produced everything that matters, and the integrator's job is to land it without breaking the gates. Same agent session can run several integrator commands in a row; one merge per shared integration branch at a time, but otherwise no Rule 7 constraint.
 
-5. **Merge a track** (integrator) — when every slice is integration-ready, `/merge-track <track-id>` merges the track branch into the release assembly branch `release-wt/<name>` with `--no-ff`. Ready means `verified` / `shipped`, a Rule-2-complete unstarted deferral, or a terminal deferred original whose mandatory rollback is verified and tree-equal; a planner-domain conflict BLOCKs and routes to `/replan-release`.
-6. **Merge the release** (integrator) — when every track is merged into `release-wt/<name>`, `/merge-release <name>` merges the assembly branch into the version integration branch (e.g. `release/v0.5.0`) with `--no-ff`. Gate: every track merged (which implies every slice passed the integration-ready predicate).
-7. **Mark it shipped** (integrator) — once the integration branch has actually deployed to production, `/mark-shipped <name>` flips every `verified` slice to the terminal `shipped` state, recording the deployed commit as evidence. Bookkeeping only — it does not deploy.
+6. **Merge a track** (integrator) — when every slice is integration-ready, `/merge-track <track-id>` merges the track branch into the release assembly branch `release-wt/<name>` with `--no-ff`. Ready means `verified` / `shipped`, a Rule-2-complete unstarted deferral, or a terminal deferred original whose mandatory rollback is verified and tree-equal; a planner-domain conflict BLOCKs and routes to `/replan-release`.
+7. **Merge the release** (integrator) — when every track is merged into `release-wt/<name>`, `/merge-release <name>` merges the assembly branch into the version integration branch (e.g. `release/v0.5.0`) with `--no-ff`. Gate: every track merged (which implies every slice passed the integration-ready predicate).
+8. **Mark it shipped** (integrator) — once the integration branch has actually deployed to production, `/mark-shipped <name>` flips every `verified` slice to the terminal `shipped` state, recording the deployed commit as evidence. Bookkeeping only — it does not deploy.
 
-Tracks run in parallel — one implement/verify session line per track, each in its own worktree. The model is in [`baton/track-mode.md`](baton/track-mode.md). The cost of three sessions per slice is one extra session window. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered three sessions later.
+Tracks run in parallel — one design/implement/verify session line per track, each in its own worktree. The model is in [`baton/track-mode.md`](baton/track-mode.md). The four fresh role sessions per slice buy independent design and implementation review. On a flat-rate plan that's effectively free. On metered usage it's still cheaper than the rework cost of an overclaimed slice discovered several sessions later.
 
-> GitHub renders the diagram above as a flowchart natively. If you read this README in a tool without Mermaid support, the prose 1-7 below it is the source of truth.
+> GitHub renders the diagram above as a flowchart natively. If you read this README in a tool without Mermaid support, the prose 1-8 below it is the source of truth.
 
 ## Tracking the board
 
@@ -281,7 +282,7 @@ Baton specifies the board record (`board.json`) and the oracle's state-resolutio
 - a terminal **go/no-go verdict** — exit `0` when every slice is integration-ready (`verified` / `shipped`, a Rule-2-complete unstarted deferral, or a rollback-backed terminal deferral), `1` otherwise — scriptable as a ship gate.
 - `sworn top` — a live evidence surface for the active release.
 
-The board oracle used to ship as a Node script in this repo; per the open-core seam it now lives in `sworn`. The contract (`board-v1` + the state-resolution rules) stays here.
+The board oracle used to ship as a Node script in this repo; per the open-core seam it now lives in `sworn`. The persisted plan contract (`board-v1`), public read-model contract (`board-oracle-v1`), and state-resolution rules stay here.
 
 ## Path tokens
 

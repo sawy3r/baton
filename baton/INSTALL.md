@@ -110,7 +110,7 @@ In your next agent session, ask the agent: "What's our reachability gate rule?" 
 
 The Release Mode harness is what makes Rules 6 through 11 enforceable. Without it, the rules are aspirational — there's no artefact for the verifier to read and no fresh-context boundary preventing self-certification.
 
-The harness is intentionally minimal: the per-slice record files, four role prompts, the six LLM check prompts, and the record schemas. Baton ships no binaries; the mechanical gates, the board oracle, and the LLM checks are run by an engine (reference implementation: the open `sworn` binary — see Step C, which Release Mode requires). There is no orchestration framework in Baton itself.
+The harness is intentionally minimal: the per-slice record files, four role prompts, the six LLM check prompts, and the protocol schemas (including the board-oracle read model). Baton ships no binaries; the mechanical gates, the board oracle, and the LLM checks are run by an engine (reference implementation: the open `sworn` binary — see Step C, which Release Mode requires). There is no orchestration framework in Baton itself.
 
 ### Step A — Create the release directory
 
@@ -155,7 +155,7 @@ configuration (`sworn init` wires them in-repo) and in each slice's `spec.json` 
 `Required tests`). The contract is the gate's role and that it fails closed; the
 contents are project-flavoured.
 
-Baton specifies everything an engine must run — the gate contracts, the record schemas,
+Baton specifies everything an engine must run — the gate contracts, the protocol schemas,
 and the [six LLM check prompts](llm-checks/) — so `sworn` is the canonical engine, not
 the only possible one.
 

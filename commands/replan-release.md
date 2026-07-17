@@ -20,8 +20,8 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
 ## Step 0 — Confirm the release is planned and in flight
 
 1. Derive the release worktree path by convention
-   (`$HOME/projects/<REPO_BASENAME>-worktrees/release-$1`) and confirm `git worktree list` maps that
-   exact path to `release-wt/$1`. If it does not, STOP: "Release `$1` has no release worktree — use
+   (`$HOME/projects/<REPO_BASENAME>-worktrees/release-$1`) and confirm `git worktree list --porcelain`
+   contains its exact `refs/heads/release-wt/$1` stanza. If it does not, STOP: "Release `$1` has no release worktree — use
    `/plan-release $1` for a new release or restore the missing `release-wt/$1` worktree."
 2. Read the absolute `<release-worktree>/docs/release/$1/board.json`, never the launch-directory
    relative copy. If it does not exist, STOP: "Release `$1` has no plan — use `/plan-release $1`,
@@ -31,6 +31,26 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
    — run `/plan-release $1` to add tracks and the touchpoint matrix, then use `/replan-release` for
    subsequent revisions.
 4. Confirm in one sentence: "Re-planning **$1** — it currently has N slices across M tracks. What has changed?"
+
+## Step 0a — Validate the board projection before any mutation
+
+Before Step 1 runs — and before any merge, commit, planning-artefact write, or
+other release-branch mutation — run the **board oracle** (reference
+implementation: `sworn board --json`). Two distinct failures, two distinct
+remedies — do not conflate them. If the oracle command is **not on PATH**, STOP:
+"no Baton engine installed — Release Mode requires a conformant engine
+(reference implementation:
+`go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is
+installed but exits non-zero**, it ran and could not resolve the board: STOP
+with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and
+do NOT advise installing or repairing the engine, or paraphrase its error.
+
+Apply track-mode's full projection integrity gate to `.releases["$1"]` now.
+Any duplicate ownership, row/parent mismatch, inconsistent normalized
+dependency set, duplicate track id, or release-key mismatch STOPs as malformed
+oracle output. This first result is a read-only preflight only: do not use it as
+the post-sync lifecycle snapshot. Step 2 reruns and revalidates the oracle after
+Step 1 because a successful base sync may change the projection.
 
 ## Step 1 — Sync the release worktree with its base branch (hygiene)
 
@@ -58,20 +78,44 @@ branch). Do not hand-reconcile by reading `status.json` from each branch
 yourself — that by-hand pass is the recurring source of false-stale reads; the
 oracle does exactly it, correctly.
 
-1. Run the **board oracle** (reference implementation: `sworn board --json`). Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, STOP: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: STOP with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error. From `.releases["$1"]` you have, branch-accurate: every slice's true `state` and `track`; every track's `state` (`planned` / `in_progress` / `merged`), `dependsOn`, `blockedBy`, `readyToMerge`, `worktreePath`, `worktreeBranch`; and the release's `releaseWorktreePath`. The top-level `.ghostSlices` / `.pendingSpecs` flag `board.json` entries the committed branches cannot back.
-2. Run `git worktree list` and confirm each track's `worktreePath` actually exists on disk; note any recorded-but-missing worktree as drift.
-3. **Spec-drift check — has a prior re-scope failed to reach a track?** For each in-flight track with a `worktreePath`, for each slice in that track, run `git diff release-wt/$1 <track-branch> -- docs/release/$1/<slice>/spec.json` (`<track-branch>` = the track's `worktreeBranch`). A non-empty diff means an **earlier `/replan-release` committed a re-scoped `spec.json` to `release-wt/$1` that the track branch never synced** — the verifier has been reading a stale spec, the signature of the `/verify-slice` ↔ `/replan-release` loop. Report it explicitly: "Track `<track-id>`'s `spec.json` for `<slice>` is out of sync (N diff lines)." Step 6 of this command resolves it by forward-merging `release-wt → <track-branch>`; still surface it so the human understands why the slice looked stuck. (The oracle reports *state*, not spec-content drift — this git-diff check stays a separate pass.)
-4. Print the reconciled state table — slice → true state, track → `planned` /
-   `in_progress` / `merged` — and call out every spec/status/ref discrepancy,
-   including every spec-drift slice found in step 3 and every ghost slice /
-   pending spec the oracle flagged. Do not call a lifecycle difference
-   `board.json` drift: the board deliberately stores no lifecycle. Amend the
-   board only when the ratified plan itself changes.
+1. **Rerun** the board oracle after Step 1; never reuse Step 0a's pre-sync
+   output. Apply the same missing-engine/oracle-error contract and full
+   projection integrity gate from Step 0a to this fresh result. If the base
+   sync made the projection malformed, STOP before any planning-artefact
+   mutation. From `.releases["$1"].tracks[] | (.slices // [])[]` you then have
+   branch-accurate slice identity, state, track, and declared dependencies. Do
+   not require release-level `.slices[]`, worktree metadata, `blockedBy`,
+   `readyToMerge`, or merge-oriented track state; those are derived below.
+2. For every `.releases["$1"].tracks[].id`, derive the track branch as
+   `track/$1/<track-id>` and its conventional path as
+   `$HOME/projects/<REPO_BASENAME>-worktrees/release-$1-<track-id>`. Derive
+   runtime track state from Git: `merged` when the track ref exists and
+   `git merge-base --is-ancestor <track-branch> release-wt/$1` succeeds;
+   `planned` when the ref does not exist; otherwise `in_progress`. Run
+   `git worktree list --porcelain` and confirm every materialised track's
+   branch/path pair; note a branch with a missing or mismatched worktree as
+   drift. Optional oracle convenience metadata never overrides this check.
+3. **Spec-drift check — has a prior re-scope failed to reach a track?** For
+   each derived `in_progress` track whose conventional worktree exists, and for
+   each nested slice in that track, run `git diff release-wt/$1
+   <track-branch> -- docs/release/$1/<slice>/spec.json`. A non-empty diff means
+   an **earlier `/replan-release` committed a re-scoped `spec.json` to
+   `release-wt/$1` that the track branch never synced** — the verifier has been
+   reading a stale spec. Report it explicitly: "Track `<track-id>`'s
+   `spec.json` for `<slice>` is out of sync (N diff lines)." Step 6 resolves it
+   by forward-merging `release-wt → <track-branch>`.
+4. Print the reconciled state table — nested slice → true state, Git-derived
+   track → `planned` / `in_progress` / `merged` — and call out every
+   spec/status/ref discrepancy, including every spec-drift slice found in step
+   3. If the engine exposes optional `.ghostSlices` / `.pendingSpecs`
+   diagnostics, surface them; their absence is not a contract failure. Do not
+   call a lifecycle difference `board.json` drift: the board deliberately
+   stores no lifecycle. Amend the board only when the ratified plan changes.
 5. **Diagnose why the replan was called — read the journals, not just the oracle.** The oracle reports each slice's `state` but not *why* it is there: it has no blocked-reason field and never reads journals. A slice the oracle shows as `in_progress` may actually be a stalled BLOCKED handoff routed back to the planner. For every slice the oracle reports as `in_progress` or `failed_verification` — plus any the human's request points at — read its `status.json` **`blocked` block** and **`verification.result`**, and the tail of its `journal.md`. These carry the implementer's or verifier's BLOCKED diagnosis, the recommended action, and the spec defect (if any) that routed the work here. Summarise the diagnosed trigger before proposing any revision — the revision must answer it.
 
 6. **Seed every started unmerged slice from its authoritative owner track.** Before changing or
    propagating any started slice's `status.json` on `release-wt/$1`, iterate every started slice in
-   every oracle-derived unmerged track and copy the exact committed file from that owner track ref
+   every Git-derived unmerged track and copy the exact committed file from that owner track ref
    into the release worktree:
    `git show <owner-track-ref>:docs/release/$1/<slice-id>/status.json`. Validate that copy against
    `slice-status-v1` and the canonical committed-history/blob/FSM checks before editing it. The stale
@@ -134,8 +178,9 @@ seeded in Step 2.6 byte-for-byte. For a ratified rollback re-slice, take the pla
 that owner object and changed only by adding `rollback_slice_id`. Validate the resolved status
 against the recorded source object and `slice-status-v1` before committing.
 
-For each track in the Step 2 oracle result `.releases["$1"].tracks[]` whose derived `.state` is **not
-`merged`** (never read a `state` field from `board.json`; `board-v1` deliberately has none):
+For each track in the Step 2 oracle result `.releases["$1"].tracks[]` whose
+Step 2 Git-derived state is **not `merged`** (never read lifecycle from
+`board.json` or require a merge-oriented oracle track-state field):
 
 1. **No worktree yet** (`planned`, never started — the `track/$1/<track-id>` branch does not exist): skip — its first `/implement-slice` will branch from the now-current `release-wt/$1`. Note it.
 2. `cd` into the track worktree. If its working tree is **dirty** (`git status --porcelain` non-empty — an implementer has uncommitted work in flight): **skip** the merge and note it: "track `<id>` has uncommitted work; its next `/implement-slice` / `/verify-slice` Step 0 will forward-merge `release-wt` and resolve." Never merge into a dirty track worktree.

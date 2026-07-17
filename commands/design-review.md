@@ -25,11 +25,22 @@ You are now operating in the **Captain role** for slice `$1` in release `$2`.
 
 Release work runs under **track mode** (`baton/track-mode.md`). Each slice belongs to a track; the track has its own worktree on branch `track/$2/<track-id>`. Captain reads but does not create worktrees.
 
-1. **Discover the slice's track via the board oracle** (reference implementation: `sworn board --json`). Run the oracle — it reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` git refs and emits JSON. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, return `BLOCKED: no Baton engine installed — Release Mode requires a conformant engine (reference implementation: go install github.com/swornagent/sworn/cmd/sworn@latest).` If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: return `BLOCKED: board oracle failed: <the engine's stderr, verbatim>` — do NOT advise installing or repairing the engine, and do not paraphrase its error. Parse `.releases["$2"]` and, in `.tracks[]`, find the entry whose `.slices` array contains `$1`. If `$1` is in no track, return `BLOCKED: slice '$1' is not assigned to a track in board.json.`
+1. **Discover the slice's track via the board oracle** (reference implementation: `sworn board --json`). Run the oracle — it reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` git refs and emits JSON. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, return `BLOCKED: no Baton engine installed — Release Mode requires a conformant engine (reference implementation: go install github.com/swornagent/sworn/cmd/sworn@latest).` If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: return `BLOCKED: board oracle failed: <the engine's stderr, verbatim>` — do NOT advise installing or repairing the engine, and do not paraphrase its error. Apply track-mode's projection integrity gate to `.releases["$2"]`, then require exactly one match for `$1` across `.tracks[] | (.slices // [])[]`, with the row's `track` equal to its enclosing track id. If no match exists, return `BLOCKED: slice '$1' is not assigned to a track in board.json.` If ownership is duplicated, mismatched, or otherwise malformed, return `BLOCKED: slice '$1' has ambiguous or invalid ownership in the board-oracle projection: <details>.`
 
-2. From that track entry capture `<track-id>` (`.id`), `<worktree_path>` (`.worktreePath`), `<worktree_branch>` (`.worktreeBranch`). If `<worktree_path>` is null, return `BLOCKED: track '<track-id>' has no recorded worktree. The implementer must materialise it via /implement-slice first.`
+2. From that track entry capture `<track-id>` (`.id`). Derive
+   `<worktree_branch>` as `track/$2/<track-id>` and `<worktree_path>` as
+   `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-<track-id>` per
+   track-mode's locked naming convention. The board oracle is a state/topology
+   summary and is not required to emit `worktreePath` or `worktreeBranch`; do
+   not block merely because either optional field is absent or null.
 
-3. Run `git worktree list` and confirm a worktree exists at `worktree_path` on branch `worktree_branch`. If absent, return `BLOCKED: recorded track worktree at <worktree_path> is missing on disk.`
+3. Run `git worktree list --porcelain` and confirm a stanza exists whose
+   `worktree` line is `<worktree_path>` and whose `branch` line is
+   `refs/heads/<worktree_branch>`. This disk/ref check is authoritative even if
+   the oracle emitted disagreeing convenience metadata. If absent, return
+   `BLOCKED: track '<track-id>' worktree is missing at <worktree_path> on
+   <worktree_branch>. The implementer must materialise it via /implement-slice
+   first.`
 
 4. Capture `<worktree_path>` (`<wt>` for the rest of this session). Every subsequent file read uses an absolute path anchored at `<wt>`. Every git op uses `git -C <wt>`. The "cd into the worktree" pattern is not used — you anchor explicitly.
 

@@ -6,15 +6,15 @@
 # Code does (~/.claude/commands/). Its equivalent is **Skills** —
 # directories under ~/.agents/skills/<name>/ with a SKILL.md manifest,
 # invoked as `$<skill-name>` or via the `/skills` picker. This script
-# packages each of baton's seven commands as a Codex skill, installs
-# the rule docs + record schemas under ~/.codex/, and prints the manual
+# packages each of baton's eight commands as a Codex skill, installs
+# the rule docs + protocol schemas under ~/.codex/, and prints the manual
 # wiring step for ~/.codex/AGENTS.md.
 #
 # Codex Mac App + Codex CLI share the same on-disk config, so a single
 # install serves both.
 #
-# Idempotent: re-running overwrites the seven skills, the baton docs
-# package and record schemas. It does NOT touch ~/.codex/AGENTS.md
+# Idempotent: re-running overwrites the eight skills, the baton docs
+# package and protocol schemas. It does NOT touch ~/.codex/AGENTS.md
 # or any other user config — wiring the AGENTS rules fragment is a
 # manual step printed at the end.
 
@@ -36,9 +36,9 @@ Environment:
   AGENTS_HOME   Override skills install root      (default: \$HOME/.agents).
 
 Installs:
-  ~/.agents/skills/baton-plan-release/SKILL.md             (and 6 more — one per baton command)
+  ~/.agents/skills/baton-plan-release/SKILL.md             (and 7 more — one per baton command)
   ~/.codex/baton/                                          (rule docs, role prompts, templates)
-  ~/.codex/baton/schemas/                                  (record schemas)
+  ~/.codex/baton/schemas/                                  (protocol schemas)
 
 Does NOT install:
   any binary. The skills, the gates, the board oracle and the LLM checks are run
@@ -49,7 +49,7 @@ Does NOT install:
 
 Does NOT modify:
   ~/.codex/AGENTS.md                                       (wire AGENTS-fragment.md in manually)
-  any existing skills other than the seven named above
+  any existing skills other than the eight named above
 
 Invocation in Codex:
   Type \$baton-plan-release (or /skills to pick from the menu) in any
@@ -93,9 +93,9 @@ run() {
 # shells proceed silently; --dry-run previews; -y skips the prompt.
 cat <<EOF
 About to install baton for Codex:
-  $SKILLS_DIR/baton-*/      seven Codex skills, one per baton command  (overwritten)
+  $SKILLS_DIR/baton-*/      eight Codex skills, one per baton command  (overwritten)
   $CODEX_HOME/baton/        rule docs, role prompts, templates          (overwritten)
-  $CODEX_HOME/baton/schemas/ record schemas                             (overwritten)
+  $CODEX_HOME/baton/schemas/ protocol schemas                           (overwritten)
 
 No binaries installed. Not touched: your shell rc, $CODEX_HOME/AGENTS.md.
 EOF
@@ -213,6 +213,7 @@ Codex skills available in every Codex session on this machine
   \$baton-plan-release         (plan a new release, conversational)
   \$baton-replan-release       (revise a release already in flight)
   \$baton-implement-slice      (implementer role, per slice)
+  \$baton-design-review        (captain design gate, per slice)
   \$baton-verify-slice         (verifier role — start in a FRESH session, Rule 7)
   \$baton-merge-track          (track -> release-wt, gated on every slice verified)
   \$baton-merge-release        (release-wt -> integration branch)
@@ -241,7 +242,7 @@ else
   cat <<EOF
 Engine: NOT FOUND (looked for '$ENGINE_CMD' on PATH)
 
-  ** The seven skills above will BLOCK until an engine is installed. **
+  ** The eight skills above will BLOCK until an engine is installed. **
 
   Baton is pure specification: it ships no binaries. The skills, the mechanical
   gates (trace, coverage, design-conformance, mock-boundary, regression,
@@ -293,4 +294,3 @@ command files at install time. A few rough edges to expect on Codex:
 File issues at https://github.com/sawy3r/baton/issues if any skill
 misbehaves in a Codex session.
 EOF
-

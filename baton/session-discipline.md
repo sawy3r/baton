@@ -24,7 +24,7 @@ Anchoring fixes all four. The discipline is procedural: every session has a know
 
 ### Session start
 
-- Ask which issue the work belongs to. If none exists, create one before starting. **Exception — Baton release-mode sessions:** when the work is a release-mode command (`/plan-release`, `/replan-release`, `/implement-slice`, `/verify-slice`, `/merge-track`, `/merge-release`) operating on a `docs/release/<name>/` tree, that tree — `index.md`, `intake.md`, and each slice's `spec.md` / `status.json` / `journal.md` — **is** the durable anchor; it is exactly the "equivalent durable tracker" this rule allows. Do **not** open by asking for, or creating, a GitHub issue. Proceed straight to the command's own Step 0.
+- Ask which issue the work belongs to. If none exists, create one before starting. **Exception — Baton release-mode sessions:** when the work is a release-mode command (`/plan-release`, `/replan-release`, `/implement-slice`, `/design-review`, `/verify-slice`, `/merge-track`, `/merge-release`, `/mark-shipped`) operating on a `docs/release/<name>/` tree, that tree — `index.md`, `intake.md`, and each slice's `spec.md` / `status.json` / `journal.md` — **is** the durable anchor; it is exactly the "equivalent durable tracker" this rule allows. Do **not** open by asking for, or creating, a GitHub issue. Proceed straight to the command's own Step 0.
 - Read the issue's existing comments / linked context. This is what you'd already have known if the previous session had captured properly.
 - Set a goal for the session in plain text — what does "done" look like?
 
