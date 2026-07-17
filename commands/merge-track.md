@@ -56,8 +56,10 @@ and integration readiness are derived below. Do not require release-level
 `.slices[]` or optional `blockedBy`, `readyToMerge`, `worktreePath`, or
 `worktreeBranch` convenience fields.
 
-1. Find the track entry with `.id == "$1"`. If none, BLOCK: "Track `$1` is
-   not in release `$2`." Capture its ordered nested `<slices>` (`.slices // []`) and
+1. Apply track-mode's full projection integrity gate to `.releases["$2"]`.
+   Require exactly one track entry with `.id == "$1"`; none BLOCKs as "Track
+   `$1` is not in release `$2`," and duplicates BLOCK as malformed projection
+   data. Capture its ordered nested `<slices>` (`.slices // []`) and
    derive `<worktree_branch>` as `track/$2/$1` and `<worktree_path>` as
    `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-$1`. Derive the declared
    dependencies as the stable `dependsOnTracks` value on the track's slice

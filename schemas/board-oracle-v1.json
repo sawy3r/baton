@@ -3,6 +3,7 @@
   "$id": "https://baton.sawy3r.net/schemas/board-oracle-v1.json",
   "title": "Baton Board Oracle Projection",
   "description": "Portable public JSON projection emitted by a conformant Baton board oracle. The aggregate catalog form carries sourceRef topology identity for every discovered release; the named-release form intentionally retains its established top-level release/tracks shape and omits sourceRef. This is a derived read model, not the persisted board-v1 plan record.",
+  "$comment": "Cross-node semantic invariants not expressible in JSON Schema remain mandatory: track ids are unique within a release; each slice id occurs exactly once; every slice.track equals its enclosing track id; every slice in one track has the same normalized dependsOnTracks set; and every aggregate map key equals its entry.release. Engines must emit these invariants and consumers must fail closed before acting when any is violated.",
   "oneOf": [
     { "$ref": "#/$defs/catalog" },
     { "$ref": "#/$defs/named_release" }
@@ -75,7 +76,8 @@
           "oneOf": [
             {
               "type": "array",
-              "items": { "$ref": "#/$defs/slice" }
+              "items": { "$ref": "#/$defs/slice" },
+              "uniqueItems": true
             },
             {
               "type": "null",
@@ -89,7 +91,8 @@
     },
     "tracks": {
       "type": "array",
-      "items": { "$ref": "#/$defs/track" }
+      "items": { "$ref": "#/$defs/track" },
+      "uniqueItems": true
     },
     "catalog_release": {
       "type": "object",
@@ -97,8 +100,14 @@
       "properties": {
         "release": { "$ref": "#/$defs/id_token" },
         "sourceRef": {
-          "type": "string",
-          "description": "Fully qualified selected topology ref. Empty only for the read-only no-HEAD filesystem fallback."
+          "description": "Fully qualified selected topology ref under refs/heads or refs/remotes. Empty only for the read-only no-HEAD filesystem fallback and never valid as a mutating-command object selector.",
+          "oneOf": [
+            { "const": "" },
+            {
+              "type": "string",
+              "pattern": "^refs/(heads|remotes)/(?!\\.)(?!.*(?:/\\.|//|\\.\\.|@\\{|\\.lock(?:/|$)))(?!.*[./]$)[A-Za-z0-9._/-]+$"
+            }
+          ]
         },
         "tracks": { "$ref": "#/$defs/tracks" }
       },

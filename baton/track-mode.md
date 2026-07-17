@@ -197,6 +197,21 @@ Slice `state` is a `slice-status-v1` lifecycle state or the projection-only
 `unknown` sentinel when no valid status evidence exists. Neither compatibility
 case changes a persisted record.
 
+**Projection integrity gate — before any command acts.** Within one release,
+track ids are unique; each slice id occurs exactly once across all tracks; each
+slice row's `track` equals its enclosing track id; and every row in one track
+has the same dependency set after `null → []` normalization and bytewise sort.
+The aggregate release-map key also equals the entry's `release`. JSON Schema
+cannot express these cross-node equality and uniqueness rules, so
+`board-oracle-v1` records them as semantic invariants and every consumer checks
+the relevant release before deriving a path, testing a dependency, or invoking
+Git. Ambiguous ownership is malformed oracle output, never a first-match rule.
+
+Aggregate `sourceRef` is either the empty read-only filesystem-fallback sentinel
+or a syntactically safe fully qualified `refs/heads/...` / `refs/remotes/...`
+name. A mutating command rejects the empty sentinel, verifies the exact ref with
+`git show-ref --verify`, and only then uses it in an object selector.
+
 An engine MAY expose convenience fields such as `worktreePath`,
 `worktreeBranch`, `releaseWorktreePath`, `blockedBy`, `readyToMerge`, or a
 track-level lifecycle state. No Baton command may require those optional fields.

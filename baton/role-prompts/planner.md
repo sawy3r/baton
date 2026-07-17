@@ -303,10 +303,13 @@ Before proposing any revision, rebuild the true state table:
 
 1. Run the board oracle (reference implementation: `sworn board --json`) and use
    `.releases["<release-name>"].tracks[] | (.slices // [])[]` as the branch-accurate
-   slice state/ownership authority. Do not require a release-level `slices`
-   array, worktree metadata, `blockedBy`, `readyToMerge`, or merge-oriented
-   track state. If the engine is missing or the oracle fails, stop under
-   `/replan-release`'s fail-closed error contract.
+   slice state/ownership authority only after track-mode's full projection
+   integrity gate passes. Duplicate ownership, row/parent mismatch,
+   inconsistent normalized dependencies, duplicate track ids, or a release-key
+   mismatch fail closed as malformed oracle output. Do not require a
+   release-level `slices` array, worktree metadata, `blockedBy`,
+   `readyToMerge`, or merge-oriented track state. If the engine is missing or
+   the oracle fails, stop under `/replan-release`'s fail-closed error contract.
 2. For every oracle track id, derive `track/<release-name>/<track-id>` and the
    conventional worktree path. Derive runtime track state from Git: `merged`
    when that track ref is an ancestor of `release-wt/<release-name>`, `planned`

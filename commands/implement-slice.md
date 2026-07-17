@@ -52,13 +52,21 @@ sworn board --json
 
 Run it from anywhere inside the repo — it resolves the repo from cwd and reads every `status.json` and `board.json` straight from the `track/$2/*` and `release-wt/$2` **git refs**, so it is correct regardless of which branch the launch directory sits on. Parse `.releases["$2"]` from its output. **Do not read launch-directory-relative `board.json` or `status.json` files in this step.** After the oracle identifies the owner track, the predecessor gate below may read a complete status only with `git show <worktree_branch>:<status-path>`; that branch-pinned read supplies fields the oracle summary does not expose without reintroducing the stale-launch-directory bug. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
 
-1. **Find the slice's track.** In the oracle JSON, take
-   `.releases["$2"].tracks[]` and find the entry for which
-   `any((.slices // [])[]; .id == "$1")` is true. If `$1` is in no track, BLOCK:
-   "Slice `$1` is not assigned to a track — re-run `/plan-release $2` (or
-   `/replan-release $2`) to group it." Capture `<track-id>` (`.id`), the
-   target slice row, and the ordered nested `<slices>` (`.slices // []`). A
-   release-level `.slices[]` array is not part of the required oracle contract.
+1. **Validate ownership, then find the slice's one track.** Apply track-mode's
+   projection integrity gate to `.releases["$2"]` before selecting anything:
+   the entry's `release` equals `$2`; track ids are unique; every slice id
+   occurs exactly once across normalized nested slice arrays; every row's
+   `track` equals its enclosing track id; and every row in one track has the
+   same normalized, bytewise-sorted `dependsOnTracks` set. BLOCK on the first
+   violation with the conflicting ids/values — malformed projection data must
+   never become a first-match selection. Then build all matches for `$1`
+   across `.tracks[] | (.slices // [])[]`. Zero matches BLOCK: "Slice `$1` is
+   not assigned to a track — re-run `/plan-release $2` (or `/replan-release
+   $2`) to group it." More than one match BLOCK: "Slice `$1` has ambiguous
+   ownership in the board-oracle projection: <enclosing-track ids>." Require
+   the sole row's `track` to equal its enclosing `<track-id>`, then capture the
+   target row and ordered `<slices>` (`.slices // []`). A release-level
+   `.slices[]` array is not part of the required oracle contract.
    Derive `<worktree_branch>` as `track/$2/<track-id>` and
    `<worktree_path>` as
    `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-<track-id>`.
@@ -84,8 +92,16 @@ materialisation record is the `track/$2/<track-id>` branch ref.
    - **Release worktree first.** If the release worktree (conventional path
      `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2`, branch
      `release-wt/$2`) is absent from `git worktree list --porcelain`, this is also the
-     first `/implement-slice` in the release. Read the integration branch from
-     the board at the oracle-selected `.releases["$2"].sourceRef` using
+     first `/implement-slice` in the release. Capture the oracle-selected
+     `.releases["$2"].sourceRef`. It must be non-empty, match the
+     `board-oracle-v1` safe fully qualified `refs/heads/...` or
+     `refs/remotes/...` grammar, and pass
+     `git show-ref --verify --quiet <sourceRef>` exactly. Otherwise BLOCK:
+     "Release `$2` has no safe committed topology ref for worktree
+     materialisation." Never accept a short ref, revision expression, object
+     suffix, or the empty filesystem-fallback sentinel in this mutating path.
+     Only after that check, read the integration branch from
+     the board at `<sourceRef>` using
      `git show <sourceRef>:<release-docs-prefix>/$2/board.json | jq -r
      '.release.integration_branch'`; probe the protocol's supported docs
      prefixes and fail closed on a missing or malformed board. Then run
