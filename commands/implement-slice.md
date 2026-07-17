@@ -54,10 +54,10 @@ Run it from anywhere inside the repo — it resolves the repo from cwd and reads
 
 1. **Find the slice's track.** In the oracle JSON, take
    `.releases["$2"].tracks[]` and find the entry for which
-   `any(.slices[]; .id == "$1")` is true. If `$1` is in no track, BLOCK:
+   `any((.slices // [])[]; .id == "$1")` is true. If `$1` is in no track, BLOCK:
    "Slice `$1` is not assigned to a track — re-run `/plan-release $2` (or
    `/replan-release $2`) to group it." Capture `<track-id>` (`.id`), the
-   target slice row, and the ordered nested `<slices>` (`.slices`). A
+   target slice row, and the ordered nested `<slices>` (`.slices // []`). A
    release-level `.slices[]` array is not part of the required oracle contract.
    Derive `<worktree_branch>` as `track/$2/<track-id>` and
    `<worktree_path>` as
@@ -72,7 +72,8 @@ materialisation record is the `track/$2/<track-id>` branch ref.
 3. **Track worktree already materialised** — `git worktree list --porcelain` shows the exact conventional `<worktree_path>` / `refs/heads/<worktree_branch>` pair:
    - Capture `<worktree_path>`. **For the rest of this session, every Bash command runs `cd <worktree_path> && <cmd>` (or `git -C <worktree_path>`); every Read/Write/Edit uses an absolute path anchored at `<worktree_path>`.** Skip to Step 0b (the BLOCKED-verdict guard) below.
 4. **Track worktree absent** from `git worktree list --porcelain` (first `/implement-slice` for this track): materialise it — **writing nothing to `release-wt`**.
-   - **Dependency gate.** Read the target slice row's `dependsOnTracks` array.
+   - **Dependency gate.** Read the target slice row's `dependsOnTracks`,
+     normalizing `null` to an empty array.
      For every dependency `<dep>`, run
      `git merge-base --is-ancestor track/$2/<dep> release-wt/$2`; a missing
      dependency ref or non-zero ancestry result makes `<dep>` unmet. If any are

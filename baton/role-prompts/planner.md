@@ -302,7 +302,7 @@ plan; runtime truth comes from the status records and refs in both places:
 Before proposing any revision, rebuild the true state table:
 
 1. Run the board oracle (reference implementation: `sworn board --json`) and use
-   `.releases["<release-name>"].tracks[].slices[]` as the branch-accurate
+   `.releases["<release-name>"].tracks[] | (.slices // [])[]` as the branch-accurate
    slice state/ownership authority. Do not require a release-level `slices`
    array, worktree metadata, `blockedBy`, `readyToMerge`, or merge-oriented
    track state. If the engine is missing or the oracle fails, stop under

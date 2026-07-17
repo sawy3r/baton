@@ -166,7 +166,7 @@ When the blocker clears, the next `/implement-slice <slice-id>` session resumes 
 tracks:
   - id: T1-identity-account
     slices: [S03-..., S07-...]      # ordered
-    depends_on: null                 # or another track id
+    depends_on: []                   # or [T0-foundation]
 ```
 
 **Worktree paths AND track state are derived, never stored (invariant 5).** The oracle computes them:
@@ -179,7 +179,7 @@ Because neither is persisted, there is no field for a stale value to live in —
 
 Release-mode commands must treat the public board-oracle JSON as a **summary
 projection**, not as a worktree registry. The portable contract needed by the
-commands is:
+commands is validated by [`board-oracle-v1`](../schemas/board-oracle-v1.json):
 
 - `.releases[release]` carries the selected topology `sourceRef`;
 - `.releases[release].tracks[]` carries `id` and ordered `slices`;
@@ -187,6 +187,15 @@ commands is:
   `dependsOnTracks`;
 - slice rows are nested under their track — a release-level `.slices[]` array is
   not required.
+
+The aggregate `sworn board --json`-style form carries `sourceRef`; the named
+release compatibility form intentionally contains only top-level `release` and
+`tracks`. `dependsOnTracks: null` is the compatibility spelling of an empty
+dependency list, and `tracks[].slices: null` is the deprecated compatibility
+spelling of an empty track; every consumer normalizes either value to `[]`.
+Slice `state` is a `slice-status-v1` lifecycle state or the projection-only
+`unknown` sentinel when no valid status evidence exists. Neither compatibility
+case changes a persisted record.
 
 An engine MAY expose convenience fields such as `worktreePath`,
 `worktreeBranch`, `releaseWorktreePath`, `blockedBy`, `readyToMerge`, or a

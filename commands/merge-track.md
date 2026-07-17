@@ -57,12 +57,12 @@ and integration readiness are derived below. Do not require release-level
 `worktreeBranch` convenience fields.
 
 1. Find the track entry with `.id == "$1"`. If none, BLOCK: "Track `$1` is
-   not in release `$2`." Capture its ordered nested `<slices>` (`.slices`) and
+   not in release `$2`." Capture its ordered nested `<slices>` (`.slices // []`) and
    derive `<worktree_branch>` as `track/$2/$1` and `<worktree_path>` as
    `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-$1`. Derive the declared
    dependencies as the stable `dependsOnTracks` value on the track's slice
-   rows; inconsistent dependency arrays across rows BLOCK as malformed oracle
-   projection.
+   rows after normalizing `null` to `[]`; inconsistent normalized dependency
+   arrays across rows BLOCK as malformed oracle projection.
 2. **Lifecycle-history integrity gate — before every success path.** For every slice in `<slices>`,
    validate current `status.json` against `slice-status-v1`, then enumerate every committed version
    of that physical path on `track/$2/$1`'s first-parent history and apply the complete canonical

@@ -7,14 +7,14 @@
 # directories under ~/.agents/skills/<name>/ with a SKILL.md manifest,
 # invoked as `$<skill-name>` or via the `/skills` picker. This script
 # packages each of baton's eight commands as a Codex skill, installs
-# the rule docs + record schemas under ~/.codex/, and prints the manual
+# the rule docs + protocol schemas under ~/.codex/, and prints the manual
 # wiring step for ~/.codex/AGENTS.md.
 #
 # Codex Mac App + Codex CLI share the same on-disk config, so a single
 # install serves both.
 #
 # Idempotent: re-running overwrites the eight skills, the baton docs
-# package and record schemas. It does NOT touch ~/.codex/AGENTS.md
+# package and protocol schemas. It does NOT touch ~/.codex/AGENTS.md
 # or any other user config — wiring the AGENTS rules fragment is a
 # manual step printed at the end.
 
@@ -38,7 +38,7 @@ Environment:
 Installs:
   ~/.agents/skills/baton-plan-release/SKILL.md             (and 7 more — one per baton command)
   ~/.codex/baton/                                          (rule docs, role prompts, templates)
-  ~/.codex/baton/schemas/                                  (record schemas)
+  ~/.codex/baton/schemas/                                  (protocol schemas)
 
 Does NOT install:
   any binary. The skills, the gates, the board oracle and the LLM checks are run
@@ -95,7 +95,7 @@ cat <<EOF
 About to install baton for Codex:
   $SKILLS_DIR/baton-*/      eight Codex skills, one per baton command  (overwritten)
   $CODEX_HOME/baton/        rule docs, role prompts, templates          (overwritten)
-  $CODEX_HOME/baton/schemas/ record schemas                             (overwritten)
+  $CODEX_HOME/baton/schemas/ protocol schemas                           (overwritten)
 
 No binaries installed. Not touched: your shell rc, $CODEX_HOME/AGENTS.md.
 EOF

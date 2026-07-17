@@ -3,7 +3,7 @@
 # install-claude.sh — install baton (the spec) at the user level (~/.claude/).
 #
 # Baton is pure specification: slash commands, rule docs, role prompts, LLM check
-# prompts, record schemas, and templates. It installs NO binaries.
+# prompts, protocol schemas, and templates. It installs NO binaries.
 #
 # Two tiers. TIER 1 (the rules) is genuinely zero-binary: wire the AGENTS
 # fragment in and the twelve rules shape every session. TIER 2 (Release Mode —
@@ -36,7 +36,7 @@ Environment:
 Installs:
   ~/.claude/commands/{plan-release,replan-release,implement-slice,design-review,verify-slice,merge-track,merge-release,mark-shipped}.md
   ~/.claude/baton/                  (rule docs, role prompts, templates)
-  ~/.claude/baton/schemas/          (record schemas: board / spec / proof / status / journeys / attestations)
+  ~/.claude/baton/schemas/          (protocol schemas: records + board-oracle read model)
 
 Does NOT install:
   any binary. Gates are run by the open \`sworn\` binary (reference implementation).
@@ -84,7 +84,7 @@ cat <<EOF
 About to install baton into $CLAUDE_HOME:
   commands/        baton slash commands                 (existing baton ones overwritten)
   baton/           rule docs, role prompts, templates    (overwritten)
-  baton/schemas/   record schemas                        (overwritten)
+  baton/schemas/   protocol schemas                      (overwritten)
 
 No binaries are installed. Not touched: your shell rc, $CLAUDE_HOME/CLAUDE.md.
 EOF

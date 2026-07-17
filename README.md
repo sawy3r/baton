@@ -92,7 +92,7 @@ Rules 1–5 are advisory text — splice them into your project's `AGENTS.md` / 
 
 ## Baton is pure spec
 
-Baton ships **no binaries**. It is the specification: the twelve rules, the four role prompts, the [six LLM check prompts](baton/llm-checks/), the JSON-record schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
+Baton ships **no binaries**. It is the specification: the twelve rules, the four role prompts, the [six LLM check prompts](baton/llm-checks/), the protocol schemas, the templates, and the conformance contract — what each gate checks (fail-closed) and how the board oracle resolves slice state. Anyone can implement it; that, not "ships a binary," is what makes Baton standalone.
 
 The **reference implementation is [SwornAgent](https://github.com/swornagent/sworn)** — an open, single, zero-dependency Go binary that runs every gate and the board oracle, and adds the autonomous orchestration loop (`sworn run`) on top. *Baton specifies; Sworn implements.* They are separate and at arm's length: the contract is the schemas, the check prompts, and the rule semantics, so Sworn is the canonical engine, not the only possible one.
 
@@ -173,7 +173,7 @@ Preview with `./install-claude.sh --dry-run` (or `--help`); set `CLAUDE_HOME` / 
 | -------------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
 | `commands/*.md`                 | `~/.claude/commands/`                         | User-level slash commands, available in every repo  |
 | `baton/`                        | `~/.claude/baton/`                            | Rule docs, role prompts, JSON record templates      |
-| `schemas/*.json`                       | `~/.claude/baton/schemas/` (also hosted at baton.sawy3r.net/schemas/) | Record schemas: board, spec, proof, status, journeys, attestations (+ design/architecture config). The JSON-record contracts the roles emit against. |
+| `schemas/*.json`                       | `~/.claude/baton/schemas/` (also hosted at baton.sawy3r.net/schemas/) | Protocol schemas: emitted records, design/architecture config, and the public board-oracle read model. |
 
 Baton installs **no binaries**, and adopts in two tiers.
 
@@ -282,7 +282,7 @@ Baton specifies the board record (`board.json`) and the oracle's state-resolutio
 - a terminal **go/no-go verdict** — exit `0` when every slice is integration-ready (`verified` / `shipped`, a Rule-2-complete unstarted deferral, or a rollback-backed terminal deferral), `1` otherwise — scriptable as a ship gate.
 - `sworn top` — a live evidence surface for the active release.
 
-The board oracle used to ship as a Node script in this repo; per the open-core seam it now lives in `sworn`. The contract (`board-v1` + the state-resolution rules) stays here.
+The board oracle used to ship as a Node script in this repo; per the open-core seam it now lives in `sworn`. The persisted plan contract (`board-v1`), public read-model contract (`board-oracle-v1`), and state-resolution rules stay here.
 
 ## Path tokens
 
