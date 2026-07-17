@@ -301,7 +301,11 @@ plan; runtime truth comes from the status records and refs in both places:
 
 Before proposing any revision, rebuild the true state table:
 
-1. Run the board oracle (reference implementation: `sworn board --json`) and use
+1. Before `/replan-release` forward-syncs or otherwise mutates `release-wt`, run
+   the board oracle (reference implementation: `sworn board --json`) as a
+   read-only preflight and require track-mode's full projection integrity gate
+   to pass. After any base sync, rerun and revalidate the oracle; never use the
+   pre-sync result as the lifecycle snapshot. Use
    `.releases["<release-name>"].tracks[] | (.slices // [])[]` as the branch-accurate
    slice state/ownership authority only after track-mode's full projection
    integrity gate passes. Duplicate ownership, row/parent mismatch,

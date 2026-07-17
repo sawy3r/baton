@@ -32,6 +32,26 @@ Read `$HOME/.claude/baton/role-prompts/planner.md` and follow it, with **particu
    subsequent revisions.
 4. Confirm in one sentence: "Re-planning **$1** — it currently has N slices across M tracks. What has changed?"
 
+## Step 0a — Validate the board projection before any mutation
+
+Before Step 1 runs — and before any merge, commit, planning-artefact write, or
+other release-branch mutation — run the **board oracle** (reference
+implementation: `sworn board --json`). Two distinct failures, two distinct
+remedies — do not conflate them. If the oracle command is **not on PATH**, STOP:
+"no Baton engine installed — Release Mode requires a conformant engine
+(reference implementation:
+`go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is
+installed but exits non-zero**, it ran and could not resolve the board: STOP
+with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and
+do NOT advise installing or repairing the engine, or paraphrase its error.
+
+Apply track-mode's full projection integrity gate to `.releases["$1"]` now.
+Any duplicate ownership, row/parent mismatch, inconsistent normalized
+dependency set, duplicate track id, or release-key mismatch STOPs as malformed
+oracle output. This first result is a read-only preflight only: do not use it as
+the post-sync lifecycle snapshot. Step 2 reruns and revalidates the oracle after
+Step 1 because a successful base sync may change the projection.
+
 ## Step 1 — Sync the release worktree with its base branch (hygiene)
 
 Before reconciling state or revising anything, bring `release-wt/$1` up to date with the version integration branch it was cut from. An in-flight release that has drifted behind its base replans against a stale picture — the touchpoint matrix, the schema-vs-spec audits, and any new slice you scope can all be wrong if the base has moved underneath them.
@@ -58,7 +78,14 @@ branch). Do not hand-reconcile by reading `status.json` from each branch
 yourself — that by-hand pass is the recurring source of false-stale reads; the
 oracle does exactly it, correctly.
 
-1. Run the **board oracle** (reference implementation: `sworn board --json`). Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, STOP: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: STOP with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error. Apply track-mode's full projection integrity gate to `.releases["$1"]`; any duplicate ownership, row/parent mismatch, inconsistent normalized dependency set, duplicate track id, or release-key mismatch STOPs as malformed oracle output. From `.releases["$1"].tracks[] | (.slices // [])[]` you then have branch-accurate slice identity, state, track, and declared dependencies. Do not require release-level `.slices[]`, worktree metadata, `blockedBy`, `readyToMerge`, or merge-oriented track state; those are derived below.
+1. **Rerun** the board oracle after Step 1; never reuse Step 0a's pre-sync
+   output. Apply the same missing-engine/oracle-error contract and full
+   projection integrity gate from Step 0a to this fresh result. If the base
+   sync made the projection malformed, STOP before any planning-artefact
+   mutation. From `.releases["$1"].tracks[] | (.slices // [])[]` you then have
+   branch-accurate slice identity, state, track, and declared dependencies. Do
+   not require release-level `.slices[]`, worktree metadata, `blockedBy`,
+   `readyToMerge`, or merge-oriented track state; those are derived below.
 2. For every `.releases["$1"].tracks[].id`, derive the track branch as
    `track/$1/<track-id>` and its conventional path as
    `$HOME/projects/<REPO_BASENAME>-worktrees/release-$1-<track-id>`. Derive
