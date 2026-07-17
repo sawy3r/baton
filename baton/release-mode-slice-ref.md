@@ -21,8 +21,8 @@ Track mode removes the need for it:
 
 ## What to read instead
 
-- **[`track-mode.md`](./track-mode.md)** — the model: branch/worktree hierarchy, the four safety invariants, the touchpoint matrix, lifecycle, naming, and recovery.
+- **[`track-mode.md`](./track-mode.md)** — the model: branch/worktree hierarchy, safety invariants, the touchpoint matrix, lifecycle, naming, and recovery.
 - `role-prompts/implementer.md` — the implementer's track-branch push step.
-- `commands/implement-slice.md`, `verify-slice.md`, `merge-track.md`, `merge-release.md` — the slash commands that operate the model.
+- `commands/replan-release.md`, `implement-slice.md`, `design-review.md`, `verify-slice.md`, `merge-track.md`, `merge-release.md` — the slash commands that operate the model.
 
 This file is retained only so historical references (older release journals, this doc's old links) do not dangle.

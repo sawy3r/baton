@@ -34,7 +34,7 @@ Environment:
   CLAUDE_HOME   Override install target (default: \$HOME/.claude).
 
 Installs:
-  ~/.claude/commands/{plan-release,replan-release,implement-slice,verify-slice,merge-track,merge-release,mark-shipped}.md
+  ~/.claude/commands/{plan-release,replan-release,implement-slice,design-review,verify-slice,merge-track,merge-release,mark-shipped}.md
   ~/.claude/baton/                  (rule docs, role prompts, templates)
   ~/.claude/baton/schemas/          (record schemas: board / spec / proof / status / journeys / attestations)
 
@@ -43,7 +43,7 @@ Does NOT install:
 
 Does NOT modify:
   ~/.claude/CLAUDE.md                          (wire AGENTS-fragment.md in manually)
-  any existing pre-installed slash commands other than the seven named above
+  any existing pre-installed slash commands other than the eight named above
 EOF
 }
 
@@ -140,6 +140,7 @@ TIER 2 — Release Mode. REQUIRES a conformant engine.
   /plan-release <YYYY-MM-DD-theme>
   /replan-release <release-name>                 (revise a release already in flight)
   /implement-slice <slice-id> [<release-name>]
+  /design-review <slice-id> [<release-name>]      (Captain design gate)
   /verify-slice <slice-id> [<release-name>]      (run in a FRESH terminal — Rule 7)
   /merge-track <track-id> [<release-name>]       (track → release-wt)
   /merge-release <release-name>                  (release-wt → integration branch)
@@ -164,7 +165,7 @@ else
 
   Engine: NOT FOUND (looked for '$ENGINE_CMD' on PATH)
 
-  ** The seven commands above will BLOCK until an engine is installed. **
+  ** The eight commands above will BLOCK until an engine is installed. **
 
   Baton is pure specification: it ships no binaries. The commands, the mechanical
   gates (trace, coverage, design-conformance, mock-boundary, regression,

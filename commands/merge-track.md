@@ -39,15 +39,30 @@ The merge target is `release-wt/$2`, which the release worktree owns.
 **Read the board through the oracle** (reference implementation: `sworn board --json`). Run it from anywhere inside the repo — it reads `board.json` and every `status.json` straight from the `release-wt/$2` and `track/$2/*` **git refs**, so the track and slice states it reports are branch-accurate regardless of which branch the launch directory sits on. Every gate in Steps 0-1 reads this one JSON; do not re-read `board.json` or `status.json` by hand. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
 
 1. If `$2` is empty, find the release from the oracle: the release whose `.tracks[]` contains an entry with `.id == "$1"`. Exactly one match ⇒ that is `$2`; none ⇒ BLOCK ("no release contains track `$1`"); more than one ⇒ stop and ask the human.
-2. Capture `<release_worktree_branch>` (`.releaseWorktreeBranch`, = `release-wt/$2`) and `<release_worktree_path>`. The path is **conventional** — `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2` (the oracle reports it as `.releaseWorktreePath`, derived the same way; use the convention if it is null or disagrees — invariant 5, no implementer writes the path). The authoritative existence test is the disk check in step 3, not the oracle field.
-3. Confirm via `git worktree list` that the release worktree exists at `<release_worktree_path>` on `release-wt/$2`. If absent, BLOCK: "Release `$2` has no release worktree on disk — nothing has been implemented yet (or recreate it with `git worktree add <release_worktree_path> release-wt/$2`)."
+2. Derive `<release_worktree_branch>` as `release-wt/$2` and
+   `<release_worktree_path>` as
+   `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2`. Neither is a required
+   oracle field; the authoritative existence test is the Git worktree registry
+   check in step 3.
+3. Confirm via `git worktree list --porcelain` that the exact `<release_worktree_path>` / `refs/heads/release-wt/$2` stanza exists. If absent, BLOCK: "Release `$2` has no release worktree on disk — nothing has been implemented yet (or recreate it with `git worktree add <release_worktree_path> release-wt/$2`)."
 4. For the rest of this session every git/file operation runs against `<release_worktree_path>` via `git -C` and absolute paths. Confirm its working tree is clean (`git -C <release_worktree_path> status --short` empty); if not, BLOCK.
 
 ## Step 1 — Locate the track and gate on verification
 
-Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]` (each track carries `state`, `dependsOn`, `blockedBy`, `readyToMerge`, ordered `slices`, `worktreePath`, `worktreeBranch`) and `.releases["$2"].slices[]` (per-slice `state`). The oracle resolves each slice's state from its own track branch, so the verification gate cannot misfire on a stale integration-branch `status.json`.
+The Step 0 oracle JSON supplies `.releases["$2"].tracks[]` with each track's
+`id` and ordered nested `slices`; each slice supplies its state and
+`dependsOnTracks`. Branch/path identity, dependency satisfaction, merged state,
+and integration readiness are derived below. Do not require release-level
+`.slices[]` or optional `blockedBy`, `readyToMerge`, `worktreePath`, or
+`worktreeBranch` convenience fields.
 
-1. Find the track entry with `.id == "$1"`. If none, BLOCK: "Track `$1` is not in release `$2`." Capture its ordered `<slices>` (`.slices`), `<worktree_branch>` (`.worktreeBranch`, = `track/$2/$1`), `<worktree_path>` (`.worktreePath`), `<blocked_by>` (`.blockedBy`), `<state>` (`.state`), and `<ready_to_merge>` (`.readyToMerge`).
+1. Find the track entry with `.id == "$1"`. If none, BLOCK: "Track `$1` is
+   not in release `$2`." Capture its ordered nested `<slices>` (`.slices`) and
+   derive `<worktree_branch>` as `track/$2/$1` and `<worktree_path>` as
+   `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-$1`. Derive the declared
+   dependencies as the stable `dependsOnTracks` value on the track's slice
+   rows; inconsistent dependency arrays across rows BLOCK as malformed oracle
+   projection.
 2. **Lifecycle-history integrity gate — before every success path.** For every slice in `<slices>`,
    validate current `status.json` against `slice-status-v1`, then enumerate every committed version
    of that physical path on `track/$2/$1`'s first-parent history and apply the complete canonical
@@ -84,7 +99,7 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    exact empty pending cycle-0 maintainability template, and at least one schema-valid
    `open_deferrals` entry. Any authored or lifecycle-bearing ordinary deferral BLOCKs.
 4. **Idempotency gate — already-merged is a validated no-op, never a re-merge.** The track is already
-   integrated if EITHER `<state>` is `merged` OR
+   integrated when
    `git -C <release-worktree-path> merge-base --is-ancestor track/$2/$1 release-wt/$2` succeeds. In
    that case, first locate the first-parent `release-wt/$2` integration merge whose second parent is
    exactly the retained `track/$2/$1` ref and validate its complete canonical `/merge-track`
@@ -92,14 +107,31 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    invalid provenance BLOCKs. Only after those checks pass, emit
    `Track \`$1\` already merged into \`release-wt/$2\` — no-op (idempotent re-dispatch).` and exit
    cleanly. A spurious retry adds no commit, but idempotency never bypasses safety validation.
-5. If `<blocked_by>` is non-empty, BLOCK: "Track `$1` depends on `<blocked_by>` — not yet merged to `release-wt`. Merge those tracks first."
-6. **Verification gate.** `<ready_to_merge>` is only the oracle's coarse terminal-state gate; it is necessary but not sufficient because a displayed `deferred` state does not prove either legal deferral form. After Steps 1.2-1.5, independently require every slice to satisfy track-mode's canonical integration-ready predicate. If either gate is false, list each non-ready slice and BLOCK: "Cannot merge track `$1` — not integration-ready: `<list>`. Complete verification, the Rule-2 unstarted deferral, or the mandatory verified rollback first." When both are true, proceed.
+5. For every declared dependency `<dep>`, run
+   `git -C <release-worktree-path> merge-base --is-ancestor track/$2/<dep>
+   release-wt/$2`; a missing dependency ref or non-zero result adds `<dep>` to
+   `<blocked_by>`. If `<blocked_by>` is non-empty, BLOCK: "Track `$1` depends
+   on `<blocked_by>` — not yet merged to `release-wt`. Merge those tracks
+   first."
+6. **Verification gate.** After Steps 1.2-1.5, independently require every
+   nested slice to satisfy track-mode's canonical integration-ready predicate.
+   The optional oracle `readyToMerge` convenience field is neither required nor
+   authoritative. List each non-ready slice and BLOCK: "Cannot merge track
+   `$1` — not integration-ready: `<list>`. Complete verification, the Rule-2
+   unstarted deferral, or the mandatory verified rollback first." When every
+   slice is ready, proceed.
 
 ## Step 2 — Drift gate (self-healing)
 
 `release-wt/$2` advances every time a sibling track merges, so from the second track merge of a release onward this gate almost always fires. **It is not a planner error — it is the ordinary cost of parallelism.** The older behaviour ejected you to forward-merge by hand; this step reconciles the drift itself, in the track worktree, and only BLOCKs on a genuine fault.
 
-1. **Locate the track worktree.** `<worktree_path>` (= `<track-worktree-path>`) is **conventional** — `$HOME/projects/<REPO_BASENAME>-worktrees/release-$2-$1` (the oracle's `.worktreePath` is derived the same way; use the convention if null or disagreeing — invariant 5). Confirm via `git worktree list` that it exists on branch `track/$2/$1`; if absent, BLOCK: "Track `$1` has no worktree on disk — nothing has been implemented (or recreate it with `git worktree add <track-worktree-path> track/$2/$1`)." Confirm its working tree is clean (`git -C <track-worktree-path> status --short` empty); if dirty, BLOCK — never forward-merge into a dirty worktree.
+1. **Locate the track worktree.** Use the conventional `<worktree_path>`
+   derived in Step 1. Confirm via `git worktree list --porcelain` that it exists
+   on branch `track/$2/$1`; if absent, BLOCK: "Track `$1` has no worktree on
+   disk — nothing has been implemented (or recreate it with `git worktree add
+   <track-worktree-path> track/$2/$1`)." Confirm its working tree is clean
+   (`git -C <track-worktree-path> status --short` empty); if dirty, BLOCK —
+   never forward-merge into a dirty worktree.
 
 2. **Measure drift.** `git -C <release_worktree_path> rev-list --count track/$2/$1..release-wt/$2`. If `0`, the track already carries `release-wt`'s tip — skip merge steps 3-4 and proceed to Step 2.5. The merged-base test rerun and canonical scope-freshness gate are mandatory even when another command already performed the synchronization.
 
@@ -220,15 +252,16 @@ Every fact below comes from the Step 0 oracle JSON — `.releases["$2"].tracks[]
    This transition spends no extra maintainability run on an inseparable old scope and cannot be
    bypassed by re-dispatching this command.
 
-   Finally refresh the oracle and re-check dependency/readiness state. BLOCK on any new regression;
+   Finally refresh the oracle, re-check nested slice readiness, and re-run the
+   Git ancestry dependency checks. BLOCK on any new regression;
    only a fully re-gated track proceeds to Step 3.
 
 ## Step 3 — Confirm scope
 
 **Autonomous mode — if `BATON_AUTO_CONFIRM` is set in the environment** (the autonomous loop sets it):
-do NOT call `AskUserQuestion`. The deterministic verification gate from Step 1.6 (`<ready_to_merge>` plus the canonical integration-ready check —
-true only after every slice in the track passes the canonical integration-ready gate, the track is not already merged, and
-`<blocked_by>` is empty) IS the authorization; asking a human would be redundant and, with no human
+do NOT call `AskUserQuestion`. The deterministic gates from Steps 1.2-1.6
+(canonical integration readiness for every slice, track not already merged,
+and Git-derived `<blocked_by>` empty) ARE the authorization; asking a human would be redundant and, with no human
 present, stalls the loop. Emit one line — `auto-confirm (BATON_AUTO_CONFIRM): merge track/$2/$1 into release-wt/$2 — <N> commits, gate green` (cite the Step 2 forward-merge sync SHA if one was performed) — and proceed directly to Step 4.
 
 **Interactive mode — if `BATON_AUTO_CONFIRM` is unset** (a human is driving):
@@ -275,14 +308,19 @@ therefore use the same provenance test.
 
 The track's `merged` state is **derived**, not written (invariant 5): the merge commit you just made puts the track branch in `release-wt/$2`'s ancestry, which *is* the `merged` signal. `board.json` is a pure plan — it has no `state` field to set, so there is nothing to update in it for this merge.
 
-Re-render `index.md` from `board.json` (the oracle now resolves track `$1` as `merged` from the ref ancestry) and commit it on `release-wt/$2`: `docs(release/$2): re-render board — track $1 merged`. If your project renders `index.md` on demand rather than committing it, skip this commit — the merge commit alone is the durable, authoritative record.
+Re-render `index.md` from `board.json` (the renderer derives track `$1` as
+merged from ref ancestry) and commit it on `release-wt/$2`:
+`docs(release/$2): re-render board — track $1 merged`. If your project renders
+`index.md` on demand rather than committing it, skip this commit — the merge
+commit alone is the durable, authoritative record.
 
 ## Step 6 — Hand off
 
 Tell the human, in one short message:
 
 - Merge commit SHA; track `$1` state is now `merged`.
-- Remaining unmerged tracks (from the oracle — tracks whose derived `state != merged`), each with its verified/total slice count.
+- Remaining unmerged tracks (oracle track ids whose derived branch is not an
+  ancestor of `release-wt/$2`), each with its verified/total slice count.
 - If every track is now `merged`: "All tracks merged — run `/merge-release $2` to integrate the release into the version branch."
 - Reminder: this command did **not** push, and did **not** delete `track/$2/$1` or its worktree (both retained for any post-merge fix). Push `release-wt/$2` when ready; remove the track worktree with `git worktree remove <track-worktree-path>` once you are sure no more work belongs to the track.
 

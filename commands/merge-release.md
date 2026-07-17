@@ -37,7 +37,8 @@ Documentation drifts; `git worktree list` is the ground truth. Resolve `<worktre
 
 Run the **board oracle** (reference implementation: `sworn board --json`) from the primary worktree. It resolves every slice's `status.json` and the `tracks` board straight from the `release-wt/$1` and `track/$1/*` **git refs** — the per-slice `state` transitions that `/verify-slice` and `/implement-slice` commit onto the track branches, which the integration-branch copies do not yet carry. This is exactly the "read from the worktree branch, not the stale primary checkout" rule, done mechanically — the most common false-BLOCK (reading stale integration-branch `status.json`) is structurally impossible. It also discovers slice folders that exist only on a track branch (e.g. an `S06 → S06a/b/c` split not yet on the integration branch). Do not read `status.json` or `board.json` by hand. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
 
-1. **Slice gate.** From `.releases["$1"].slices[]`, build a state table and validate each complete
+1. **Slice gate.** Flatten the nested
+   `.releases["$1"].tracks[].slices[]` rows into a state table and validate each complete
    `status.json` from `release-wt/$1`. Every slice must satisfy track-mode's canonical
    integration-ready predicate:
    - `verified` / `shipped` — OK to merge.
@@ -51,12 +52,25 @@ Run the **board oracle** (reference implementation: `sworn board --json`) from t
    `superseded` is not a `slice-status-v1` state and never passes. If any slice is not ready, return:
    `BLOCKED: cannot merge release '$1' — the following slices are not integration-ready: <list>.`
    Do not proceed.
-2. **Track merge gate.** From `.releases["$1"].tracks[]`, every track must have `state == "merged"` — i.e. its `/merge-track` has run and its slices are already on `release-wt/$1`. A track whose slices are all `verified` but whose `state` is still `planned` / `in_progress` has **not** had its commits merged into `release-wt` and would be silently omitted from this release merge. If any track is not `merged`, BLOCK: `cannot merge release '$1' — these tracks are verified but not yet merged to release-wt: <list>. Run /merge-track <track-id> $1 for each before /merge-release.`
+2. **Track merge gate.** For every `.releases["$1"].tracks[].id`, derive the
+   track branch as `track/$1/<track-id>` and run
+   `git merge-base --is-ancestor track/$1/<track-id> release-wt/$1`. A missing
+   track ref or non-zero result means `/merge-track` has not integrated that
+   track and its commits would be silently omitted. Do not use the oracle's
+   display-oriented track `state` as the merge signal and do not require an
+   optional `readyToMerge` field. If any track is not merged, BLOCK: `cannot
+   merge release '$1' — these tracks are verified but not yet merged to
+   release-wt: <list>. Run /merge-track <track-id> $1 for each before
+   /merge-release.`
 3. **Assembly gate (Rule 10 assembly stage).** Read `docs/release/$1/assembly-proof.json` from the `release-wt/$1` ref (`git show release-wt/$1:docs/release/$1/assembly-proof.json`). Three outcomes:
    - **Present with a passing verdict** — the release is `assembled`; note it in the Step 2 scope summary.
    - **Present with a failing verdict** — BLOCK: `cannot merge release '$1' — assembly run failed: <failing suites/observations from the proof>. Fix and re-run the assembly stage (reference implementation: sworn assemble) before /merge-release.` A recorded failing assembly is a hard stop regardless of per-slice states.
    - **Absent** — advisory (skew-window policy, baton#59): surface in the Step 2 scope summary as `WARNING: release '$1' has no assembly-proof.json — the assembled system has not been machine-walked end-to-end; per-slice verification cannot see cross-slice wire seams (CORS/middleware class). Proceed only if the human accepts the risk explicitly.` This flips to a hard BLOCK when the reference implementation (`sworn assemble`) ships.
-4. **Planning-record integrity.** If the oracle's top-level `.ghostSlices` or `.pendingSpecs` name release `$1` (an `board.json` row with no `status.json` on any branch, or a live slice with no `spec.json`), surface them to the human in the Step 2 scope summary. They indicate the board names work the committed branches cannot back — warnings, not a hard BLOCK, but the human should see them before approving the final merge.
+4. **Planning-record integrity.** If the engine exposes optional top-level
+   `.ghostSlices` or `.pendingSpecs` diagnostics for release `$1`, surface them
+   in the Step 2 scope summary. Their absence is not an oracle-contract failure;
+   malformed or missing records encountered while validating the nested track
+   slices still fail through the normal record gates.
 
 ## Step 1.5 — Forward-merge the integration branch into the release worktree
 
