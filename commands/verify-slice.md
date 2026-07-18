@@ -83,12 +83,21 @@ Release work runs under **track mode** (`$HOME/.claude/baton/track-mode.md`). Ea
    - `<wt>/docs/release/$2/$1/status.json`
 4. Read the state value from the **worktree's** `status.json`. If it shows `state` other than `implemented`, before returning BLOCKED you MUST sanity-check that you read from the worktree (not the primary repo) by confirming the absolute path begins with `<wt>/`. Then, as a defensive tiebreaker, compare against the primary-repo copy: `git -C <wt> show $(git -C <wt> rev-parse HEAD):docs/release/$2/$1/status.json`. If the worktree HEAD's `status.json` disagrees with anything you read previously, **trust the worktree HEAD** — that is where the implementer commits land. Only after this check, if the worktree's `state` is still not `implemented`, return `BLOCKED: slice is in state '<state>', expected 'implemented'.`
 5. Read `start_commit` and `maintainability.implementation_head` from the worktree's `status.json`. Require both to resolve to commits, require `start_commit` to lie on the pinned implementation head's first-parent chain, and require that head to lie on the current track `HEAD`'s first-parent chain. Derive slice-authored paths using the first-parent, non-merge algorithm in the governing LLM-check contract, then inspect `git -C <wt> diff <start_commit>..<implementation_head> -- <those paths>` yourself. Do not trust captured values in `proof.json`, and do not use the post-sync current `HEAD` as the implementation boundary. Inspect all first-parent commits after the pin: non-merge commits may touch only the physical release-record root, and merges must be recognized `release-wt` synchronization. Any other path makes the evidence stale. Merge-only sibling-track paths are excluded; any merge/slice path overlap fails closed.
-6. Validate the complete status against `slice-status-v1`, then apply the governing contract's
+6. Validate the current status against `slice-status-v1`, then apply the governing contract's
    committed-history integrity check over every first-parent version of this status path. Reject an
    erased or changed non-null `start_commit`, rewritten report prefix, decreasing cycle, mismatched
    blob-pinned report, repeated role/phase in a cycle, or any earlier terminal
    `re_slice_required` state for this slice id. Once non-null, Coach adjudication must remain
-   byte-identical.
+   byte-identical. Narrow exception: when the current status validates but an immutable earlier
+   first-parent status blob does not validate against the exact governing schema, reproduce and
+   fingerprint the validator's stable instance-path/schema-path/error tuple. Return BLOCKED with a
+   `verification.violations` item whose gate is `protocol_history_invalid` and that lists every exact
+   status commit/path/blob OID, schema id/blob OID, and validation-error fingerprint. This is legal
+   only for protocol lifecycle-history invalidity that makes verification deterministically
+   impossible, never an ordinary spec, delivery, test, environment, unavailable-gate, or
+   maintainability failure. Do not add `retirement` or edit `maintainability`; the Planner owns
+   ratification, will pin the committed BLOCKED status identity, and must create the mandatory
+   complete-envelope rollback before any replacement.
 7. Re-run the test commands cited in `proof.json`. Do not trust the captured output. **Before running any E2E (browser-driven, Playwright/Cypress/etc) commands**, start the canonical dev stack from the worktree using whatever invocation the project's README or `spec.json` documents (e.g. `pnpm run start:dev`, `make dev`, `docker compose up`) and confirm every server the tests touch is healthy. A 200 from a health endpoint of an *ambient* server process (started by an earlier session on a different branch) is **not** proof the right binary is running — a stale binary will pass health checks but return wrong-shaped responses for any endpoint changed in the slice under verification. If an E2E test fails with a server-side error and you did not bring the dev stack up yourself, treat the failure as inconclusive: start the stack, re-run, then decide. (Historical pattern: multiple verifier rounds across past releases chased phantom FAILs that turned out to be stale-binary misreads; the rule is "verifier owns the dev stack lifecycle".)
 
 ## Strict role boundaries (do not violate)
@@ -122,7 +131,9 @@ All artefact edits below land **inside the track worktree** (`<wt>/docs/release/
 2. Update `<wt>/docs/release/$2/$1/status.json`:
    - On PASS: `state: verified`, fill `verification.result: pass`, `verifier_was_fresh_context: true`, `verifier_verdict_at: <ISO timestamp>`.
    - On FAIL: `state: failed_verification`, fill `verification.violations` with the numbered list, `verification.result: fail`. If Gate 8 failed, clear `implementation_head`; every cycle-0 failure becomes `needs_coach` (a boundary-expanding disposition permits only Coach `re_slice`), while every cycle-1 failure becomes `re_slice_required`. Never reclassify a Gate-8 maintainability FAIL as BLOCKED.
-   - On BLOCKED: `state` unchanged, fill `verification.result: blocked` with reason.
+   - On BLOCKED: `state` unchanged, fill `verification.result: blocked` with reason. For
+     `protocol_history_invalid`, also require fresh-context identity fields and the exact immutable
+     evidence from Step 6; leave the complete maintainability value byte-identical.
 3. Leave `<wt>/docs/release/$2/board.json` byte-identical: it is the validated,
    state-free release plan. Re-render `index.md` from that board plus the
    authoritative `status.json` records in the track worktree so the slice and
@@ -135,7 +146,7 @@ All artefact edits below land **inside the track worktree** (`<wt>/docs/release/
 Your verdict block exactly as specified in `role-prompts/verifier.md`. End the verdict with the **concrete next step** — state the exact next command, do not leave it implicit:
 
 - **PASS** — the slice is `verified`. The next step is **track-aware** (see `role-prompts/verifier.md` "Determining the next step"): walk the current track's ordered `slices` after `$1`.
-  - If the track has a further incomplete slice, the next step is `/implement-slice <next-slice-id> $2` in a fresh session. Apply track-mode's canonical integration-ready predicate, including its two legal deferred forms.
+  - If the track has a further incomplete slice, the next step is `/implement-slice <next-slice-id> $2` in a fresh session. Apply track-mode's canonical integration-ready predicate, including its three legal deferred forms.
   - If every slice in the track is integration-ready under that predicate, the track is complete: the next step is `/merge-track <track-id>`, and then `/merge-release $2` once every track in the release has merged.
 - **FAIL** — normally the human re-opens an `/implement-slice $1 $2` session in a fresh window to address the numbered violations. Gate 8 is cycle-aware: if it set `maintainability.state: needs_coach`, the next step is Coach adjudication and no role command runs yet; if it set `re_slice_required`, the next step is `/replan-release $2`. In either Gate-8 case, do not reopen the Implementer directly.
 - **BLOCKED** — the slice has a spec defect or external gap that an implementer cannot resolve. The single next step is `/replan-release $2` — not a re-run of `/verify-slice`, and never `/implement-slice` (an implementer cannot clear a BLOCKED verdict, and re-opening the slice for implementation re-enters the verifier → planner → verifier loop). The planner corrects the spec (or escalates to the human), clears `verification.result`, and only then does the slice re-enter verification. If you are BLOCKing on a spec defect, your verdict must carry a concrete proposed `spec.json` amendment for the planner to ratify — see `$HOME/.claude/baton/role-prompts/verifier.md` "When the verdict is BLOCKED".

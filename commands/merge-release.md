@@ -52,6 +52,10 @@ release-key mismatch BLOCK as malformed oracle output.
    - `deferred` with terminal `re_slice_required` — OK only when its recorded rollback is
      `verified` / `shipped` and the originating `/merge-track` provenance contains the applicable
      passing tree-equality gate.
+   - started `deferred` with `retirement.disposition: protocol_history_invalid` — OK only when the
+     embedded track integration proves the immutable invalid-history and fresh Verifier BLOCKED
+     identities, byte-preserved maintainability value, verified/shipped mandatory rollback,
+     sequential ordering, and complete-envelope equality to the original `start_commit` tree.
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
 
    `superseded` is not a `slice-status-v1` state and never passes. If any slice is not ready, return:

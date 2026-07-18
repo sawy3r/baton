@@ -118,7 +118,11 @@ oracle does exactly it, correctly.
    every Git-derived unmerged track and copy the exact committed file from that owner track ref
    into the release worktree:
    `git show <owner-track-ref>:docs/release/$1/<slice-id>/status.json`. Validate that copy against
-   `slice-status-v1` and the canonical committed-history/blob/FSM checks before editing it. The stale
+   `slice-status-v1` and the canonical committed-history/blob/FSM checks before editing it. The sole
+   exception to the history gate is a current schema-valid fresh Verifier BLOCKED status whose
+   non-empty violations include gate `protocol_history_invalid`: reproduce every cited historical
+   status commit/blob validation failure against its pinned schema blob before allowing Step 2b's
+   retirement path. The stale
    release-worktree or base-merge copy is never a mutation or propagation source. Record each source
    ref and object id in the planner journal so propagation can prove which authoritative record was seeded.
    For a maintainability rollback, preserve the seeded `maintainability` object exactly except for
@@ -127,12 +131,26 @@ oracle does exactly it, correctly.
 
 ## Step 2b — Resolve any inbound BLOCKED slice
 
-A slice whose `status.json` has `verification.result: "blocked"` was routed here by a verifier: verification could not complete because the slice's own contract is the problem. Correcting a factual spec defect flagged by a BLOCKED verdict is squarely **in remit** for `/replan-release` — it is the reason the BLOCKED handoff routes to the planner.
+A slice whose `status.json` has `verification.result: "blocked"` was routed here by a verifier:
+verification could not complete because the slice's own contract is the problem, including the
+narrow case where immutable lifecycle history violates that protocol contract. Correcting a factual
+spec defect or ratifying reproducible protocol-history retirement is squarely **in remit** for
+`/replan-release` — it is the reason the BLOCKED handoff routes to the planner.
 
-For each BLOCKED slice surfaced by the Step 2 reconciliation you have exactly **two** legal outcomes:
+For each BLOCKED slice surfaced by the Step 2 reconciliation you have exactly **three** legal outcomes:
 
 1. **Correct the spec.** Amend `spec.json` to fix the defect — the verifier's verdict should carry a concrete proposed amendment; ratify it or improve on it. Then **clear `verification.result`** back to `"pending"` in the slice's `status.json` so the slice can re-enter verification, and set `state` to whatever the corrected spec now requires (`implemented` if the existing implementation already satisfies it, otherwise `failed_verification` or `planned`). Record the correction in `journal.md`.
 2. **Escalate to the human.** If you believe the verifier was wrong — the spec was correct and the BLOCKED verdict was a misjudgement — do not silently overturn it. Surface the disagreement to the human with both positions and let them decide.
+3. **Retire invalid protocol history.** This is legal only when the committed fresh Verifier verdict
+   has `verification.result: blocked`, a non-empty `protocol_history_invalid` violation, and exact
+   first-parent historical status commit/blob plus schema blob evidence. Reproduce the validation
+   errors and their fingerprints. Reject the path if the current status is invalid, the evidence is
+   not immutable/reproducible, or the underlying problem is an ordinary spec, delivery, test,
+   environmental, unavailable-gate, or maintainability failure. After human ratification, preserve
+   the complete seeded `maintainability` value byte-for-byte, preserve the BLOCKED verification,
+   add the top-level `retirement` record including the committed BLOCKED status commit/blob/session/
+   time identity, mark the original `deferred` with a Rule-2-complete record, and create its mandatory
+   rollback under Steps 3-5. Never convert maintainability PASS to `re_slice_required`.
 
 **Returning the handoff to the verifier is not an option.** "Re-run `/verify-slice` and see" is a return-to-sender handoff — non-terminating by construction (see `$HOME/.claude/baton/session-discipline.md` "Handoff directionality"). The slice re-enters verification only after the planner has cleared `verification.result`.
 
@@ -164,6 +182,14 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
   start before it verifies. Record all replacement ids in the original journal/deferral trail.
   Resetting the same slice id or allowing failed bytes to become a replacement baseline is
   forbidden.
+- When ratified `protocol_history_invalid` retirement resolves the Step 2b outcome, preserve the
+  owner-seeded `maintainability` value byte-for-byte from the pinned BLOCKED status blob. Add only
+  the separate top-level retirement record and ordinary overall deferral fields. Its rollback
+  restores the complete authored semantic envelope from immutable `start_commit` through the
+  rollback's pinned implementation head to the exact original mode/object ids. It may not be
+  deferred. The retired original is traversable only by that named rollback; functional replacement
+  slices follow and cannot start until the rollback is `verified` / `shipped` with passing tree
+  equality. Record replacement ids in the deferral trail and never reuse the original id.
 - Re-validate the **touchpoint matrix** and `board.json.shared_touchpoints` for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it unless the human ratifies the narrow machine-readable documented-shared exception from `track-mode.md`; a Markdown row alone cannot license it.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 
@@ -175,7 +201,9 @@ Once the revision is committed to `release-wt/$1`, push it out to every in-fligh
 forward-merge or the production-conflict cherry-pick fallback, treat `maintainability` as one opaque
 authoritative object, never a field-by-field merge. Normally preserve the exact owner-track object
 seeded in Step 2.6 byte-for-byte. For a ratified rollback re-slice, take the planner copy seeded from
-that owner object and changed only by adding `rollback_slice_id`. Validate the resolved status
+that owner object and changed only by adding `rollback_slice_id`. For a protocol-history retirement,
+preserve the complete owner-seeded maintainability value byte-for-byte and add retirement only at
+the top level. Validate the resolved status
 against the recorded source object and `slice-status-v1` before committing.
 
 For each track in the Step 2 oracle result `.releases["$1"].tracks[]` whose

@@ -71,7 +71,12 @@ and integration readiness are derived below. Do not require release-level
    integrity/FSM check from `llm-checks/README.md`: immutable non-null `start_commit`, append-only
    report prefix, non-decreasing cycle, immutable non-null adjudication, blob-pinned full-report
    identity, legal phase ordering, state/newest-report coherence, and terminal
-   `re_slice_required`. BLOCK on any regression before consulting oracle terminal state. This makes
+   `re_slice_required`. BLOCK on any regression before consulting oracle terminal state except the
+   exact historical schema failures pinned by a current `protocol_history_invalid` retirement. For
+   that sole exception, independently reproduce every first-parent commit/blob/schema/error
+   fingerprint, require the pinned fresh Verifier BLOCKED status identity, and compare the complete
+   current maintainability value byte-for-byte with that verdict blob. Any uncited error, mismatch,
+   non-history failure, or non-BLOCKED verdict still BLOCKs. This makes
    a rewritten current ledger incapable of hiding an earlier exhausted lifecycle or narrowing its
    candidate paths. Require every overall `verified` or `shipped` slice to have current
    maintainability `passed` with the newest entry a current-cycle Verifier `authoritative` PASS.
@@ -97,6 +102,15 @@ and integration readiness are derived below. Do not require release-level
    bytes without deleting valid sibling-track bytes on a documented shared path. Any missing or
    mismatched recorded merge/baseline fails closed. Thus any post-report production commit is also
    restored to the correct durable baseline or blocks.
+   Independently inspect every `protocol_history_invalid` retirement. Require overall state
+   `deferred`, a Rule-2-complete deferral, a started immutable `start_commit`, reproducible invalid
+   history and fresh Verifier BLOCKED identities, and a byte-identical preserved maintainability
+   value. Its separately recorded rollback must belong to this track, occur after the original and
+   before every functional replacement, and be `verified` or `shipped` (never deferred). Only that
+   rollback may immediately traverse the original. Derive the union of every authored non-record
+   path from original `start_commit` through rollback `implementation_head` and require exact
+   mode/object equality with the original start tree. Any missing evidence, ordinary-failure
+   relabelling, invalid order/state, or tree mismatch BLOCKs.
    For every other `deferred` slice, require an unstarted Rule-2 deferral: `start_commit: null`, the
    exact empty pending cycle-0 maintainability template, and at least one schema-valid
    `open_deferrals` entry. Any authored or lifecycle-bearing ordinary deferral BLOCKs.
@@ -207,6 +221,13 @@ and integration readiness are derived below. Do not require release-level
    the rollback slice's `start_commit` is legal only inside the complete rollback envelope proven
    restored by Step 1; for a post-sync invalidation, later authoritative
    intervals remain separately owned and every other semantic gap fails closed.
+
+   A retired-ownership interval may also belong to a reproduced
+   `protocol_history_invalid` original. It ends at the implementation head pinned by the
+   byte-preserved maintainability ledger and is admitted only after its linked verified rollback
+   restores the complete authored envelope to the `start_commit` tree. It owns historical commits
+   but supplies no PASS and never advances a reviewed frontier. Every functional replacement
+   interval must start after rollback verification.
 
    Reconstruct each interval's first-parent non-merge candidate paths and immutable head. Walk the
    track first-parent history in order: commits inside a later active interval are covered by that

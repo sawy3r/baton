@@ -61,11 +61,19 @@ Throughout this section, treat `<wt>` as shorthand for `<worktree_path>` from St
 2. `proof.json`
 3. `status.json`
 4. Read `<start_commit>` and `maintainability.implementation_head` from `status.json`. Require both to resolve to commits, require `<start_commit>` to lie on the pinned implementation head's first-parent chain, and require that head to lie on the current track `HEAD`'s first-parent chain. Derive the slice-authored paths with the first-parent, non-merge algorithm in `llm-checks/README.md`, then inspect `git diff <start_commit>..<implementation_head> -- <those paths>`. Do not use the post-sync current `HEAD` as the implementation boundary. Inspect every first-parent commit after the pin: non-merge commits may touch only the physical release-record root, and merges must be recognized `release-wt` synchronization. Any post-pin authored semantic path makes the evidence stale and fails closed. A Step-0 forward merge and its sibling-track production paths are merge contributions, not slice scope; an overlap with a slice-authored path fails closed.
-5. Validate `status.json` against `slice-status-v1` and apply the committed-history integrity check
+5. Validate current `status.json` against `slice-status-v1` and apply the committed-history integrity check
    in `llm-checks/README.md`. Require immutable non-null `start_commit`, append-only report history,
    non-decreasing cycle, matching blob-pinned full reports, no duplicate role/phase in a cycle, and
    no prior terminal `re_slice_required` state for this slice id. Once non-null, the complete Coach
-   adjudication must be byte-identical in every later version.
+   adjudication must be byte-identical in every later version. If and only if current status is valid
+   but an immutable earlier first-parent status blob is invalid under the exact governing schema,
+   do not collapse that evidence into a generic history failure. Reproduce the invalidity, compute
+   deterministic fingerprints from the validator's stable instance-path/schema-path/error tuple,
+   and emit BLOCKED with violation gate `protocol_history_invalid`, listing each exact commit,
+   status path/blob OID, schema id/blob OID, and validation-error fingerprint. This disposition is
+   inapplicable to ordinary spec, delivery, test, environment, unavailable-gate, or maintainability
+   failures. The Verifier records evidence only; it does not add `retirement` or alter
+   `maintainability`. The Planner ratifies retirement and pins this committed BLOCKED status identity.
 6. Output of the test commands cited in `proof.json` — re-run them yourself from inside the worktree (`cd <wt> && ...`), do not trust the captured output.
 
 If the worktree's `status.json` shows state other than `implemented`, before returning BLOCKED you must (a) confirm you read from `<wt>/...` not the primary repo, and (b) compare against the worktree HEAD's pinned copy via `git -C <wt> show HEAD:docs/release/<release-name>/<slice-id>/status.json`. **Trust the worktree HEAD** if anything disagrees. Only then return `BLOCKED: slice is not in implemented state` if the worktree's HEAD `status.json` still confirms it.
@@ -345,7 +353,7 @@ A PASS does not end the work — it advances the **track**. After you have forme
 1. From `<wt>/docs/release/<release-name>/board.json`, take the ordered `slices` array of the track that owns `<slice-id>` (the track you discovered in Step 0).
 2. Walk the slices that appear **after** `<slice-id>` in that array. For each, read its `status.json` `state`.
 3. The next step is one of exactly two outcomes:
-   - **A further incomplete slice exists** — the first slice after `<slice-id>` that does not satisfy track-mode's canonical integration-ready predicate, including its two legal deferred forms. In an ordinary sequential track the incomplete item is the immediately-following `planned` slice. The next step is `/implement-slice <that-slice-id> <release-name>` in a fresh session.
+   - **A further incomplete slice exists** — the first slice after `<slice-id>` that does not satisfy track-mode's canonical integration-ready predicate, including its three legal deferred forms. In an ordinary sequential track the incomplete item is the immediately-following `planned` slice. The next step is `/implement-slice <that-slice-id> <release-name>` in a fresh session.
    - **Every slice after `<slice-id>` in the track is integration-ready** (or `<slice-id>` is the last in the array) — the **track is complete**. The next step is `/merge-track <track-id>`, and then `/merge-release <release-name>` once every track in the release has been merged.
 
 This is release-routing, not verification: slices in *other* tracks never enter this computation. Reading sibling `status.json` files is permitted post-verdict and only for this routing purpose.
@@ -353,6 +361,12 @@ This is release-routing, not verification: slices in *other* tracks never enter 
 ## When the verdict is BLOCKED
 
 A BLOCKED verdict means verification cannot complete because the slice's own **contract** is the problem — a spec defect, an ambiguous or unfalsifiable acceptance check, or an external gap — not something an implementer can fix. **It is not for environmental faults** (a tool channel you can't trust, a dev server that won't start, a missing worktree, a timeout): those are `INCONCLUSIVE` (next section). Mislabelling an environmental fault as BLOCKED sends a perfectly good spec to the planner to "fix" — wasted work, and a false signal that the slice has a defect. BLOCKED routes in exactly one direction:
+
+The narrow `protocol_history_invalid` BLOCKED form is also a pre-existing protocol-contract defect:
+current status validates, but exact immutable earlier lifecycle blobs do not. It MUST carry the
+reproducible commit/blob/schema/error-fingerprint evidence above, must preserve maintainability
+unchanged, and may not be used for any ordinary failure. Its proposed amendment is Planner
+ratification of top-level retirement plus a mandatory rollback, not a spec rewrite.
 
 - **The next step is `/replan-release <release-name>`.** The planner is the only role that can amend a spec and clear `verification.result`. Do not tell the human to "resolve the blocker and re-run `/verify-slice`" — for a *contract* defect that vague instruction is the non-terminating handoff this routing exists to prevent. (This ban does **not** apply to an `INCONCLUSIVE` outcome, where "re-run `/verify-slice` in a clean session" is precisely the correct, terminating recovery.) Do not route to `/implement-slice`: an implementer cannot clear a BLOCKED verdict, and re-opening the slice for implementation re-enters the verifier → planner → verifier loop.
 - **A spec-defect BLOCKED verdict must carry a concrete proposed `spec.json` amendment.** If you are BLOCKing because the spec is factually wrong, incomplete, or self-contradictory, your verdict states the exact change the planner should ratify — the precise sentence, acceptance check, or touchpoint to add, remove, or correct. A BLOCKED verdict that only says "the spec is wrong" forces the planner to re-derive the analysis you already did; carry the amendment so the planner's job is to ratify, not re-investigate.

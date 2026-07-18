@@ -67,5 +67,9 @@ Rules:
 - Check for: unclear naming (single-letter variables, misleading names), mixed-responsibility objects/functions, missing package/function doc comments, overly clever abstractions, and tight coupling without clear interfaces. Files over 500 lines or functions over 50 lines trigger inspection, not an automatic finding.
 - Judge the code as changed, not the file it sits in — a pre-existing long file is not this diff's fault.
 - Judge maintainability only. Acceptance-criterion satisfaction, security, test semantics, and guard fidelity belong to their own checks and must not be re-litigated here.
+- Protocol lifecycle-record validity and `protocol_history_invalid` retirement are mechanical
+  history concerns outside this check. Never relabel a maintainability finding as protocol-history
+  retirement, never recommend changing a PASS ledger to make retirement possible, and never author
+  or waive the retirement path's mandatory rollback.
 - If the code is clean, well-named, and appropriately documented, verdict is PASS with no blocking findings.
 - Temperature 0 — be deterministic and reproducible.

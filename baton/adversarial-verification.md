@@ -94,6 +94,13 @@ State transitions:
   invalidate human-terminal `shipped` state. Unowned semantic commits, custom merges, or invalid
   provenance, or a later-slice candidate overlap BLOCK without a lifecycle mutation because bounded
   rollback cannot preserve the trustworthy baseline and later verified bytes simultaneously.
+- **Protocol-history retirement is Planner-ratified**: a fresh Verifier may BLOCK with gate
+  `protocol_history_invalid` only when current status validates and exact immutable earlier
+  lifecycle commit/blob evidence fails the pinned schema. The Verifier records evidence but does
+  not retire. The human-ratified Planner preserves maintainability byte-for-byte, pins the BLOCKED
+  verdict identity, and creates a mandatory rollback restoring the complete authored envelope to
+  `start_commit`. Only that rollback may traverse the retired original; replacements wait for its
+  fresh verification and exact tree equality. Ordinary failures cannot use this path.
 - **Human can move**: `verified` → `shipped`.
 - **No agent can move directly to `verified` from `in_progress`.** The `implemented` checkpoint exists to mark "implementer believes done; awaiting fresh-context verification."
 

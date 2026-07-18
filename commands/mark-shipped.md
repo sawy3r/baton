@@ -98,7 +98,12 @@ the oracle.)
    each slice identify the originating track integration/second-parent commit from its board-declared
    `track` id. Apply the complete canonical committed-history check to that durable track history:
    immutable start, append-only reports, non-decreasing cycle, immutable adjudication, blob identity,
-   legal FSM/state coherence, terminal re-slice rollback, and canonical integration provenance.
+   legal FSM/state coherence, terminal re-slice rollback, protocol-history retirement, and canonical
+   integration provenance. A `protocol_history_invalid` original is legal only when its immutable
+   invalid-history and fresh Verifier BLOCKED identities reproduce from embedded track ancestry, its
+   maintainability value is byte-identical to the pinned verdict blob, and its verified/shipped
+   rollback restores the complete authored envelope to the immutable start tree before every
+   functional replacement.
    Missing cleaned-up branch refs are not an excuse because the merge parents remain in release
    ancestry. Compare the integration-branch current status to that validated integrated status;
    before this command only existing idempotent `shipped` transition fields may differ. For each
@@ -116,7 +121,9 @@ the oracle.)
      shipped earlier); left untouched.
    - `deferred` — left untouched only when it is either an unstarted Rule-2-complete deferral with
      null `start_commit` and the empty pending cycle-0 maintainability record, or terminal
-     `re_slice_required` with the verified tree-equal rollback required above.
+     `re_slice_required` with the verified tree-equal rollback required above, or a reproduced
+     `protocol_history_invalid` retirement with byte-preserved maintainability and its verified
+     tree-equal rollback required above.
    - Any other state (`planned`, `in_progress`, `implemented`,
      `failed_verification`) — BLOCK: "cannot mark release `$1` shipped — these
      slices are not verified: `<list>`. A release must be fully merged and

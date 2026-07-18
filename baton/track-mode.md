@@ -75,12 +75,30 @@ an earlier slice, append the rollback after the started prefix and before its fu
 replacements; never rewrite committed board/first-parent order. `/merge-track` enforces this
 exception to the ordinary terminal-state rule.
 
+A started slice may also be retired when a fresh Verifier proves that one or more immutable,
+committed lifecycle records are invalid under the pinned governing schema and therefore make the
+slice deterministically unverifiable. This is the sole `protocol_history_invalid` disposition. It
+is not a maintainability disposition and MUST NOT alter the original `maintainability` value: the
+Planner preserves that value byte-for-byte from the committed BLOCKED verdict status while adding
+the separate top-level retirement record. The record pins each invalid status commit/blob, the
+schema blob and deterministic validation-error fingerprints, and the fresh Verifier BLOCKED status
+commit/blob identity. Engines reproduce those facts from Git before accepting the disposition.
+Ordinary delivery, contract, test, ambiguity, unavailable-gate, or maintainability failures cannot
+use it. The named mandatory rollback restores the complete authored semantic envelope to the
+original immutable `start_commit` tree. Only that rollback may immediately follow the retired
+original; every functional replacement waits until the rollback is `verified` / `shipped` and its
+tree-equality proof passes.
+
 **Integration-ready, canonical:** a slice is ready for track/release integration only when it is
 `verified` / `shipped`; or it is an unstarted Rule-2-complete `deferred` slice with null
 `start_commit`, the empty pending cycle-0 maintainability record, and a non-empty valid deferral; or
 it is a `deferred` terminal `re_slice_required` original whose recorded rollback is `verified` /
-`shipped` and passes the applicable tree-equality gate. A displayed `deferred` value alone is never
-authority, and `superseded` is not a slice-status state.
+`shipped` and passes the applicable tree-equality gate; or it is a started `deferred`
+`protocol_history_invalid` original whose immutable evidence reproduces, whose separate retirement
+record names a `verified` / `shipped` rollback, whose complete authored envelope is tree-equal to
+`start_commit`, and whose maintainability value remains byte-identical to its pinned BLOCKED status
+blob. A displayed `deferred` value alone is never authority, and `superseded` is not a slice-status
+state.
 
 ## The touchpoint matrix — the planner's load-bearing artefact
 

@@ -334,7 +334,12 @@ Before proposing any revision, rebuild the true state table:
    stale and is not a legal mutation or propagation source. Record the source ref and object id for
    every seeded status. Preserve the seeded
    `maintainability` object as an opaque authority record; when creating a ratified maintainability
-   rollback, the only permitted change inside that object is adding `rollback_slice_id`.
+   rollback, the only permitted change inside that object is adding `rollback_slice_id`. The sole
+   history-check exception is a current schema-valid fresh Verifier BLOCKED status whose violation
+   gate is exactly `protocol_history_invalid`. In that case, reproduce each cited historical
+   commit/blob failure against the pinned schema before seeding. The Planner may add only the
+   top-level retirement record and overall deferral fields; the complete seeded `maintainability`
+   value must remain byte-for-byte identical to the BLOCKED status blob.
 
 ### What a revision may and may not do
 
@@ -342,7 +347,21 @@ Before proposing any revision, rebuild the true state table:
 - **Re-validate the touchpoint matrix** for every added slice against every track, including in-flight ones. If an added slice collides with an in-flight track's files, it must join that track (appended) or be a track that `depends_on` it — it cannot run in parallel with it.
 - **Drop a not-started slice** → state `deferred`, with a Rule 2 deferral card.
 - **Drop or re-scope a started slice** → a human decision surfaced explicitly; `in_progress` / `verified` / `merged` work is never silently rewritten. When re-slicing resolves `maintainability.state: re_slice_required`, first seed the release-worktree record from the exact owner-track status as required above, then retain that terminal lifecycle and its append-only report ledger on the original slice id. Create a mandatory new rollback slice at the legal position defined above, set only the original `maintainability.rollback_slice_id` inside the seeded maintainability object, and mark the original `deferred` with a Rule-2-complete record. For an ordinary maintainability failure, the rollback restores the complete authored semantic envelope from the original `start_commit` through the rollback's pinned head to the original mode/object ids. For a post-sync Track Integrator invalidation, its envelope is the invalidated slice's `start_commit..invalidated_review_head` candidate set only, with that head equal to the newest preserved authoritative PASS scope; it restores those paths to the invalidating recognized sync merge's exact parent-2 tree, removing failed track bytes without deleting sibling bytes or later authoritative slice paths. Ordinary failure rollback includes stray post-report production commits; later verified intervals remain separately owned in the post-sync case. The rollback must verify before functional replacement slices start and may never itself be deferred. Only then create replacement functionality as one or more later **new slices** with fresh template lifecycle records. `/merge-track` independently checks the rollback state, recognized baseline, and tree equality. Resetting the original id to cycle 0, reconstructing or narrowing its ledger, or retaining failed bytes beneath a replacement base is forbidden. A materially different spec for an already-`verified` slice is likewise a new slice, not an edit — verified work is immutable.
-- **Correct a factual spec defect flagged by a BLOCKED verdict** → squarely in remit. A verifier `BLOCKED` routes an inbound slice here precisely because a spec defect has no other owner — the verifier grades against the spec and cannot edit it, the implementer implements against it and cannot edit it. Two legal outcomes only: correct the spec and clear `verification.result` back to `"pending"` so the slice re-enters verification, or escalate to the human if you judge the verdict itself wrong. Returning the handoff to the verifier ("re-run `/verify-slice` and see") is not an option — see `$HOME/.claude/baton/session-discipline.md`, "Handoff directionality". `/replan-release` Step 2b is the procedure.
+- **Retire deterministically invalid protocol history** → only after a fresh Verifier has committed a
+  schema-valid BLOCKED status with a `protocol_history_invalid` violation. Reproduce every cited
+  first-parent historical status commit/blob failure against the exact pinned schema blob; require
+  the defect to be immutable lifecycle-record invalidity that prevents verification, never an
+  ordinary spec, delivery, test, environmental, unavailable-gate, or maintainability failure. With
+  human ratification, seed the exact BLOCKED status and add the top-level `retirement` record with
+  those immutable identities, deterministic validation-error fingerprints, the BLOCKED status
+  commit/blob/session/time identity, and a mandatory rollback id. Mark the original `deferred` with
+  a Rule-2-complete record while preserving its entire `maintainability` value byte-for-byte. Put
+  the rollback immediately after the original unless already-started slices force it after the
+  started prefix; only that rollback may cross the retired predecessor. Its spec restores the
+  complete authored semantic envelope to the immutable `start_commit` tree and it must become
+  `verified` / `shipped` with exact tree equality before any functional replacement starts. Never
+  convert a PASS ledger to `re_slice_required`, clear the BLOCKED verdict, or reuse the slice id.
+- **Correct a factual spec defect flagged by a BLOCKED verdict** → squarely in remit. A verifier `BLOCKED` routes an inbound slice here precisely because a spec defect has no other owner — the verifier grades against the spec and cannot edit it, the implementer implements against it and cannot edit it. For an ordinary spec-defect BLOCKED there are two outcomes: correct the spec and clear `verification.result` back to `"pending"` so the slice re-enters verification, or escalate to the human if you judge the verdict itself wrong. The distinct third outcome is the exact `protocol_history_invalid` path above; no other BLOCKED reason may use it. Returning the handoff to the verifier ("re-run `/verify-slice` and see") is not an option — see `$HOME/.claude/baton/session-discipline.md`, "Handoff directionality". `/replan-release` Step 2b is the procedure.
 - **Never** create a worktree. Modify the release worktree for planner artefacts and existing track
   worktrees only for the explicit `release-wt → track` propagation step; outside that step, do not
   modify a track worktree. Never edit the spec of a `verified` or `merged` slice.

@@ -86,6 +86,35 @@ verifier still owns the verdict.
 
 ### Bounded maintainability lifecycle
 
+#### Deterministic protocol-history invalidity evidence
+
+`protocol_history_invalid` is a mechanical lifecycle-history disposition, not an LLM finding. For
+each cited status record, a conformant engine resolves the exact `status_path` at the cited commit,
+rejects an absolute path or `.` / `..` segment, requires it to be the physical status path for the
+same release and slice,
+requires that commit on the slice owner track's first-parent chain before the pinned Verifier verdict
+commit, and requires the resolved blob OID to equal `status_blob_oid`. It resolves
+`schema_blob_oid` to bytes whose parsed `$id` equals `schema_id`, rejects duplicate JSON keys, and
+validates the status bytes with JSON Schema 2020-12 plus format assertions.
+
+For every validation error, form one fingerprint from the validator-independent tuple `(instance
+JSON Pointer, schema JSON Pointer, failing keyword)`. Encode each pointer using RFC 6901 over the
+parsed member/index path. Hash the exact UTF-8 byte sequence
+`baton-status-validation-error-v1`, NUL, instance pointer, NUL, schema pointer, NUL, keyword, NUL
+with SHA-256 and render `sha256:<lowercase hex>`. Byte-sort and deduplicate the complete set, then
+require exact equality with `validation_error_fingerprints`; an empty set or an uncited error fails
+closed. The pinned schema blob supplies the constraint value, so validator-specific prose is never
+part of identity.
+
+The fresh Verifier status commit/blob must contain `verification.result: blocked`, fresh-context
+session/time fields, and a `protocol_history_invalid` violation citing the same evidence. Retirement
+status must preserve the complete parsed `maintainability` value and its exact JSON byte span
+byte-for-byte from that verdict blob. The Planner may change only top-level retirement/deferral and
+planning fields. Any cited commit outside the owner first-parent chain, path/slice/release mismatch,
+schema-valid cited record, missing error, verdict mismatch, or maintainability-byte mismatch makes
+the disposition invalid. A semantic delivery failure cannot be transformed into invalid history by
+labelling a violation with this gate id.
+
 Maintainability has two role-specific uses; they are intentionally not equal:
 
 1. The Implementer runs one **readiness preflight** only after deterministic checks are green and
@@ -179,6 +208,13 @@ For each allowed run, a conformant engine MUST:
    terminal for integration only when its overall state is `deferred`, its recorded rollback slice
    is `verified` or `shipped`, and the rollback's pinned tree restores the applicable canonical
    baseline; any other displayed state or missing proof fails provenance closed. Planner commits may
+   also contain a top-level `protocol_history_invalid` retirement only when every pinned historical
+   status commit/blob and schema blob reproduces the recorded validation-error fingerprints, the
+   pinned fresh Verifier status commit/blob contains the matching BLOCKED verdict, and the complete
+   maintainability value is byte-identical between that verdict blob and retirement status. Its
+   named rollback must be `verified` or `shipped` and restore the complete authored envelope to the
+   immutable `start_commit` tree. No other validation, delivery, test, contract, environment, gate,
+   or maintainability failure is eligible for that disposition. Planner commits may
    change records, while production bytes arrive only through such a gated two-parent track
    integration. A direct production commit on `release-wt`, an undeclared/deleted track ref, an
    unverified track parent, or a custom integration tree outside the record root makes
@@ -201,6 +237,14 @@ For each allowed run, a conformant engine MUST:
    rollback envelope and its final tree restores it to baseline. For
    a post-sync invalidation, later authoritative intervals remain separately owned; any other
    semantic gap fails closed.
+
+   A `protocol_history_invalid` original contributes a separate retired-ownership interval from
+   `start_commit` through the implementation head pinned by its byte-preserved maintainability
+   ledger. Admit it only after reproducing retirement evidence and proving its linked verified
+   rollback restores the complete authored envelope to the `start_commit` tree. Only the rollback
+   may traverse the not-yet-ready original; every functional replacement interval must start after
+   the rollback's authoritative verification. Like other retired intervals it owns historical
+   commits but supplies no PASS and advances no reviewed frontier.
 
    Require each non-record non-merge commit to fall inside exactly one active or admitted retired
    interval. Classify an otherwise-unowned commit in the narrow ordinary rollback gap separately only

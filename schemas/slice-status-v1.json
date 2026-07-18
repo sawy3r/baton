@@ -359,6 +359,64 @@
         }
       ]
     },
+    "retirement": {
+      "description": "Planner-ratified retirement evidence. This record is deliberately outside maintainability so the complete maintainability value can remain byte-identical to the qualifying Verifier BLOCKED status blob.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["disposition", "invalid_history", "verifier_verdict", "rollback_slice_id", "rationale", "tracking", "acknowledged_by", "acknowledged_at"],
+          "properties": {
+            "disposition": { "const": "protocol_history_invalid" },
+            "invalid_history": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["commit", "status_path", "status_blob_oid", "schema_id", "schema_blob_oid", "validation_error_fingerprints"],
+                "properties": {
+                  "commit": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+                  "status_path": {
+                    "description": "Exact repository-relative physical status path. Engines reject absolute paths and dot segments and require it to resolve to this slice's release/status record.",
+                    "type": "string",
+                    "minLength": 12,
+                    "pattern": "^[^/].*/status\\.json$"
+                  },
+                  "status_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+                  "schema_id": { "const": "https://baton.sawy3r.net/schemas/slice-status-v1.json" },
+                  "schema_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+                  "validation_error_fingerprints": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+                  }
+                }
+              }
+            },
+            "verifier_verdict": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status_commit", "status_blob_oid", "result", "verifier_session_id", "verifier_verdict_at"],
+              "properties": {
+                "status_commit": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+                "status_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+                "result": { "const": "blocked" },
+                "verifier_session_id": { "type": "string", "minLength": 1 },
+                "verifier_verdict_at": { "type": "string", "format": "date-time" }
+              }
+            },
+            "rollback_slice_id": { "type": "string", "minLength": 1 },
+            "rationale": { "type": "string", "minLength": 1 },
+            "tracking": { "type": "string", "minLength": 1 },
+            "acknowledged_by": { "type": "string", "minLength": 1 },
+            "acknowledged_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
     "open_deferrals": {
       "type": "array",
       "description": "Rule 2 deferral objects. Each must carry why, tracking, acknowledgement, and acknowledged_by (acknowledged_at optional) per the No Silent Deferrals rule. acknowledgement is the plain-text evidence the decision-maker was told; acknowledged_by is the structured attribution (who); acknowledged_at is when. This is STRICT ADDITIVE: acknowledged_by is in addition to acknowledgement, not an either-or substitute (a name is not the plain-text 'told' evidence Rule 2 requires).",
@@ -482,6 +540,36 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": { "retirement": { "type": "object" } },
+        "required": ["retirement"]
+      },
+      "then": {
+        "properties": {
+          "state": { "const": "deferred" },
+          "start_commit": { "type": "string" },
+          "verification": {
+            "required": ["result", "verifier_session_id", "verifier_verdict_at", "verifier_was_fresh_context", "violations"],
+            "properties": {
+              "result": { "const": "blocked" },
+              "verifier_session_id": { "type": "string", "minLength": 1 },
+              "verifier_verdict_at": { "type": "string" },
+              "verifier_was_fresh_context": { "const": true },
+              "violations": {
+                "contains": {
+                  "type": "object",
+                  "properties": { "gate": { "const": "protocol_history_invalid" } },
+                  "required": ["gate"]
+                }
+              }
+            }
+          },
+          "open_deferrals": { "minItems": 1 }
+        },
+        "required": ["state", "start_commit", "verification", "open_deferrals"]
+      }
+    },
     {
       "if": {
         "properties": {
