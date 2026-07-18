@@ -80,7 +80,7 @@ committed lifecycle records are invalid under the pinned governing schema and th
 slice deterministically unverifiable. This is the sole `protocol_history_invalid` disposition. It
 is not a maintainability disposition and MUST NOT alter the original `maintainability` value: the
 Planner preserves that value byte-for-byte from the committed BLOCKED verdict status while adding
-the separate top-level retirement record. The record pins each invalid status commit/blob, the
+the separate top-level retirement record. The record pins each owner-bound invalid status commit/blob, the
 schema blob and deterministic validation-error fingerprints, and the fresh Verifier BLOCKED status
 commit/path/blob identity. The Verifier stores the invalid-history identities in a strict typed
 violation object, and retirement must repeat that array exactly; free-text evidence is never parsed.
@@ -89,9 +89,11 @@ reproduce those facts from Git before accepting the disposition.
 Ordinary delivery, contract, test, ambiguity, unavailable-gate, or maintainability failures cannot
 use it. Eligibility requires the preserved maintainability lifecycle to be `passed`, with a concrete
 `implementation_head` and a non-empty qualifying PASS ledger whose newest report pins that head;
-those immutable bytes define the rollback envelope. The first committed retirement transition on
-the owner first-parent history must precede rollback planning and its qualifying verified verdict.
-Every functional replacement's immutable `start_commit` must descend from that rollback verdict.
+those immutable bytes define the rollback envelope. Every cited status must use the owner's exact
+path and parsed slice/release identity and lie strictly on the owner first-parent history; the
+pinned BLOCKED status must reject duplicate keys and validate against its governing schema at that
+commit. The retirement commit, rollback first-status commit, qualifying verified verdict commit,
+and replacement `start_commit` are distinct and strictly ordered on that first-parent history.
 The named mandatory rollback restores the complete authored semantic envelope to the
 original immutable `start_commit` tree. Only that rollback may immediately follow the retired
 original; every functional replacement waits until the rollback is `verified` / `shipped` and its
@@ -105,9 +107,10 @@ it is a `deferred` terminal `re_slice_required` original whose recorded rollback
 `protocol_history_invalid` original whose immutable evidence reproduces, whose separate retirement
 record names a `verified` / `shipped` rollback, whose complete authored envelope is tree-equal to
 `start_commit`, and whose maintainability value remains byte-identical to its pinned BLOCKED status
-blob and carries the qualifying passed head/ledger above. The retirement transition must precede
-rollback planning/verification and every replacement must start after the qualifying rollback
-verdict. A displayed `deferred` value alone is never authority, and `superseded` is not a slice-status
+blob and carries the qualifying passed head/ledger above. The retirement transition, rollback
+planning, rollback verification, and replacement start must be distinct strictly ordered
+first-parent commits; ordinary or second-parent ancestry is insufficient. A displayed `deferred`
+value alone is never authority, and `superseded` is not a slice-status
 state.
 
 ## The touchpoint matrix — the planner's load-bearing artefact

@@ -100,12 +100,16 @@ the oracle.)
    immutable start, append-only reports, non-decreasing cycle, immutable adjudication, blob identity,
    legal FSM/state coherence, terminal re-slice rollback, protocol-history retirement, and canonical
    integration provenance. A `protocol_history_invalid` original is legal only when its immutable
-   invalid-history and fresh Verifier BLOCKED commit/path/blob identities reproduce from embedded
-   track ancestry, its typed violation evidence exactly equals retirement `invalid_history`, its
+   invalid-history records use the owner's exact path and matching parsed slice/release identity and
+   lie strictly on owner first-parent history. Its fresh Verifier BLOCKED status must reject
+   duplicate keys, validate against its governing schema at that historical commit, lie strictly
+   before retirement, and reproduce commit/path/blob identity from embedded track ancestry. Its
+   typed violation evidence exactly equals retirement `invalid_history`, its
    maintainability value is byte-identical to the pinned verdict blob and is qualifying `passed`
-   evidence with a concrete PASS-pinned implementation head, its first retirement commit precedes
-   rollback planning and the qualifying rollback verdict, every replacement starts after that
-   verdict, and its verified/shipped rollback restores the complete authored envelope to the
+   evidence with a concrete PASS-pinned implementation head. Its first retirement commit, rollback
+   first status, qualifying rollback verdict, and every replacement `start_commit` are distinct and
+   strictly ordered on first-parent history; equality and ordinary or second-parent ancestry are
+   insufficient. Its verified/shipped rollback restores the complete authored envelope to the
    immutable start tree before every functional replacement. Recompute chronology from embedded
    track ancestry rather than accepting current state or board order alone.
    Missing cleaned-up branch refs are not an excuse because the merge parents remain in release

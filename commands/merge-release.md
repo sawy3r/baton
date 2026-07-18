@@ -53,11 +53,14 @@ release-key mismatch BLOCK as malformed oracle output.
      `verified` / `shipped` and the originating `/merge-track` provenance contains the applicable
      passing tree-equality gate.
    - started `deferred` with `retirement.disposition: protocol_history_invalid` — OK only when the
-     embedded track integration proves the immutable invalid-history and fresh Verifier BLOCKED
-     commit/path/blob identities, exact typed-evidence equality, byte-preserved maintainability
+     embedded track integration proves every immutable invalid-history record uses its owner's exact
+     path and parsed slice/release identity and lies strictly on owner first-parent history. The
+     fresh Verifier BLOCKED status must be duplicate-free, historical-schema-valid, strictly before
+     retirement, and preserve exact commit/path/blob identities and typed-evidence equality, plus byte-preserved maintainability
      value in qualifying `passed` state with a concrete PASS-pinned implementation head,
-     verified/shipped mandatory rollback, first-parent retirement-before-rollback chronology,
-     replacement start after the qualifying rollback verdict, sequential ordering, and
+     verified/shipped mandatory rollback, and distinct strict first-parent chronology from retirement
+     through rollback first status and verdict to replacement start. Ordinary ancestry or equality,
+     sequential ordering, and
      complete-envelope equality to the original `start_commit` tree. Recompute these from embedded
      track ancestry; do not trust only current states.
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.

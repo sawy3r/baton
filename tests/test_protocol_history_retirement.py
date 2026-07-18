@@ -7,11 +7,13 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 
 from protocol_history_git_fixture import (
+    DuplicateJSONKeyError,
     ProtocolHistoryRepositoryFixture,
     evaluate_protocol_history_retirement,
     mark_shipped_predicate,
     merge_release_predicate,
     merge_track_predicate,
+    parse_json,
 )
 
 
@@ -108,6 +110,13 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             "replacement_before_rollback": "replacement-started-before-rollback-verification",
             "ordinary_relabel": "cited-record-valid",
             "late_retirement": "retirement-after-rollback-planning",
+            "unrelated_evidence_slice": "invalid-record-owner-path-mismatch",
+            "unrelated_evidence_release": "invalid-record-owner-identity-mismatch",
+            "second_parent_evidence": "invalid-record-not-before-verdict-first-parent",
+            "schema_invalid_verdict": "verdict-status-invalid",
+            "duplicate_key_verdict": "verdict-duplicate-json-key",
+            "second_parent_verdict": "verdict-not-before-retirement-first-parent",
+            "combined_retirement_rollback": "retirement-after-rollback-planning",
         }
         for scenario, expected_failure in scenarios.items():
             with self.subTest(scenario=scenario):
@@ -118,6 +127,54 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 self.assertFalse(merge_track_predicate(self.git_fixture, tip))
                 self.assertFalse(merge_release_predicate(self.git_fixture, tip))
                 self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
+    def test_duplicate_json_keys_are_rejected_before_schema_validation(self) -> None:
+        with self.assertRaises(DuplicateJSONKeyError):
+            parse_json(b'{"verification": {}, "verification": {}}')
+
+    def test_owner_bound_history_rejects_other_slice_release_and_second_parent(self) -> None:
+        expectations = {
+            "unrelated_evidence_slice": {
+                "invalid-record-owner-path-mismatch",
+                "invalid-record-owner-identity-mismatch",
+            },
+            "unrelated_evidence_release": {"invalid-record-owner-identity-mismatch"},
+            "second_parent_evidence": {"invalid-record-not-before-verdict-first-parent"},
+        }
+        for scenario, expected in expectations.items():
+            with self.subTest(scenario=scenario):
+                tip = self.git_fixture.commits[scenario]
+                ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
+                self.assertFalse(ready)
+                self.assertTrue(expected.issubset(failures), failures)
+                self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+                self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+                self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
+    def test_historical_verdict_must_be_unique_schema_valid_and_first_parent(self) -> None:
+        expectations = {
+            "schema_invalid_verdict": "verdict-status-invalid",
+            "duplicate_key_verdict": "verdict-duplicate-json-key",
+            "second_parent_verdict": "verdict-not-before-retirement-first-parent",
+        }
+        for scenario, expected in expectations.items():
+            with self.subTest(scenario=scenario):
+                tip = self.git_fixture.commits[scenario]
+                ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
+                self.assertFalse(ready)
+                self.assertIn(expected, failures)
+                self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+                self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+                self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
+    def test_combined_retirement_and_rollback_plan_commit_is_not_strict_chronology(self) -> None:
+        tip = self.git_fixture.commits["combined_retirement_rollback"]
+        ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
+        self.assertFalse(ready)
+        self.assertIn("retirement-after-rollback-planning", failures)
+        self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+        self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+        self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
 
     def test_integrator_entrypoints_apply_their_independent_outer_gates(self) -> None:
         tip = self.git_fixture.commits["legal"]
@@ -163,11 +220,11 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "commit/path/blob identity",
                 "typed-evidence equality",
                 "byte-identical",
-                "before every functional replacement",
                 "mode/object equality",
                 "ordinary-failure",
-                "first committed retirement status",
-                "qualifying rollback verdict",
+                "owner's exact physical path",
+                "reject duplicate JSON keys",
+                "strictly ordered on that first-parent",
                 "implementation_head",
             ],
             "commands/merge-release.md": [
@@ -176,17 +233,18 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "byte-preserved maintainability",
                 "sequential ordering",
                 "complete-envelope equality",
-                "retirement-before-rollback chronology",
-                "replacement start after",
+                "owner's exact path",
+                "historical-schema-valid",
+                "distinct strict first-parent chronology",
             ],
             "commands/mark-shipped.md": [
-                "commit/path/blob identities",
+                "commit/path/blob identity",
                 "typed violation evidence exactly equals",
                 "byte-identical",
-                "before every functional replacement",
                 "complete authored envelope",
-                "first retirement commit precedes",
-                "every replacement starts after",
+                "owner's exact path",
+                "reject duplicate keys",
+                "distinct and strictly ordered",
             ],
         }
         for relative_path, clauses in requirements.items():

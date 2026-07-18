@@ -67,13 +67,15 @@ Throughout this section, treat `<wt>` as shorthand for `<worktree_path>` from St
    no prior terminal `re_slice_required` state for this slice id. Once non-null, the complete Coach
    adjudication and complete `retirement` record must be byte-identical in every later version. If
    and only if current status is valid
-   but an immutable earlier first-parent status blob is invalid under the exact governing schema,
+   but an immutable earlier status at this owner's exact physical path, with matching parsed
+   slice/release identity and strict first-parent presence, is invalid under the exact governing schema,
    do not collapse that evidence into a generic history failure. Reproduce the invalidity, compute
    deterministic fingerprints from the validator's stable instance-path/schema-path/error tuple,
    and emit BLOCKED with violation gate `protocol_history_invalid`. Put the exact evidence in that
    violation's strict `protocol_history_invalid` object: `disposition` plus `invalid_history`, whose
    typed entries carry commit, status path/blob OID, schema id/blob OID, and validation-error
-   fingerprints. Free-text `evidence` is supplementary and never identity. This disposition is
+   fingerprints. Reject duplicate JSON keys and second-parent-only reachability. Free-text
+   `evidence` is supplementary and never identity. This disposition is
    inapplicable to ordinary spec, delivery, test, environment, unavailable-gate, or maintainability
    failures. The Verifier records evidence only; it does not add `retirement` or alter
    `maintainability`. The Planner ratifies retirement and pins this committed BLOCKED status identity.

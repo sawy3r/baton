@@ -61,3 +61,23 @@ The second fresh verifier found a separate chronology false-positive. The Git fi
 The normative track, Planner, Implementer, replan and three integration/shipping contracts carry the same passed-envelope and first-parent chronology requirements. Current board order and terminal states are explicitly insufficient.
 
 Both immutable FAIL captures, at `9dfb256` and `06b7fb5`, remain byte-identical. This second repair changes only the bounded chronology and eligibility findings.
+
+## Gate Warden repair: owner binding, historical verdict validity and strict chronology
+
+The second Gate Warden pass found three remaining ways ordinary reachability could be mistaken for protocol authority. This bounded repair closes them without changing the disposition's scope.
+
+Every `invalid_history` record is now bound to its owning retired slice. Its `status_path` must be the owner's exact physical status path, the parsed historical status must carry the owner's exact `slice_id` and `release`, and the evidence commit must occur strictly on the owner's first-parent history before the pinned Verifier verdict. A commit reachable only through a merge's second parent is not evidence authority. Real Git branches exercise an unrelated slice status, an unrelated release status and a same-slice second-parent-only status through all three integration predicates.
+
+The pinned fresh Verifier status is now itself historical evidence. Parsing rejects duplicate JSON keys; the exact owner path/blob is resolved; the status commit must lie strictly on first-parent history before retirement; and the whole status must validate against the governing schema stored at that commit before its BLOCKED result, fresh identity and typed evidence are accepted. Real Git branches prove that a schema-invalid BLOCKED-looking status cannot be masked by a later valid deferred status, a duplicate-key verdict cannot be reinterpreted, and a valid verdict reachable only through a second parent cannot authorise retirement.
+
+Chronology is now strict rather than non-strict ancestry. The retirement transition, rollback first-status commit, authoritative rollback verdict and each functional replacement `start_commit` must be distinct and strictly ordered on first-parent history. The real Git fixture includes the exact combined retirement plus rollback-first-status commit and proves merge-track, merge-release and mark-shipped all reject it. The legal fixture now uses a separate replacement planning anchor after the rollback verdict.
+
+The canonical LLM checks, track contract, Planner/replan, Implementer, Verifier and all three integration/shipping command contracts state the same owner identity, duplicate-key, historical-schema and strict first-parent mechanics. The earlier FAIL reports remain byte-identical; their hashes are rechecked before commit.
+
+Warden repair validation:
+
+- `python3 -B -m unittest discover -s tests -v`: 14 tests pass.
+- Draft 2020-12 metaschema validation: all 18 schemas pass.
+- Duplicate-key-aware JSON parsing: all 19 schema, template and fixture JSON files pass.
+- Installer shell syntax and isolated scratch parity: pass; 18 schemas are byte-identical in each install, all eight Claude commands are byte-identical, all eight Codex skills are present, and no stale Claude Baton paths remain in Codex output.
+- `git diff --check` and Python cache audit: pass.

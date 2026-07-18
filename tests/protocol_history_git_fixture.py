@@ -20,6 +20,23 @@ STATUS_PATHS = {
 }
 
 
+class DuplicateJSONKeyError(ValueError):
+    pass
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise DuplicateJSONKeyError(f"duplicate JSON member: {key}")
+        result[key] = value
+    return result
+
+
+def parse_json(document: bytes | str) -> object:
+    return json.loads(document, object_pairs_hook=_unique_object)
+
+
 def render_json(value: object) -> bytes:
     return (json.dumps(value, indent=2) + "\n").encode()
 
@@ -114,6 +131,16 @@ class GitRepository:
             stderr=subprocess.DEVNULL,
         ).returncode == 0
 
+    def is_on_first_parent(self, commit: str, tip: str) -> bool:
+        try:
+            history = self.run("rev-list", "--first-parent", tip).splitlines()
+        except subprocess.CalledProcessError:
+            return False
+        return commit in history
+
+    def is_strictly_before_on_first_parent(self, earlier: str, later: str) -> bool:
+        return earlier != later and self.is_on_first_parent(earlier, later)
+
     def tree_entry(self, commit: str, relative_path: str) -> tuple[str, str] | None:
         output = self.run("ls-tree", commit, "--", relative_path)
         if not output:
@@ -145,7 +172,7 @@ class ProtocolHistoryRepositoryFixture:
     def __init__(self, schema_path: Path):
         self.tempdir = tempfile.TemporaryDirectory()
         self.repo = GitRepository(Path(self.tempdir.name))
-        self.schema = json.loads(schema_path.read_text())
+        self.schema = parse_json(schema_path.read_bytes())
         self.validator = Draft202012Validator(self.schema, format_checker=FormatChecker())
         self.commits: dict[str, str] = {}
         self._build(schema_path)
@@ -310,10 +337,21 @@ class ProtocolHistoryRepositoryFixture:
         self._write_status(ROLLBACK_ID, rollback_verified)
         self.commits["rollback_verified"] = self.repo.commit("fixture: rollback verified")
 
+        replacement_planned = self._status(
+            REPLACEMENT_ID,
+            "planned",
+            None,
+            None,
+            [],
+            {"result": "pending", "violations": []},
+        )
+        self._write_status(REPLACEMENT_ID, replacement_planned)
+        self.commits["replacement_anchor"] = self.repo.commit("fixture: replacement planned after rollback")
+
         replacement = self._status(
             REPLACEMENT_ID,
             "in_progress",
-            self.commits["rollback_verified"],
+            self.commits["replacement_anchor"],
             None,
             [],
             {"result": "pending", "violations": []},
@@ -398,6 +436,9 @@ class ProtocolHistoryRepositoryFixture:
         self._build_bad_tree("content_mismatch", b"not baseline\n", False)
         self._build_bad_tree("mode_mismatch", b"baseline\n", True)
         self._build_late_retirement(retired)
+        self._build_owner_binding_negatives(retired)
+        self._build_verdict_negatives(retired)
+        self._build_combined_retirement_and_rollback(retired)
         self.repo.run("checkout", "-q", "-B", "fixture-legal", self.commits["legal"])
 
     def _write_mutated_original(self, base: str, mutate: Callable[[dict], None]) -> None:
@@ -454,6 +495,128 @@ class ProtocolHistoryRepositoryFixture:
         self._write_status(ORIGINAL_ID, copy.deepcopy(retired))
         self.commits["late_retirement"] = self.repo.commit("fixture negative: retirement committed last")
 
+    def _retirement_with_evidence(self, retired: dict, evidence: dict) -> dict:
+        value = copy.deepcopy(retired)
+        value["retirement"]["invalid_history"] = [copy.deepcopy(evidence)]
+        value["verification"]["violations"][0]["protocol_history_invalid"]["invalid_history"] = [copy.deepcopy(evidence)]
+        return value
+
+    def _build_owner_binding_negatives(self, retired: dict) -> None:
+        self.repo.run("checkout", "-q", "-B", "scenario-unrelated_evidence_slice", self.commits["legal"])
+        rollback_commit = self.commits["rollback_planned"]
+        evidence = copy.deepcopy(self.invalid_history[0])
+        evidence.update({
+            "commit": rollback_commit,
+            "status_path": STATUS_PATHS[ROLLBACK_ID],
+            "status_blob_oid": self.repo.blob(rollback_commit, STATUS_PATHS[ROLLBACK_ID]),
+        })
+        self._write_status(ORIGINAL_ID, self._retirement_with_evidence(retired, evidence))
+        self.commits["unrelated_evidence_slice"] = self.repo.commit("fixture negative: cite another slice status")
+
+        self.repo.run("checkout", "-q", "-B", "scenario-unrelated_evidence_release", self.commits["retired"])
+        wrong_release = {
+            "$schema": SCHEMA_ID,
+            "slice_id": ORIGINAL_ID,
+            "release": "unrelated-release",
+            "state": "in_progress",
+        }
+        self._write_status(ORIGINAL_ID, wrong_release)
+        wrong_release_commit = self.repo.commit("fixture negative: unrelated release status")
+        evidence = copy.deepcopy(self.invalid_history[0])
+        evidence.update({
+            "commit": wrong_release_commit,
+            "status_blob_oid": self.repo.blob(wrong_release_commit, STATUS_PATHS[ORIGINAL_ID]),
+        })
+        self._write_status(ORIGINAL_ID, self._retirement_with_evidence(retired, evidence))
+        self.commits["unrelated_evidence_release"] = self.repo.commit("fixture negative: cite unrelated release status")
+
+        self.repo.run("checkout", "-q", "-B", "evidence-second-parent", self.commits["retired"])
+        second_parent_status = {
+            "$schema": SCHEMA_ID,
+            "slice_id": ORIGINAL_ID,
+            "release": "2026-07-18-git-fixture",
+            "track": "T1-second-parent",
+            "state": "in_progress",
+        }
+        self._write_status(ORIGINAL_ID, second_parent_status)
+        second_parent_commit = self.repo.commit("fixture negative: same slice status on side branch")
+        self.repo.run("checkout", "-q", "-B", "scenario-second_parent_evidence", self.commits["retired"])
+        self.repo.run("merge", "--no-ff", "-m", "fixture negative: merge evidence as second parent", "evidence-second-parent")
+        evidence = copy.deepcopy(self.invalid_history[0])
+        evidence.update({
+            "commit": second_parent_commit,
+            "status_blob_oid": self.repo.blob(second_parent_commit, STATUS_PATHS[ORIGINAL_ID]),
+        })
+        self._write_status(ORIGINAL_ID, self._retirement_with_evidence(retired, evidence))
+        self.commits["second_parent_evidence"] = self.repo.commit("fixture negative: cite second-parent evidence")
+
+    def _build_verdict_negatives(self, retired: dict) -> None:
+        def finish_retirement(name: str, verdict_commit: str) -> None:
+            value = copy.deepcopy(retired)
+            value["retirement"]["verifier_verdict"] = {
+                "status_commit": verdict_commit,
+                "status_path": STATUS_PATHS[ORIGINAL_ID],
+                "status_blob_oid": self.repo.blob(verdict_commit, STATUS_PATHS[ORIGINAL_ID]),
+            }
+            self._write_status(ORIGINAL_ID, value)
+            self.commits[name] = self.repo.commit(f"fixture negative: retire after {name}")
+
+        self.repo.run("checkout", "-q", "-B", "scenario-schema_invalid_verdict", self.commits["implemented"])
+        invalid_blocked = copy.deepcopy(retired)
+        invalid_blocked["retirement"] = None
+        invalid_blocked["state"] = "implemented"
+        invalid_blocked["open_deferrals"] = "not-an-array"
+        self._write_status(ORIGINAL_ID, invalid_blocked)
+        invalid_verdict_commit = self.repo.commit("fixture negative: schema-invalid blocked verdict")
+        finish_retirement("schema_invalid_verdict", invalid_verdict_commit)
+
+        self.repo.run("checkout", "-q", "-B", "scenario-duplicate_key_verdict", self.commits["implemented"])
+        valid_blocked = copy.deepcopy(retired)
+        valid_blocked["retirement"] = None
+        valid_blocked["state"] = "implemented"
+        raw = render_json(valid_blocked)
+        duplicate = raw[:-2] + b',\n  "verification": {"result": "pending", "violations": []}\n}\n'
+        self.repo.write(STATUS_PATHS[ORIGINAL_ID], duplicate)
+        duplicate_commit = self.repo.commit("fixture negative: duplicate-key blocked verdict")
+        finish_retirement("duplicate_key_verdict", duplicate_commit)
+
+        self.repo.run("checkout", "-q", "-B", "verdict-second-parent", self.commits["implemented"])
+        self._write_status(ORIGINAL_ID, valid_blocked)
+        second_parent_verdict = self.repo.commit("fixture negative: blocked verdict on side branch")
+        self.repo.run("checkout", "-q", "-B", "scenario-second_parent_verdict", self.commits["implemented"])
+        self.repo.run("merge", "--no-ff", "-m", "fixture negative: merge verdict as second parent", "verdict-second-parent")
+        finish_retirement("second_parent_verdict", second_parent_verdict)
+
+    def _build_combined_retirement_and_rollback(self, retired: dict) -> None:
+        self.repo.run("checkout", "-q", "-B", "scenario-combined_retirement_rollback", self.commits["blocked"])
+        self._write_status(ORIGINAL_ID, copy.deepcopy(retired))
+        rollback_planned = self._status(ROLLBACK_ID, "planned", None, None, [], {"result": "pending", "violations": []})
+        self._write_status(ROLLBACK_ID, rollback_planned)
+        combined = self.repo.commit("fixture negative: retire and plan rollback together")
+        self.repo.write("app.txt", b"baseline\n")
+        candidate = self.repo.commit("fixture negative: combined case restores baseline")
+        report_blob = self.repo.blob(candidate, "records/report.json")
+        reports = [
+            self._pass_report("implementer", "preflight", candidate, report_blob, "impl-combined"),
+            self._pass_report("verifier", "authoritative", candidate, report_blob, "verify-combined"),
+        ]
+        rollback_verified = self._status(
+            ROLLBACK_ID,
+            "verified",
+            combined,
+            candidate,
+            reports,
+            {"result": "pass", "verifier_session_id": "fresh-combined", "verifier_verdict_at": "2026-07-18T09:00:00Z", "verifier_was_fresh_context": True, "violations": []},
+        )
+        self._write_status(ROLLBACK_ID, rollback_verified)
+        verdict = self.repo.commit("fixture negative: combined case rollback verified")
+        replacement_planned = self._status(REPLACEMENT_ID, "planned", None, None, [], {"result": "pending", "violations": []})
+        self._write_status(REPLACEMENT_ID, replacement_planned)
+        replacement_anchor = self.repo.commit("fixture negative: combined case replacement planned")
+        replacement = self._status(REPLACEMENT_ID, "in_progress", replacement_anchor, None, [], {"result": "pending", "violations": []})
+        self._write_status(REPLACEMENT_ID, replacement)
+        self.commits["combined_retirement_rollback"] = self.repo.commit("fixture negative: combined case replacement starts")
+
     def track_order(self, tip: str) -> list[str]:
         return json.loads(self.repo.show(tip, "records/track-order.json"))
 
@@ -463,8 +626,8 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     failures: list[str] = []
     try:
         current_bytes = repo.show(tip, STATUS_PATHS[ORIGINAL_ID])
-        current = json.loads(current_bytes)
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        current = parse_json(current_bytes)
+    except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
         return False, ["original-status-missing"]
     schema_errors = list(fixture.validator.iter_errors(current))
     if schema_errors:
@@ -494,8 +657,8 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     def first_status_commit(path: str, predicate: Callable[[dict], bool]) -> str | None:
         for commit in repo.commits_for_path(tip, path):
             try:
-                status = json.loads(repo.show(commit, path))
-            except (subprocess.CalledProcessError, json.JSONDecodeError):
+                status = parse_json(repo.show(commit, path))
+            except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
                 continue
             if predicate(status):
                 return commit
@@ -515,14 +678,26 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     try:
         if verdict_path != STATUS_PATHS[ORIGINAL_ID]:
             failures.append("verdict-path-mismatch")
-        if not repo.is_ancestor(verdict_commit, tip):
-            failures.append("verdict-not-in-history")
+        if not retirement_commit or not repo.is_strictly_before_on_first_parent(verdict_commit, retirement_commit):
+            failures.append("verdict-not-before-retirement-first-parent")
         pinned_verdict_bytes = repo.show(verdict_commit, verdict_path)
         if repo.blob(verdict_commit, verdict_path) != verdict_blob:
             failures.append("verdict-blob-mismatch")
-        pinned_verdict = json.loads(pinned_verdict_bytes)
+        pinned_verdict = parse_json(pinned_verdict_bytes)
         if pinned_verdict.get("slice_id") != ORIGINAL_ID or pinned_verdict.get("release") != current.get("release"):
             failures.append("verdict-status-identity-mismatch")
+        pinned_schema_bytes = repo.show(verdict_commit, "schemas/slice-status-v1.json")
+        pinned_schema = parse_json(pinned_schema_bytes)
+        Draft202012Validator.check_schema(pinned_schema)
+        if pinned_schema.get("$id") != pinned_verdict.get("$schema"):
+            failures.append("verdict-schema-identity-mismatch")
+        verdict_validator = Draft202012Validator(pinned_schema, format_checker=FormatChecker())
+        if list(verdict_validator.iter_errors(pinned_verdict)):
+            failures.append("verdict-status-invalid")
+    except DuplicateJSONKeyError:
+        pinned_verdict_bytes = b"{}"
+        pinned_verdict = {}
+        failures.append("verdict-duplicate-json-key")
     except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
         pinned_verdict_bytes = b"{}"
         pinned_verdict = {}
@@ -547,22 +722,26 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
         try:
             commit = evidence["commit"]
             path = evidence["status_path"]
-            if not repo.is_ancestor(commit, verdict_commit):
-                failures.append("invalid-record-not-before-verdict")
+            if path != STATUS_PATHS[ORIGINAL_ID]:
+                failures.append("invalid-record-owner-path-mismatch")
+            if not repo.is_strictly_before_on_first_parent(commit, verdict_commit):
+                failures.append("invalid-record-not-before-verdict-first-parent")
             raw = repo.show(commit, path)
             if repo.blob(commit, path) != evidence["status_blob_oid"]:
                 failures.append("invalid-record-blob-mismatch")
-            pinned_schema = json.loads(repo.object_bytes(evidence["schema_blob_oid"]))
+            pinned_schema = parse_json(repo.object_bytes(evidence["schema_blob_oid"]))
             if pinned_schema.get("$id") != evidence["schema_id"]:
                 failures.append("schema-identity-mismatch")
             validator = Draft202012Validator(pinned_schema, format_checker=FormatChecker())
-            status = json.loads(raw)
+            status = parse_json(raw)
+            if status.get("slice_id") != ORIGINAL_ID or status.get("release") != current.get("release"):
+                failures.append("invalid-record-owner-identity-mismatch")
             errors = sorted(validator.iter_errors(status), key=lambda error: (list(error.path), list(error.schema_path)))
             if not errors:
                 failures.append("cited-record-valid")
             if validation_fingerprints(errors) != evidence["validation_error_fingerprints"]:
                 failures.append("validation-fingerprint-mismatch")
-        except (KeyError, subprocess.CalledProcessError, json.JSONDecodeError):
+        except (KeyError, subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
             failures.append("invalid-history-unresolvable")
 
     rollback_id = retirement.get("rollback_slice_id")
@@ -590,18 +769,18 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     )
     if not rollback_plan_commit:
         failures.append("rollback-plan-transition-missing")
-    elif not retirement_commit or not repo.is_ancestor(retirement_commit, rollback_plan_commit):
+    elif not retirement_commit or not repo.is_strictly_before_on_first_parent(retirement_commit, rollback_plan_commit):
         failures.append("retirement-after-rollback-planning")
     if not rollback_verdict_commit:
         failures.append("qualifying-rollback-verdict-missing")
     else:
-        if not retirement_commit or not repo.is_ancestor(retirement_commit, rollback_verdict_commit):
+        if not retirement_commit or not repo.is_strictly_before_on_first_parent(retirement_commit, rollback_verdict_commit):
             failures.append("retirement-after-rollback-verification")
-        if rollback_plan_commit and not repo.is_ancestor(rollback_plan_commit, rollback_verdict_commit):
+        if rollback_plan_commit and not repo.is_strictly_before_on_first_parent(rollback_plan_commit, rollback_verdict_commit):
             failures.append("rollback-verdict-before-planning")
     try:
-        rollback = json.loads(repo.show(tip, STATUS_PATHS[rollback_id]))
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        rollback = parse_json(repo.show(tip, STATUS_PATHS[rollback_id]))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
         return False, sorted(set(failures + ["rollback-status-missing"]))
     rollback_is_verified = rollback.get("state") in {"verified", "shipped"}
     if not rollback_is_verified:
@@ -619,15 +798,15 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
                 failures.append(f"rollback-tree-mismatch:{path}")
 
     try:
-        replacement = json.loads(repo.show(tip, STATUS_PATHS[REPLACEMENT_ID]))
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        replacement = parse_json(repo.show(tip, STATUS_PATHS[REPLACEMENT_ID]))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
         replacement = None
     if replacement and replacement.get("start_commit"):
         if not rollback_is_verified:
             failures.append("replacement-started-before-rollback-verification")
-        if not rollback_verdict_commit or not repo.is_ancestor(rollback_verdict_commit, replacement["start_commit"]):
+        if not rollback_verdict_commit or not repo.is_strictly_before_on_first_parent(rollback_verdict_commit, replacement["start_commit"]):
             failures.append("replacement-started-before-rollback-verdict")
-        if not retirement_commit or not repo.is_ancestor(retirement_commit, replacement["start_commit"]):
+        if not retirement_commit or not repo.is_strictly_before_on_first_parent(retirement_commit, replacement["start_commit"]):
             failures.append("replacement-started-before-retirement")
     return not failures, sorted(set(failures))
 

@@ -91,9 +91,10 @@ verifier still owns the verdict.
 `protocol_history_invalid` is a mechanical lifecycle-history disposition, not an LLM finding. For
 each cited status record, a conformant engine resolves the exact `status_path` at the cited commit,
 rejects an absolute path or `.` / `..` segment, requires it to be the physical status path for the
-same release and slice,
-requires that commit on the slice owner track's first-parent chain before the pinned Verifier verdict
-commit, and requires the resolved blob OID to equal `status_blob_oid`. It resolves
+owning release and slice, parses the status without duplicate keys, and requires its parsed
+`slice_id` and `release` to equal that owner. It requires the evidence commit strictly before the
+pinned Verifier verdict on the owner's first-parent chain, not merely reachable through any parent,
+and requires the resolved blob OID to equal `status_blob_oid`. It resolves
 `schema_blob_oid` to bytes whose parsed `$id` equals `schema_id`, rejects duplicate JSON keys, and
 validates the status bytes with JSON Schema 2020-12 plus format assertions.
 
@@ -106,7 +107,10 @@ require exact equality with `validation_error_fingerprints`; an empty set or an 
 closed. The pinned schema blob supplies the constraint value, so validator-specific prose is never
 part of identity.
 
-The fresh Verifier status commit/blob must contain `verification.result: blocked`, fresh-context
+The fresh Verifier status commit must be strictly before retirement on the owner's first-parent
+chain. Resolve its exact owner status path/blob, reject duplicate JSON keys, resolve the governing
+schema from that historical commit, and require the whole pinned status to validate before reading
+the verdict. The status must contain `verification.result: blocked`, fresh-context
 session/time fields, and a `protocol_history_invalid` violation whose strict typed
 `protocol_history_invalid.invalid_history` array is exactly equal to the later retirement evidence.
 Free-text evidence is supplementary and is never parsed as identity. The retirement
@@ -124,11 +128,13 @@ labelling a violation with this gate id.
 
 Eligibility also requires the byte-preserved maintainability state to be `passed`, a concrete
 `implementation_head`, and a non-empty ledger whose newest report is PASS and pins that exact head.
-On the owner first-parent history, locate the first committed status with non-null retirement and
-require it to precede the first rollback status commit and the first qualifying rollback
-`verified`/`shipped` status with an authoritative Verifier PASS. Require each functional
-replacement's immutable `start_commit` to descend from that qualifying rollback verdict. Current
-track-array order and current terminal states cannot substitute for this transition chronology.
+On the owner first-parent history, locate the first committed status with non-null retirement, the
+rollback's first status commit, its first qualifying `verified`/`shipped` authoritative Verifier
+PASS verdict, and each replacement's immutable non-null `start_commit`. These must be distinct and
+strictly ordered `retirement < rollback first status < rollback verdict < replacement start` on that
+first-parent chain. Ordinary ancestry, including equality or reachability only through a merge's
+second parent, is insufficient. Current track-array order and current terminal states cannot
+substitute for this transition chronology.
 
 Maintainability has two role-specific uses; they are intentionally not equal:
 

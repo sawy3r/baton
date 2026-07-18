@@ -90,11 +90,13 @@ Release work runs under **track mode** (`$HOME/.claude/baton/track-mode.md`). Ea
    `re_slice_required` state for this slice id. Once non-null, Coach adjudication and the complete
    `retirement` record must remain byte-identical. Narrow exception: when the current status
    validates but an immutable earlier
-   first-parent status blob does not validate against the exact governing schema, reproduce and
+   status blob at this owner's exact physical path, with matching parsed slice/release identity and
+   strict first-parent presence, does not validate against the exact governing schema, reproduce and
    fingerprint the validator's stable instance-path/schema-path/error tuple. Return BLOCKED with a
    `verification.violations` item whose gate is `protocol_history_invalid` and whose required strict
    `protocol_history_invalid` object contains `disposition` plus an `invalid_history` array with
    every exact status commit/path/blob OID, schema id/blob OID, and validation-error fingerprint.
+   Reject duplicate JSON keys and evidence reachable only through a second parent.
    Free-text evidence is not identity. This is legal
    only for protocol lifecycle-history invalidity that makes verification deterministically
    impossible, never an ordinary spec, delivery, test, environment, unavailable-gate, or
