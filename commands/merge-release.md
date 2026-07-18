@@ -53,6 +53,10 @@ release-key mismatch BLOCK as malformed oracle output.
      `verified` / `shipped` and the originating `/merge-track` provenance contains the applicable
      passing tree-equality gate.
    - started `deferred` with `retirement.disposition: protocol_history_invalid` — OK only when the
+     current owner status duplicate-aware parses and validates; any schema error BLOCKs immediately
+     before retirement fields are inspected. Require the raw retirement JSON value bytes from the
+     first retirement transition in every later owner first-parent status version through the
+     evaluated tip; removal, nulling, any field rewrite and mutate-then-restore BLOCK. Then require that
      embedded track integration proves every immutable invalid-history record uses its owner's exact
      path and parsed slice/release identity and lies strictly on owner first-parent history. The
      fresh Verifier BLOCKED status must be duplicate-free, historical-schema-valid, strictly before

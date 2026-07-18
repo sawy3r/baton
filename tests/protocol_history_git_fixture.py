@@ -440,6 +440,8 @@ class ProtocolHistoryRepositoryFixture:
         self._build_verdict_negatives(retired)
         self._build_combined_retirement_and_rollback(retired)
         self._build_second_parent_replacement_start()
+        self._build_retirement_immutability_negatives(retired)
+        self._build_current_schema_invalid_negatives()
         self.repo.run("checkout", "-q", "-B", "fixture-legal", self.commits["legal"])
 
     def _write_mutated_original(self, base: str, mutate: Callable[[dict], None]) -> None:
@@ -646,6 +648,59 @@ class ProtocolHistoryRepositoryFixture:
         self._write_status(REPLACEMENT_ID, replacement)
         self.commits["second_parent_replacement_start"] = self.repo.commit("fixture negative: reference second-parent replacement anchor")
 
+    def _build_retirement_immutability_negatives(self, retired: dict) -> None:
+        self.repo.run("checkout", "-q", "-B", "scenario-retirement_mutate_restore", self.commits["legal"])
+        mutated = copy.deepcopy(retired)
+        mutated["retirement"]["rationale"] = "Transient retirement rewrite must remain visible."
+        self._write_status(ORIGINAL_ID, mutated)
+        self.repo.commit("fixture negative: mutate retirement temporarily")
+        self._write_status(ORIGINAL_ID, copy.deepcopy(retired))
+        self.commits["retirement_mutate_restore"] = self.repo.commit("fixture negative: restore retirement bytes")
+
+        self.repo.run("checkout", "-q", "-B", "scenario-retirement_wrong_rollback_rewrite", self.commits["blocked"])
+        wrong = copy.deepcopy(retired)
+        wrong["retirement"]["rollback_slice_id"] = "S99-wrong"
+        self._write_status(ORIGINAL_ID, wrong)
+        self.repo.commit("fixture negative: retire with wrong rollback id")
+        rollback_planned = self._status(ROLLBACK_ID, "planned", None, None, [], {"result": "pending", "violations": []})
+        self._write_status(ROLLBACK_ID, rollback_planned)
+        plan_commit = self.repo.commit("fixture negative: real rollback planned")
+        self.repo.write("app.txt", b"baseline\n")
+        candidate = self.repo.commit("fixture negative: real rollback restores baseline")
+        report_blob = self.repo.blob(candidate, "records/report.json")
+        reports = [
+            self._pass_report("implementer", "preflight", candidate, report_blob, "impl-wrong-rewrite"),
+            self._pass_report("verifier", "authoritative", candidate, report_blob, "verify-wrong-rewrite"),
+        ]
+        rollback = self._status(
+            ROLLBACK_ID,
+            "verified",
+            plan_commit,
+            candidate,
+            reports,
+            {"result": "pass", "verifier_session_id": "fresh-wrong-rewrite", "verifier_verdict_at": "2026-07-18T09:00:00Z", "verifier_was_fresh_context": True, "violations": []},
+        )
+        self._write_status(ROLLBACK_ID, rollback)
+        self.repo.commit("fixture negative: real rollback verified")
+        replacement_planned = self._status(REPLACEMENT_ID, "planned", None, None, [], {"result": "pending", "violations": []})
+        self._write_status(REPLACEMENT_ID, replacement_planned)
+        replacement_anchor = self.repo.commit("fixture negative: replacement planned after real rollback")
+        replacement = self._status(REPLACEMENT_ID, "in_progress", replacement_anchor, None, [], {"result": "pending", "violations": []})
+        self._write_status(REPLACEMENT_ID, replacement)
+        self.repo.commit("fixture negative: replacement starts after real rollback")
+        self._write_status(ORIGINAL_ID, copy.deepcopy(retired))
+        self.commits["retirement_wrong_rollback_rewrite"] = self.repo.commit("fixture negative: rewrite retirement to real rollback")
+
+    def _build_current_schema_invalid_negatives(self) -> None:
+        def invalid_history_null() -> None:
+            self._write_mutated_original(self.commits["legal"], lambda value: value["retirement"].update({"invalid_history": None}))
+
+        def maintainability_null() -> None:
+            self._write_mutated_original(self.commits["legal"], lambda value: value.update({"maintainability": None}))
+
+        self._scenario("current_invalid_history_null", self.commits["legal"], invalid_history_null)
+        self._scenario("current_maintainability_null", self.commits["legal"], maintainability_null)
+
     def track_order(self, tip: str) -> list[str]:
         return json.loads(self.repo.show(tip, "records/track-order.json"))
 
@@ -660,7 +715,7 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
         return False, ["original-status-missing"]
     schema_errors = list(fixture.validator.iter_errors(current))
     if schema_errors:
-        failures.append("current-status-invalid")
+        return False, ["current-status-invalid"]
     retirement = current.get("retirement")
     if not isinstance(retirement, dict) or retirement.get("disposition") != "protocol_history_invalid":
         return False, failures + ["retirement-missing"]
@@ -689,7 +744,7 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
                 status = parse_json(repo.show(commit, path))
             except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
                 continue
-            if predicate(status):
+            if isinstance(status, dict) and predicate(status):
                 return commit
         return None
 
@@ -699,6 +754,24 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     )
     if not retirement_commit:
         failures.append("retirement-transition-missing")
+    else:
+        try:
+            retirement_bytes = json_value_bytes(
+                repo.show(retirement_commit, STATUS_PATHS[ORIGINAL_ID]),
+                "retirement",
+            )
+            status_commits = repo.commits_for_path(tip, STATUS_PATHS[ORIGINAL_ID])
+            retirement_index = status_commits.index(retirement_commit)
+            for status_commit in status_commits[retirement_index:]:
+                candidate_bytes = json_value_bytes(
+                    repo.show(status_commit, STATUS_PATHS[ORIGINAL_ID]),
+                    "retirement",
+                )
+                if candidate_bytes != retirement_bytes:
+                    failures.append("retirement-history-mutated")
+                    break
+        except (ValueError, IndexError, subprocess.CalledProcessError, json.JSONDecodeError):
+            failures.append("retirement-history-mutated")
 
     verdict_ref = retirement.get("verifier_verdict", {})
     verdict_commit = verdict_ref.get("status_commit", "")

@@ -94,7 +94,7 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
 
     def test_real_git_lifecycle_negative_branches_fail_every_integrator_gate(self) -> None:
         scenarios = {
-            "missing_rollback": "rollback-id-missing",
+            "missing_rollback": "current-status-invalid",
             "wrong_rollback": "rollback-id-missing",
             "out_of_order": "replacement-before-rollback-order",
             "rollback_deferred": "rollback-not-verified",
@@ -104,9 +104,9 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             "verdict_reference_mismatch": "verdict-blob-mismatch",
             "typed_evidence_mismatch": "verifier-retirement-evidence-mismatch",
             "maintainability_mutation": "maintainability-bytes-changed",
-            "maintainability_pending": "retirement-maintainability-not-passed",
-            "maintainability_no_head": "retirement-implementation-head-missing",
-            "maintainability_no_reports": "retirement-pass-ledger-insufficient",
+            "maintainability_pending": "current-status-invalid",
+            "maintainability_no_head": "current-status-invalid",
+            "maintainability_no_reports": "current-status-invalid",
             "replacement_before_rollback": "replacement-started-before-rollback-verification",
             "ordinary_relabel": "cited-record-valid",
             "late_retirement": "retirement-after-rollback-planning",
@@ -122,6 +122,10 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             "null_typed_verdict": "verifier-retirement-evidence-mismatch",
             "scalar_typed_verdict": "verifier-retirement-evidence-mismatch",
             "list_typed_verdict": "verifier-retirement-evidence-mismatch",
+            "retirement_mutate_restore": "retirement-history-mutated",
+            "retirement_wrong_rollback_rewrite": "retirement-history-mutated",
+            "current_invalid_history_null": "current-status-invalid",
+            "current_maintainability_null": "current-status-invalid",
         }
         for scenario, expected_failure in scenarios.items():
             with self.subTest(scenario=scenario):
@@ -199,6 +203,29 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
         self.assertFalse(merge_release_predicate(self.git_fixture, tip))
         self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
 
+    def test_retirement_record_is_byte_immutable_across_every_owner_status_version(self) -> None:
+        for scenario in ("retirement_wrong_rollback_rewrite", "retirement_mutate_restore"):
+            with self.subTest(scenario=scenario):
+                tip = self.git_fixture.commits[scenario]
+                ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
+                self.assertFalse(ready)
+                self.assertIn("retirement-history-mutated", failures)
+                self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+                self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+                self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
+    def test_current_schema_invalid_shapes_stop_before_shape_dependent_evaluation(self) -> None:
+        for scenario in ("current_invalid_history_null", "current_maintainability_null"):
+            with self.subTest(scenario=scenario):
+                tip = self.git_fixture.commits[scenario]
+                self.assertEqual(
+                    (False, ["current-status-invalid"]),
+                    evaluate_protocol_history_retirement(self.git_fixture, tip),
+                )
+                self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+                self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+                self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
     def test_combined_retirement_and_rollback_plan_commit_is_not_strict_chronology(self) -> None:
         tip = self.git_fixture.commits["combined_retirement_rollback"]
         ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
@@ -259,6 +286,9 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "strictly ordered on that first-parent",
                 "non-object typed evidence",
                 "evaluated owner tip's first-parent",
+                "raw retirement JSON value bytes",
+                "mutate-then-restore",
+                "BLOCK immediately",
                 "implementation_head",
             ],
             "commands/merge-release.md": [
@@ -272,6 +302,9 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "distinct strict first-parent chronology",
                 "non-object typed evidence",
                 "evaluated owner tip's first-parent",
+                "raw retirement JSON value bytes",
+                "mutate-then-restore",
+                "BLOCKs immediately",
             ],
             "commands/mark-shipped.md": [
                 "commit/path/blob identity",
@@ -283,6 +316,9 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "distinct and strictly ordered",
                 "non-object typed evidence",
                 "evaluated owner tip's first-parent",
+                "raw retirement JSON value bytes",
+                "mutate-then-restore",
+                "BLOCKs immediately",
             ],
         }
         for relative_path, clauses in requirements.items():

@@ -203,6 +203,11 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
   and every functional replacement's non-null `start_commit` as distinct commits in that strict
   first-parent order. Require each referenced replacement start itself on the evaluated owner tip's
   first-parent chain. Equality, ordinary ancestry, and current board order are insufficient.
+  Duplicate-aware parse and schema-validate current status before inspecting retirement fields; any
+  schema error fails immediately. Capture the first retirement commit's raw retirement JSON value
+  bytes and require them in every later owner first-parent status version through the evaluated tip.
+  Removal, nulling, any field rewrite and mutate-then-restore all fail; comparing only first and
+  current is insufficient.
 - Re-validate the **touchpoint matrix** and `board.json.shared_touchpoints` for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it unless the human ratifies the narrow machine-readable documented-shared exception from `track-mode.md`; a Markdown row alone cannot license it.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 

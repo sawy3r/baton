@@ -96,3 +96,20 @@ Third Warden repair validation:
 - All 18 schemas pass Draft 2020-12 metaschema validation; all 19 schema, template and fixture JSON files pass duplicate-key-aware parsing.
 - Installer shell syntax and isolated scratch parity pass: 18 schemas are byte-identical in each install, all eight Claude commands are byte-identical, all eight Codex skills are present, and Codex output contains no stale Claude Baton paths.
 - `git diff --check`, Python cache audit and immutable FAIL-report hash checks pass.
+
+## Gate Warden repair: history-wide retirement immutability and current-status totality
+
+The fourth Gate Warden pass identified that retirement immutability must be replayed across history, not inferred from the first and current snapshots. The evaluator now captures the exact raw JSON value bytes of `retirement` at the first retirement transition, walks every later owner status version on first-parent history through the evaluated tip, and requires exact byte equality at each version. This rejects removal/nulling and every field rewrite, including rollback id, evidence, acknowledgement, tracking and rationale changes. Because every intermediate version is checked, mutate-then-restore cannot erase the violation.
+
+Two real Git histories exercise the boundary through all three integration predicates. One begins with the wrong rollback id, completes the real rollback and replacement, then retroactively rewrites retirement to name the real rollback. The other changes rationale transiently and restores the original bytes before the evaluated tip. Both fail with stable `retirement-history-mutated` evidence despite a valid-looking current record.
+
+Current status validation is now a total precondition. After duplicate-aware parsing, any `slice-status-v1` error returns immediately with only `current-status-invalid`; no retirement or maintainability shape is dereferenced. Real Git cases set `retirement.invalid_history` and `maintainability` to null and prove deterministic false results without exceptions across merge-track, merge-release and mark-shipped.
+
+The canonical checks, track, Planner/replan, Implementer and all integration/shipping contracts now state the same history-wide raw-byte replay and immediate current-schema-invalid rejection. This remains a bounded fail-closed repair and does not alter the retirement schema or disposition.
+
+Fourth Warden repair validation:
+
+- `python3 -B -m unittest discover -s tests -v`: 18 tests pass.
+- All 18 schemas pass Draft 2020-12 metaschema validation; all 19 schema, template and fixture JSON files pass duplicate-key-aware parsing.
+- Installer shell syntax and isolated scratch parity pass: 18 schemas are byte-identical in each install, all eight Claude commands are byte-identical, all eight Codex skills are present, and Codex output contains no stale Claude Baton paths.
+- `git diff --check`, Python cache audit and immutable FAIL-report hash checks pass.

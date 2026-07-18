@@ -66,7 +66,8 @@ and integration readiness are derived below. Do not require release-level
    rows after normalizing `null` to `[]`; inconsistent normalized dependency
    arrays across rows BLOCK as malformed oracle projection.
 2. **Lifecycle-history integrity gate — before every success path.** For every slice in `<slices>`,
-   validate current `status.json` against `slice-status-v1`, then enumerate every committed version
+   duplicate-aware parse and validate current `status.json` against `slice-status-v1`; on any schema
+   error, BLOCK immediately before inspecting shape-dependent lifecycle fields. Then enumerate every committed version
    of that physical path on `track/$2/$1`'s first-parent history and apply the complete canonical
    integrity/FSM check from `llm-checks/README.md`: immutable non-null `start_commit`, append-only
    report prefix, non-decreasing cycle, immutable non-null adjudication and retirement,
@@ -126,6 +127,10 @@ and integration readiness are derived below. Do not require release-level
    relabelling, invalid order/state, late retirement, insufficient PASS ledger, or tree mismatch
    BLOCKs. Ordinary ancestry, equality, second-parent reachability, current board order, and current
    terminal state are insufficient chronology evidence.
+   Capture the raw retirement JSON value bytes at the first retirement transition and compare them
+   with every later owner status version on first-parent history through the evaluated tip. Removal,
+   nulling, rollback/evidence/acknowledgement/tracking/rationale changes, and mutate-then-restore all
+   BLOCK; first-versus-current comparison is insufficient.
    For every other `deferred` slice, require an unstarted Rule-2 deferral: `start_commit: null`, the
    exact empty pending cycle-0 maintainability template, and at least one schema-valid
    `open_deferrals` entry. Any authored or lifecycle-bearing ordinary deferral BLOCKs.

@@ -84,8 +84,12 @@ the separate top-level retirement record. The record pins each owner-bound inval
 schema blob and deterministic validation-error fingerprints, and the fresh Verifier BLOCKED status
 commit/path/blob identity. The Verifier stores the invalid-history identities in a strict typed
 violation object, and retirement must repeat that array exactly; free-text evidence is never parsed.
-Once committed, the complete retirement record is immutable. Engines
-reproduce those facts from Git before accepting the disposition.
+Once committed, the complete retirement record is immutable. Engines capture its raw JSON value
+bytes at the first retirement commit and require the same bytes in every later owner status version
+on first-parent history through the evaluated tip; removal, nulling, any field rewrite and
+mutate-then-restore all fail. Engines reproduce those facts from Git before accepting the
+disposition. Current status is duplicate-aware parsed and schema-validated first; any schema error
+fails immediately before retirement shapes are inspected.
 Ordinary delivery, contract, test, ambiguity, unavailable-gate, or maintainability failures cannot
 use it. Eligibility requires the preserved maintainability lifecycle to be `passed`, with a concrete
 `implementation_head` and a non-empty qualifying PASS ledger whose newest report pins that head;

@@ -100,7 +100,11 @@ the oracle.)
    immutable start, append-only reports, non-decreasing cycle, immutable adjudication, blob identity,
    legal FSM/state coherence, terminal re-slice rollback, protocol-history retirement, and canonical
    integration provenance. A `protocol_history_invalid` original is legal only when its immutable
-   invalid-history records use the owner's exact path and matching parsed slice/release identity and
+   current owner status duplicate-aware parses and schema-validates; any error BLOCKs immediately
+   before retirement fields are inspected. Capture the first retirement transition's raw retirement
+   JSON value bytes and require them in every later owner first-parent status version through the
+   evaluated tip; removal, nulling, any field rewrite and mutate-then-restore BLOCK. Then require that
+   its invalid-history records use the owner's exact path and matching parsed slice/release identity and
    lie strictly on owner first-parent history. Its fresh Verifier BLOCKED status must reject
    duplicate keys, validate against its governing schema at that historical commit, lie strictly
    before retirement, and reproduce commit/path/blob identity from embedded track ancestry. Its
