@@ -1,0 +1,152 @@
+{
+  "valid": {
+    "$schema": "https://baton.sawy3r.net/schemas/slice-status-v1.json",
+    "slice_id": "S01-example",
+    "release": "2026-07-18-example",
+    "track": "T1-example",
+    "state": "deferred",
+    "start_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "maintainability": {
+      "state": "passed",
+      "cycle": 0,
+      "implementation_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "rollback_slice_id": null,
+      "reports": [
+        {
+          "role": "implementer",
+          "phase": "preflight",
+          "cycle": 0,
+          "invocation_id": "impl-1",
+          "report_path": "docs/release/2026-07-18-example/S01-example/maintainability.json",
+          "report_blob_oid": "cccccccccccccccccccccccccccccccccccccccc",
+          "review_scope_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "input_fingerprint": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "verdict": "PASS",
+          "blocking_finding_ids": []
+        }
+      ],
+      "adjudication": null
+    },
+    "retirement": {
+      "disposition": "protocol_history_invalid",
+      "invalid_history": [
+        {
+          "commit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "status_path": "docs/release/2026-07-18-example/S01-example/status.json",
+          "status_blob_oid": "ffffffffffffffffffffffffffffffffffffffff",
+          "schema_id": "https://baton.sawy3r.net/schemas/slice-status-v1.json",
+          "schema_blob_oid": "1111111111111111111111111111111111111111",
+          "validation_error_fingerprints": [
+            "sha256:9d067f168a633a5c52eb4e1246f71447759da05201eeaed8023ca1208dad3272"
+          ]
+        }
+      ],
+      "verifier_verdict": {
+        "status_commit": "3333333333333333333333333333333333333333",
+        "status_blob_oid": "4444444444444444444444444444444444444444",
+        "result": "blocked",
+        "verifier_session_id": "verifier-fresh-1",
+        "verifier_verdict_at": "2026-07-18T08:00:00Z"
+      },
+      "rollback_slice_id": "S02-rollback-example",
+      "rationale": "Immutable lifecycle history predates the governing status contract.",
+      "tracking": "sawy3r/baton#80",
+      "acknowledged_by": "coach",
+      "acknowledged_at": "2026-07-18T08:30:00Z"
+    },
+    "open_deferrals": [
+      {
+        "item": "Retire S01 and replace only after S02 rollback verifies.",
+        "why": "Immutable lifecycle history prevents authoritative verification.",
+        "tracking": "sawy3r/baton#80",
+        "acknowledgement": "Coach approved protocol-history retirement and mandatory rollback.",
+        "acknowledged_by": "coach",
+        "acknowledged_at": "2026-07-18T08:30:00Z"
+      }
+    ],
+    "verification": {
+      "result": "blocked",
+      "verifier_session_id": "verifier-fresh-1",
+      "verifier_verdict_at": "2026-07-18T08:00:00Z",
+      "verifier_was_fresh_context": true,
+      "violations": [
+        {
+          "gate": "protocol_history_invalid",
+          "description": "Committed lifecycle record fails the pinned schema.",
+          "evidence": "commit eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee blob ffffffffffffffffffffffffffffffffffffffff"
+        }
+      ]
+    }
+  },
+  "fingerprint_vector": {
+    "instance_pointer": "/maintainability",
+    "schema_pointer": "/required",
+    "keyword": "required",
+    "expected": "sha256:9d067f168a633a5c52eb4e1246f71447759da05201eeaed8023ca1208dad3272"
+  },
+  "integration_cases": [
+    {
+      "name": "rollback-not-verified",
+      "evidence_reproduces": true,
+      "maintainability_bytes_equal": true,
+      "rollback_state": "planned",
+      "tree_equal": false,
+      "integration_ready": false,
+      "replacement_may_start": false
+    },
+    {
+      "name": "verified-rollback-tree-mismatch",
+      "evidence_reproduces": true,
+      "maintainability_bytes_equal": true,
+      "rollback_state": "verified",
+      "tree_equal": false,
+      "integration_ready": false,
+      "replacement_may_start": false
+    },
+    {
+      "name": "verified-exact-rollback",
+      "evidence_reproduces": true,
+      "maintainability_bytes_equal": true,
+      "rollback_state": "verified",
+      "tree_equal": true,
+      "integration_ready": true,
+      "replacement_may_start": true
+    },
+    {
+      "name": "ordinary-failure-relabelled",
+      "evidence_reproduces": false,
+      "maintainability_bytes_equal": true,
+      "rollback_state": "verified",
+      "tree_equal": true,
+      "integration_ready": false,
+      "replacement_may_start": false
+    }
+  ],
+  "invalid_cases": [
+    {
+      "name": "missing-invalid-history-evidence",
+      "path": ["retirement", "invalid_history"],
+      "value": []
+    },
+    {
+      "name": "ordinary-failure-cannot-retire",
+      "path": ["verification", "result"],
+      "value": "fail"
+    },
+    {
+      "name": "active-state-cannot-retire",
+      "path": ["state"],
+      "value": "implemented"
+    },
+    {
+      "name": "rollback-is-mandatory",
+      "path": ["retirement", "rollback_slice_id"],
+      "delete": true
+    },
+    {
+      "name": "retirement-cannot-enter-maintainability-ledger",
+      "path": ["maintainability", "disposition"],
+      "value": "protocol_history_invalid"
+    }
+  ]
+}

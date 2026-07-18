@@ -10,3 +10,7 @@
 
 # Test-install artifacts
 /tmp-install/
+
+# Python contract-test cache
+__pycache__/
+*.py[cod]

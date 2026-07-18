@@ -47,3 +47,16 @@ correct? If yes, at least a minor.
   flip to required only when the corresponding gate ships — so a protocol/engine version skew is a
   visible warning, not a silent behaviour gap.
 - **Validate before you commit** any schema change against its examples, positive and negative.
+
+## Contract tests
+
+Protocol schema tests use Python 3 and the development-only dependency declared in
+`tests/requirements.txt`:
+
+```bash
+python3 -m pip install -r tests/requirements.txt
+python3 -m unittest discover -s tests -v
+```
+
+The runtime protocol remains data-only; this dependency is required only to validate JSON Schema
+2020-12 fixtures during Baton development.
