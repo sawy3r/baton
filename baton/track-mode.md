@@ -82,7 +82,8 @@ is not a maintainability disposition and MUST NOT alter the original `maintainab
 Planner preserves that value byte-for-byte from the committed BLOCKED verdict status while adding
 the separate top-level retirement record. The record pins each invalid status commit/blob, the
 schema blob and deterministic validation-error fingerprints, and the fresh Verifier BLOCKED status
-commit/blob identity. Engines reproduce those facts from Git before accepting the disposition.
+commit/blob identity. Once committed, the complete retirement record is immutable. Engines
+reproduce those facts from Git before accepting the disposition.
 Ordinary delivery, contract, test, ambiguity, unavailable-gate, or maintainability failures cannot
 use it. The named mandatory rollback restores the complete authored semantic envelope to the
 original immutable `start_commit` tree. Only that rollback may immediately follow the retired

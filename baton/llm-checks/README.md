@@ -110,7 +110,9 @@ The fresh Verifier status commit/blob must contain `verification.result: blocked
 session/time fields, and a `protocol_history_invalid` violation citing the same evidence. Retirement
 status must preserve the complete parsed `maintainability` value and its exact JSON byte span
 byte-for-byte from that verdict blob. The Planner may change only top-level retirement/deferral and
-planning fields. Any cited commit outside the owner first-parent chain, path/slice/release mismatch,
+planning fields during the ratified transition; once non-null, the complete retirement record is
+byte-identical in every later committed status version. Any cited commit outside the owner
+first-parent chain, path/slice/release mismatch,
 schema-valid cited record, missing error, verdict mismatch, or maintainability-byte mismatch makes
 the disposition invalid. A semantic delivery failure cannot be transformed into invalid history by
 labelling a violation with this gate id.

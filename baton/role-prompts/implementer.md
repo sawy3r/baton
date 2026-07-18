@@ -63,7 +63,8 @@ Planner from the current status template; the Implementer must never recreate it
 could erase an exhausted cycle. Apply the committed-history integrity check in
 `llm-checks/README.md`: every earlier report array must remain an exact prefix, cycle cannot
 decrease, `start_commit` cannot be erased or changed once set, and a prior `re_slice_required` state
-is terminal for this slice id. Once non-null, the complete Coach adjudication is immutable. Any
+is terminal for this slice id. Once non-null, the complete Coach adjudication and complete
+`retirement` record are immutable. Any
 regression is a hard stop, not a legacy migration. Then enforce these transitions:
 
 - schema-valid `pending` with `cycle: 0` and `implementation_head: null`: an empty report ledger

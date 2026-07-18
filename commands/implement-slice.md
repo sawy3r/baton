@@ -148,8 +148,9 @@ Then run the governing contract's committed-history integrity check over every f
 of this slice's `status.json`: `start_commit` must be immutable once non-null, `reports` must be
 append-only by exact prefix, cycle may not decrease, every ledger entry must match its referenced
 blob-pinned full report, no role/phase may repeat within a cycle, and any earlier
-`re_slice_required` state is terminal for this slice id. Once non-null, Coach adjudication is
-byte-immutable. A current initial-looking record does not override exhausted committed history.
+`re_slice_required` state is terminal for this slice id. Once non-null, Coach adjudication and the
+complete top-level `retirement` record are byte-immutable. A current initial-looking record does
+not override exhausted committed history.
 
 - valid cycle-0 `pending` with no reports: continue normally. With exactly one Implementer
   preflight FAIL: resume only the already-open bounded remediation and closure; do not run another

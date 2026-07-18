@@ -65,7 +65,8 @@ Throughout this section, treat `<wt>` as shorthand for `<worktree_path>` from St
    in `llm-checks/README.md`. Require immutable non-null `start_commit`, append-only report history,
    non-decreasing cycle, matching blob-pinned full reports, no duplicate role/phase in a cycle, and
    no prior terminal `re_slice_required` state for this slice id. Once non-null, the complete Coach
-   adjudication must be byte-identical in every later version. If and only if current status is valid
+   adjudication and complete `retirement` record must be byte-identical in every later version. If
+   and only if current status is valid
    but an immutable earlier first-parent status blob is invalid under the exact governing schema,
    do not collapse that evidence into a generic history failure. Reproduce the invalidity, compute
    deterministic fingerprints from the validator's stable instance-path/schema-path/error tuple,

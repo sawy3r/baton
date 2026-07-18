@@ -87,8 +87,9 @@ Release work runs under **track mode** (`$HOME/.claude/baton/track-mode.md`). Ea
    committed-history integrity check over every first-parent version of this status path. Reject an
    erased or changed non-null `start_commit`, rewritten report prefix, decreasing cycle, mismatched
    blob-pinned report, repeated role/phase in a cycle, or any earlier terminal
-   `re_slice_required` state for this slice id. Once non-null, Coach adjudication must remain
-   byte-identical. Narrow exception: when the current status validates but an immutable earlier
+   `re_slice_required` state for this slice id. Once non-null, Coach adjudication and the complete
+   `retirement` record must remain byte-identical. Narrow exception: when the current status
+   validates but an immutable earlier
    first-parent status blob does not validate against the exact governing schema, reproduce and
    fingerprint the validator's stable instance-path/schema-path/error tuple. Return BLOCKED with a
    `verification.violations` item whose gate is `protocol_history_invalid` and that lists every exact

@@ -69,8 +69,8 @@ and integration readiness are derived below. Do not require release-level
    validate current `status.json` against `slice-status-v1`, then enumerate every committed version
    of that physical path on `track/$2/$1`'s first-parent history and apply the complete canonical
    integrity/FSM check from `llm-checks/README.md`: immutable non-null `start_commit`, append-only
-   report prefix, non-decreasing cycle, immutable non-null adjudication, blob-pinned full-report
-   identity, legal phase ordering, state/newest-report coherence, and terminal
+   report prefix, non-decreasing cycle, immutable non-null adjudication and retirement,
+   blob-pinned full-report identity, legal phase ordering, state/newest-report coherence, and terminal
    `re_slice_required`. BLOCK on any regression before consulting oracle terminal state except the
    exact historical schema failures pinned by a current `protocol_history_invalid` retirement. For
    that sole exception, independently reproduce every first-parent commit/blob/schema/error
