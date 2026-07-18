@@ -107,13 +107,18 @@ and integration readiness are derived below. Do not require release-level
    Independently inspect every `protocol_history_invalid` retirement. Require overall state
    `deferred`, a Rule-2-complete deferral, a started immutable `start_commit`, reproducible invalid
    history and fresh Verifier BLOCKED identities with exact typed-evidence equality, and a
-   byte-identical preserved maintainability
-   value. Its separately recorded rollback must belong to this track, occur after the original and
+   byte-identical preserved maintainability value whose state is `passed`, whose concrete
+   `implementation_head` is pinned by the newest qualifying PASS report, and whose non-empty ledger
+   defines the rollback envelope. On owner first-parent history, require the first committed
+   retirement status to precede the rollback's first status and first qualifying authoritative PASS
+   verdict. Its separately recorded rollback must belong to this track, occur after the original and
    before every functional replacement, and be `verified` or `shipped` (never deferred). Only that
    rollback may immediately traverse the original. Derive the union of every authored non-record
    path from original `start_commit` through rollback `implementation_head` and require exact
    mode/object equality with the original start tree. Any missing evidence, ordinary-failure
-   relabelling, invalid order/state, or tree mismatch BLOCKs.
+   relabelling, invalid order/state, late retirement, insufficient PASS ledger, or tree mismatch
+   BLOCKs. Require every functional replacement's immutable `start_commit` to descend from the
+   qualifying rollback verdict; current board order and current terminal state are insufficient.
    For every other `deferred` slice, require an unstarted Rule-2 deferral: `start_commit: null`, the
    exact empty pending cycle-0 maintainability template, and at least one schema-valid
    `open_deferrals` entry. Any authored or lifecycle-bearing ordinary deferral BLOCKs.

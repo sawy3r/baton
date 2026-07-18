@@ -99,6 +99,21 @@
   },
   "invalid_cases": [
     {
+      "name": "retirement-requires-passed-maintainability",
+      "path": ["maintainability", "state"],
+      "value": "pending"
+    },
+    {
+      "name": "retirement-requires-implementation-head",
+      "path": ["maintainability", "implementation_head"],
+      "value": null
+    },
+    {
+      "name": "retirement-requires-pass-ledger",
+      "path": ["maintainability", "reports"],
+      "value": []
+    },
+    {
       "name": "gate-only-verifier-evidence",
       "path": ["verification", "violations", 0, "protocol_history_invalid"],
       "delete": true

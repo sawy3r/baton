@@ -55,8 +55,11 @@ release-key mismatch BLOCK as malformed oracle output.
    - started `deferred` with `retirement.disposition: protocol_history_invalid` — OK only when the
      embedded track integration proves the immutable invalid-history and fresh Verifier BLOCKED
      commit/path/blob identities, exact typed-evidence equality, byte-preserved maintainability
-     value, verified/shipped mandatory rollback,
-     sequential ordering, and complete-envelope equality to the original `start_commit` tree.
+     value in qualifying `passed` state with a concrete PASS-pinned implementation head,
+     verified/shipped mandatory rollback, first-parent retirement-before-rollback chronology,
+     replacement start after the qualifying rollback verdict, sequential ordering, and
+     complete-envelope equality to the original `start_commit` tree. Recompute these from embedded
+     track ancestry; do not trust only current states.
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
 
    `superseded` is not a `slice-status-v1` state and never passes. If any slice is not ready, return:

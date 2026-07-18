@@ -136,6 +136,10 @@ class GitRepository:
                     paths.add(path)
         return paths
 
+    def commits_for_path(self, tip: str, relative_path: str) -> list[str]:
+        output = self.run("log", "--reverse", "--first-parent", "--format=%H", tip, "--", relative_path)
+        return [commit for commit in output.splitlines() if commit]
+
 
 class ProtocolHistoryRepositoryFixture:
     def __init__(self, schema_path: Path):
@@ -364,6 +368,18 @@ class ProtocolHistoryRepositoryFixture:
             self._write_mutated_original(self.commits["retired"], lambda value: value["maintainability"]["reports"][0].update({"invocation_id": "rewritten"}))
         self._scenario("maintainability_mutation", self.commits["retired"], maintainability_mutation)
 
+        def maintainability_pending() -> None:
+            self._write_mutated_original(self.commits["retired"], lambda value: value["maintainability"].update({"state": "pending"}))
+        self._scenario("maintainability_pending", self.commits["retired"], maintainability_pending)
+
+        def maintainability_no_head() -> None:
+            self._write_mutated_original(self.commits["retired"], lambda value: value["maintainability"].update({"implementation_head": None}))
+        self._scenario("maintainability_no_head", self.commits["retired"], maintainability_no_head)
+
+        def maintainability_no_reports() -> None:
+            self._write_mutated_original(self.commits["retired"], lambda value: value["maintainability"].update({"reports": []}))
+        self._scenario("maintainability_no_reports", self.commits["retired"], maintainability_no_reports)
+
         def ordinary_relabel() -> None:
             value = original_at(self.commits["retired"])
             valid_evidence = copy.deepcopy(value["retirement"]["invalid_history"])
@@ -381,6 +397,7 @@ class ProtocolHistoryRepositoryFixture:
 
         self._build_bad_tree("content_mismatch", b"not baseline\n", False)
         self._build_bad_tree("mode_mismatch", b"baseline\n", True)
+        self._build_late_retirement(retired)
         self.repo.run("checkout", "-q", "-B", "fixture-legal", self.commits["legal"])
 
     def _write_mutated_original(self, base: str, mutate: Callable[[dict], None]) -> None:
@@ -409,6 +426,34 @@ class ProtocolHistoryRepositoryFixture:
         self._write_order([ORIGINAL_ID, ROLLBACK_ID, REPLACEMENT_ID])
         self.commits[name] = self.repo.commit(f"fixture negative: {name}")
 
+    def _build_late_retirement(self, retired: dict) -> None:
+        self.repo.run("checkout", "-q", "-B", "scenario-late_retirement", self.commits["blocked"])
+        rollback_planned = self._status(ROLLBACK_ID, "planned", None, None, [], {"result": "pending", "violations": []})
+        self._write_status(ROLLBACK_ID, rollback_planned)
+        plan_commit = self.repo.commit("fixture negative: rollback planned before retirement")
+        self.repo.write("app.txt", b"baseline\n")
+        candidate = self.repo.commit("fixture negative: rollback restored before retirement")
+        report_blob = self.repo.blob(candidate, "records/report.json")
+        reports = [
+            self._pass_report("implementer", "preflight", candidate, report_blob, "impl-late-retirement"),
+            self._pass_report("verifier", "authoritative", candidate, report_blob, "verify-late-retirement"),
+        ]
+        rollback_verified = self._status(
+            ROLLBACK_ID,
+            "verified",
+            plan_commit,
+            candidate,
+            reports,
+            {"result": "pass", "verifier_session_id": "fresh-late-retirement", "verifier_verdict_at": "2026-07-18T09:00:00Z", "verifier_was_fresh_context": True, "violations": []},
+        )
+        self._write_status(ROLLBACK_ID, rollback_verified)
+        rollback_verdict = self.repo.commit("fixture negative: rollback verified before retirement")
+        replacement = self._status(REPLACEMENT_ID, "in_progress", rollback_verdict, None, [], {"result": "pending", "violations": []})
+        self._write_status(REPLACEMENT_ID, replacement)
+        self.repo.commit("fixture negative: replacement starts before retirement")
+        self._write_status(ORIGINAL_ID, copy.deepcopy(retired))
+        self.commits["late_retirement"] = self.repo.commit("fixture negative: retirement committed last")
+
     def track_order(self, tip: str) -> list[str]:
         return json.loads(self.repo.show(tip, "records/track-order.json"))
 
@@ -429,6 +474,39 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
         return False, failures + ["retirement-missing"]
     if current.get("state") != "deferred":
         failures.append("original-not-deferred")
+    maintainability = current.get("maintainability", {})
+    implementation_head = maintainability.get("implementation_head")
+    reports = maintainability.get("reports", [])
+    if maintainability.get("state") != "passed":
+        failures.append("retirement-maintainability-not-passed")
+    if not implementation_head:
+        failures.append("retirement-implementation-head-missing")
+    qualifying_reports = [
+        report
+        for report in reports
+        if report.get("verdict") == "PASS" and report.get("review_scope_head") == implementation_head
+    ]
+    if not reports or not qualifying_reports or reports[-1] not in qualifying_reports:
+        failures.append("retirement-pass-ledger-insufficient")
+    if implementation_head and not repo.is_ancestor(implementation_head, tip):
+        failures.append("retirement-implementation-head-not-in-history")
+
+    def first_status_commit(path: str, predicate: Callable[[dict], bool]) -> str | None:
+        for commit in repo.commits_for_path(tip, path):
+            try:
+                status = json.loads(repo.show(commit, path))
+            except (subprocess.CalledProcessError, json.JSONDecodeError):
+                continue
+            if predicate(status):
+                return commit
+        return None
+
+    retirement_commit = first_status_commit(
+        STATUS_PATHS[ORIGINAL_ID],
+        lambda status: isinstance(status.get("retirement"), dict),
+    )
+    if not retirement_commit:
+        failures.append("retirement-transition-missing")
 
     verdict_ref = retirement.get("verifier_verdict", {})
     verdict_commit = verdict_ref.get("status_commit", "")
@@ -498,6 +576,29 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
         failures.append("rollback-before-original")
     if REPLACEMENT_ID in order and order.index(REPLACEMENT_ID) < rollback_index:
         failures.append("replacement-before-rollback-order")
+    rollback_plan_commit = first_status_commit(STATUS_PATHS[rollback_id], lambda _status: True)
+    rollback_verdict_commit = first_status_commit(
+        STATUS_PATHS[rollback_id],
+        lambda status: status.get("state") in {"verified", "shipped"}
+        and status.get("maintainability", {}).get("state") == "passed"
+        and any(
+            report.get("role") == "verifier"
+            and report.get("phase") == "authoritative"
+            and report.get("verdict") == "PASS"
+            for report in status.get("maintainability", {}).get("reports", [])
+        ),
+    )
+    if not rollback_plan_commit:
+        failures.append("rollback-plan-transition-missing")
+    elif not retirement_commit or not repo.is_ancestor(retirement_commit, rollback_plan_commit):
+        failures.append("retirement-after-rollback-planning")
+    if not rollback_verdict_commit:
+        failures.append("qualifying-rollback-verdict-missing")
+    else:
+        if not retirement_commit or not repo.is_ancestor(retirement_commit, rollback_verdict_commit):
+            failures.append("retirement-after-rollback-verification")
+        if rollback_plan_commit and not repo.is_ancestor(rollback_plan_commit, rollback_verdict_commit):
+            failures.append("rollback-verdict-before-planning")
     try:
         rollback = json.loads(repo.show(tip, STATUS_PATHS[rollback_id]))
     except (subprocess.CalledProcessError, json.JSONDecodeError):
@@ -524,9 +625,10 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     if replacement and replacement.get("start_commit"):
         if not rollback_is_verified:
             failures.append("replacement-started-before-rollback-verification")
-        rollback_verdict_commit = repo.run("log", "--format=%H", "-n", "1", tip, "--", STATUS_PATHS[rollback_id])
-        if not repo.is_ancestor(rollback_verdict_commit, replacement["start_commit"]):
+        if not rollback_verdict_commit or not repo.is_ancestor(rollback_verdict_commit, replacement["start_commit"]):
             failures.append("replacement-started-before-rollback-verdict")
+        if not retirement_commit or not repo.is_ancestor(retirement_commit, replacement["start_commit"]):
+            failures.append("replacement-started-before-retirement")
     return not failures, sorted(set(failures))
 
 

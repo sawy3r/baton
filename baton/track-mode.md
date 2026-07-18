@@ -87,7 +87,12 @@ violation object, and retirement must repeat that array exactly; free-text evide
 Once committed, the complete retirement record is immutable. Engines
 reproduce those facts from Git before accepting the disposition.
 Ordinary delivery, contract, test, ambiguity, unavailable-gate, or maintainability failures cannot
-use it. The named mandatory rollback restores the complete authored semantic envelope to the
+use it. Eligibility requires the preserved maintainability lifecycle to be `passed`, with a concrete
+`implementation_head` and a non-empty qualifying PASS ledger whose newest report pins that head;
+those immutable bytes define the rollback envelope. The first committed retirement transition on
+the owner first-parent history must precede rollback planning and its qualifying verified verdict.
+Every functional replacement's immutable `start_commit` must descend from that rollback verdict.
+The named mandatory rollback restores the complete authored semantic envelope to the
 original immutable `start_commit` tree. Only that rollback may immediately follow the retired
 original; every functional replacement waits until the rollback is `verified` / `shipped` and its
 tree-equality proof passes.
@@ -100,7 +105,9 @@ it is a `deferred` terminal `re_slice_required` original whose recorded rollback
 `protocol_history_invalid` original whose immutable evidence reproduces, whose separate retirement
 record names a `verified` / `shipped` rollback, whose complete authored envelope is tree-equal to
 `start_commit`, and whose maintainability value remains byte-identical to its pinned BLOCKED status
-blob. A displayed `deferred` value alone is never authority, and `superseded` is not a slice-status
+blob and carries the qualifying passed head/ledger above. The retirement transition must precede
+rollback planning/verification and every replacement must start after the qualifying rollback
+verdict. A displayed `deferred` value alone is never authority, and `superseded` is not a slice-status
 state.
 
 ## The touchpoint matrix — the planner's load-bearing artefact

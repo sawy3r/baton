@@ -40,10 +40,24 @@ Each negative branch is exercised independently through the merge-track, merge-r
 
 ## Validation
 
-- `python3 -B -m unittest discover -s tests -v`: 9 tests pass.
+- `python3 -B -m unittest discover -s tests -v`: 10 tests pass.
 - Draft 2020-12 metaschema validation: all schemas pass.
 - JSON parsing: all schemas, templates and fixtures pass.
 - Installer shell syntax and scratch install parity: pass.
 - Git diff/check and cache audit: pass.
 
 The original verifier FAIL remains unchanged. This capture records only the repair and fresh re-verifier handoff.
+
+## Second repair: chronology and qualifying envelope
+
+Second immutable verifier finding: `docs/captures/2026-07-18-protocol-history-retirement-reverification.md` at commit `06b7fb5`.
+
+External Gate Warden input against implementation head `6aff4fad` confirmed the first repair's P1 boundaries remain closed: Verifier/retirement evidence is strictly typed and exactly matched, and reachability uses real Git commits/blobs rather than Boolean or fake-OID vectors. Those surfaces were not redesigned.
+
+The Warden's remaining P2 identified that a retirement record must not exist without a trustworthy semantic envelope. The schema now requires retirement to carry byte-preserved `maintainability.state: passed`, a concrete `implementation_head`, a non-empty report ledger and a PASS. The canonical evaluator additionally requires the newest report to be PASS and to pin that exact head. Schema fixtures and committed Git branches reject pending maintainability, a null head and an empty/insufficient ledger while keeping retirement outside the maintainability object.
+
+The second fresh verifier found a separate chronology false-positive. The Git fixture now includes its exact counterexample on a real first-parent branch: rollback planning, exact restoration and verification, then replacement start, followed only afterward by retirement. The canonical evaluator locates the first committed retirement transition, first rollback status, first qualifying authoritative rollback PASS and every replacement `start_commit`. It requires retirement before rollback planning and verification and requires replacements to start only after the qualifying rollback verdict. The late-retirement branch is asserted to fail merge-track, merge-release and mark-shipped independently.
+
+The normative track, Planner, Implementer, replan and three integration/shipping contracts carry the same passed-envelope and first-parent chronology requirements. Current board order and terminal states are explicitly insufficient.
+
+Both immutable FAIL captures, at `9dfb256` and `06b7fb5`, remain byte-identical. This second repair changes only the bounded chronology and eligibility findings.

@@ -102,9 +102,12 @@ the oracle.)
    integration provenance. A `protocol_history_invalid` original is legal only when its immutable
    invalid-history and fresh Verifier BLOCKED commit/path/blob identities reproduce from embedded
    track ancestry, its typed violation evidence exactly equals retirement `invalid_history`, its
-   maintainability value is byte-identical to the pinned verdict blob, and its verified/shipped
-   rollback restores the complete authored envelope to the immutable start tree before every
-   functional replacement.
+   maintainability value is byte-identical to the pinned verdict blob and is qualifying `passed`
+   evidence with a concrete PASS-pinned implementation head, its first retirement commit precedes
+   rollback planning and the qualifying rollback verdict, every replacement starts after that
+   verdict, and its verified/shipped rollback restores the complete authored envelope to the
+   immutable start tree before every functional replacement. Recompute chronology from embedded
+   track ancestry rather than accepting current state or board order alone.
    Missing cleaned-up branch refs are not an excuse because the merge parents remain in release
    ancestry. Compare the integration-branch current status to that validated integrated status;
    before this command only existing idempotent `shipped` transition fields may differ. For each

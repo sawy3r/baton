@@ -185,13 +185,19 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
   Resetting the same slice id or allowing failed bytes to become a replacement baseline is
   forbidden.
 - When ratified `protocol_history_invalid` retirement resolves the Step 2b outcome, preserve the
-  owner-seeded `maintainability` value byte-for-byte from the pinned BLOCKED status blob. Add only
+  owner-seeded `maintainability` value byte-for-byte from the pinned BLOCKED status blob. Require it
+  to be `passed`, with a concrete implementation head and non-empty qualifying PASS ledger whose
+  newest report pins that head. Add only
   the separate top-level retirement record and ordinary overall deferral fields. Its rollback
   restores the complete authored semantic envelope from immutable `start_commit` through the
   rollback's pinned implementation head to the exact original mode/object ids. It may not be
   deferred. The retired original is traversable only by that named rollback; functional replacement
   slices follow and cannot start until the rollback is `verified` / `shipped` with passing tree
   equality. Record replacement ids in the deferral trail and never reuse the original id.
+  Commit this retirement transition before writing the rollback's first status. When the rollback
+  verifies, require its first qualifying authoritative PASS verdict commit to descend from the
+  retirement commit; every functional replacement's non-null `start_commit` must descend from that
+  rollback verdict. Current board order is not sufficient chronology evidence.
 - Re-validate the **touchpoint matrix** and `board.json.shared_touchpoints` for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it unless the human ratifies the narrow machine-readable documented-shared exception from `track-mode.md`; a Markdown row alone cannot license it.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 

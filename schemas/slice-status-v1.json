@@ -580,6 +580,21 @@
         "properties": {
           "state": { "const": "deferred" },
           "start_commit": { "type": "string" },
+          "maintainability": {
+            "required": ["state", "implementation_head", "reports"],
+            "properties": {
+              "state": { "const": "passed" },
+              "implementation_head": { "type": "string" },
+              "reports": {
+                "minItems": 1,
+                "contains": {
+                  "type": "object",
+                  "properties": { "verdict": { "const": "PASS" } },
+                  "required": ["verdict"]
+                }
+              }
+            }
+          },
           "verification": {
             "required": ["result", "verifier_session_id", "verifier_verdict_at", "verifier_was_fresh_context", "violations"],
             "properties": {
@@ -598,7 +613,7 @@
           },
           "open_deferrals": { "minItems": 1 }
         },
-        "required": ["state", "start_commit", "verification", "open_deferrals"]
+        "required": ["state", "start_commit", "maintainability", "verification", "open_deferrals"]
       }
     },
     {

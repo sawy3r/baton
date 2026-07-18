@@ -122,6 +122,14 @@ schema-valid cited record, missing error, verdict mismatch, or maintainability-b
 the disposition invalid. A semantic delivery failure cannot be transformed into invalid history by
 labelling a violation with this gate id.
 
+Eligibility also requires the byte-preserved maintainability state to be `passed`, a concrete
+`implementation_head`, and a non-empty ledger whose newest report is PASS and pins that exact head.
+On the owner first-parent history, locate the first committed status with non-null retirement and
+require it to precede the first rollback status commit and the first qualifying rollback
+`verified`/`shipped` status with an authoritative Verifier PASS. Require each functional
+replacement's immutable `start_commit` to descend from that qualifying rollback verdict. Current
+track-array order and current terminal states cannot substitute for this transition chronology.
+
 Maintainability has two role-specific uses; they are intentionally not equal:
 
 1. The Implementer runs one **readiness preflight** only after deterministic checks are green and

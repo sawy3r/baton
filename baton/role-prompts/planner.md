@@ -363,6 +363,11 @@ Before proposing any revision, rebuild the true state table:
   complete authored semantic envelope to the immutable `start_commit` tree and it must become
   `verified` / `shipped` with exact tree equality before any functional replacement starts. Never
   convert a PASS ledger to `re_slice_required`, clear the BLOCKED verdict, or reuse the slice id.
+  Before committing retirement require preserved `maintainability.state: passed`, a concrete
+  implementation head, and a non-empty qualifying PASS ledger whose newest report pins that head.
+  Commit the retirement transition before writing the rollback's first status. Later require the
+  rollback's qualifying verified verdict commit before any replacement records non-null
+  `start_commit`; board order alone is not chronology evidence.
 - **Correct a factual spec defect flagged by a BLOCKED verdict** → squarely in remit. A verifier `BLOCKED` routes an inbound slice here precisely because a spec defect has no other owner — the verifier grades against the spec and cannot edit it, the implementer implements against it and cannot edit it. For an ordinary spec-defect BLOCKED there are two outcomes: correct the spec and clear `verification.result` back to `"pending"` so the slice re-enters verification, or escalate to the human if you judge the verdict itself wrong. The distinct third outcome is the exact `protocol_history_invalid` path above; no other BLOCKED reason may use it. Returning the handoff to the verifier ("re-run `/verify-slice` and see") is not an option — see `$HOME/.claude/baton/session-discipline.md`, "Handoff directionality". `/replan-release` Step 2b is the procedure.
 - **Never** create a worktree. Modify the release worktree for planner artefacts and existing track
   worktrees only for the explicit `release-wt → track` propagation step; outside that step, do not

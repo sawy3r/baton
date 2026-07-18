@@ -102,8 +102,12 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             "verdict_reference_mismatch": "verdict-blob-mismatch",
             "typed_evidence_mismatch": "verifier-retirement-evidence-mismatch",
             "maintainability_mutation": "maintainability-bytes-changed",
+            "maintainability_pending": "retirement-maintainability-not-passed",
+            "maintainability_no_head": "retirement-implementation-head-missing",
+            "maintainability_no_reports": "retirement-pass-ledger-insufficient",
             "replacement_before_rollback": "replacement-started-before-rollback-verification",
             "ordinary_relabel": "cited-record-valid",
+            "late_retirement": "retirement-after-rollback-planning",
         }
         for scenario, expected_failure in scenarios.items():
             with self.subTest(scenario=scenario):
@@ -120,6 +124,17 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
         self.assertFalse(merge_release_predicate(self.git_fixture, tip, track_integrated=False))
         self.assertFalse(mark_shipped_predicate(self.git_fixture, tip, release_merged=False))
         self.assertFalse(mark_shipped_predicate(self.git_fixture, tip, deployed=False))
+
+    def test_late_retirement_after_rollback_and_replacement_fails_all_integrators(self) -> None:
+        tip = self.git_fixture.commits["late_retirement"]
+        ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
+        self.assertFalse(ready)
+        self.assertIn("retirement-after-rollback-planning", failures)
+        self.assertIn("retirement-after-rollback-verification", failures)
+        self.assertIn("replacement-started-before-retirement", failures)
+        self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+        self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+        self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
 
     def test_all_normative_surfaces_name_the_disposition_and_rollback(self) -> None:
         surfaces = [
@@ -151,6 +166,9 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "before every functional replacement",
                 "mode/object equality",
                 "ordinary-failure",
+                "first committed retirement status",
+                "qualifying rollback verdict",
+                "implementation_head",
             ],
             "commands/merge-release.md": [
                 "commit/path/blob identities",
@@ -158,6 +176,8 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "byte-preserved maintainability",
                 "sequential ordering",
                 "complete-envelope equality",
+                "retirement-before-rollback chronology",
+                "replacement start after",
             ],
             "commands/mark-shipped.md": [
                 "commit/path/blob identities",
@@ -165,6 +185,8 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "byte-identical",
                 "before every functional replacement",
                 "complete authored envelope",
+                "first retirement commit precedes",
+                "every replacement starts after",
             ],
         }
         for relative_path, clauses in requirements.items():
