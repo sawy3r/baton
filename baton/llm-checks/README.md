@@ -110,7 +110,9 @@ part of identity.
 The fresh Verifier status commit must be strictly before retirement on the owner's first-parent
 chain. Resolve its exact owner status path/blob, reject duplicate JSON keys, resolve the governing
 schema from that historical commit, and require the whole pinned status to validate before reading
-the verdict. The status must contain `verification.result: blocked`, fresh-context
+the verdict. A schema-invalid shape fails closed before typed evidence is dereferenced; a missing,
+null, scalar or array `protocol_history_invalid` value is not an evidence object. The status must
+contain `verification.result: blocked`, fresh-context
 session/time fields, and a `protocol_history_invalid` violation whose strict typed
 `protocol_history_invalid.invalid_history` array is exactly equal to the later retirement evidence.
 Free-text evidence is supplementary and is never parsed as identity. The retirement
@@ -132,7 +134,8 @@ On the owner first-parent history, locate the first committed status with non-nu
 rollback's first status commit, its first qualifying `verified`/`shipped` authoritative Verifier
 PASS verdict, and each replacement's immutable non-null `start_commit`. These must be distinct and
 strictly ordered `retirement < rollback first status < rollback verdict < replacement start` on that
-first-parent chain. Ordinary ancestry, including equality or reachability only through a merge's
+first-parent chain. The referenced replacement `start_commit` itself must occur on the evaluated
+owner tip's first-parent history. Ordinary ancestry, including equality or reachability only through a merge's
 second parent, is insufficient. Current track-array order and current terminal states cannot
 substitute for this transition chronology.
 

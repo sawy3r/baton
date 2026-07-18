@@ -80,6 +80,7 @@ and integration readiness are derived below. Do not require release-level
    owner path strictly before retirement, reject duplicate JSON keys, validate the whole status
    against its governing schema at that historical commit, require its commit/path/blob identity, and require
    exact structural equality between its typed violation evidence and retirement `invalid_history`,
+   treating missing or non-object typed evidence as a deterministic failure without dereference,
    and compare the complete
    current maintainability value byte-for-byte with that verdict blob. Any uncited error, mismatch,
    non-history failure, or non-BLOCKED verdict still BLOCKs. This makes
@@ -116,7 +117,8 @@ and integration readiness are derived below. Do not require release-level
    defines the rollback envelope. On owner first-parent history, require the first committed
    retirement status, rollback first status, first qualifying authoritative PASS verdict, and every
    replacement's non-null `start_commit` to be distinct and strictly ordered on that first-parent
-   history. Its separately recorded rollback must belong to this track, occur after the original and
+   history. Require each referenced replacement start itself on the evaluated owner tip's first-parent
+   history; a second-parent-only anchor BLOCKs. Its separately recorded rollback must belong to this track, occur after the original and
    before every functional replacement, and be `verified` or `shipped` (never deferred). Only that
    rollback may immediately traverse the original. Derive the union of every authored non-record
    path from original `start_commit` through rollback `implementation_head` and require exact

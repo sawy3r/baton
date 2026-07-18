@@ -439,6 +439,7 @@ class ProtocolHistoryRepositoryFixture:
         self._build_owner_binding_negatives(retired)
         self._build_verdict_negatives(retired)
         self._build_combined_retirement_and_rollback(retired)
+        self._build_second_parent_replacement_start()
         self.repo.run("checkout", "-q", "-B", "fixture-legal", self.commits["legal"])
 
     def _write_mutated_original(self, base: str, mutate: Callable[[dict], None]) -> None:
@@ -587,6 +588,24 @@ class ProtocolHistoryRepositoryFixture:
         self.repo.run("merge", "--no-ff", "-m", "fixture negative: merge verdict as second parent", "verdict-second-parent")
         finish_retirement("second_parent_verdict", second_parent_verdict)
 
+        malformed_shapes = {
+            "gate_only_verdict": None,
+            "null_typed_verdict": None,
+            "scalar_typed_verdict": "not-an-object",
+            "list_typed_verdict": [],
+        }
+        for name, typed_value in malformed_shapes.items():
+            self.repo.run("checkout", "-q", "-B", f"scenario-{name}", self.commits["implemented"])
+            malformed = copy.deepcopy(valid_blocked)
+            violation = malformed["verification"]["violations"][0]
+            if name == "gate_only_verdict":
+                violation.pop("protocol_history_invalid")
+            else:
+                violation["protocol_history_invalid"] = typed_value
+            self._write_status(ORIGINAL_ID, malformed)
+            malformed_commit = self.repo.commit(f"fixture negative: {name}")
+            finish_retirement(name, malformed_commit)
+
     def _build_combined_retirement_and_rollback(self, retired: dict) -> None:
         self.repo.run("checkout", "-q", "-B", "scenario-combined_retirement_rollback", self.commits["blocked"])
         self._write_status(ORIGINAL_ID, copy.deepcopy(retired))
@@ -616,6 +635,16 @@ class ProtocolHistoryRepositoryFixture:
         replacement = self._status(REPLACEMENT_ID, "in_progress", replacement_anchor, None, [], {"result": "pending", "violations": []})
         self._write_status(REPLACEMENT_ID, replacement)
         self.commits["combined_retirement_rollback"] = self.repo.commit("fixture negative: combined case replacement starts")
+
+    def _build_second_parent_replacement_start(self) -> None:
+        self.repo.run("checkout", "-q", "-B", "replacement-start-second-parent", self.commits["rollback_verified"])
+        self.repo.write("side-anchor.txt", b"second-parent replacement anchor\n")
+        side_start = self.repo.commit("fixture negative: replacement anchor on side branch")
+        self.repo.run("checkout", "-q", "-B", "scenario-second_parent_replacement_start", self.commits["replacement_anchor"])
+        self.repo.run("merge", "--no-ff", "-m", "fixture negative: merge replacement anchor as second parent", "replacement-start-second-parent")
+        replacement = self._status(REPLACEMENT_ID, "in_progress", side_start, None, [], {"result": "pending", "violations": []})
+        self._write_status(REPLACEMENT_ID, replacement)
+        self.commits["second_parent_replacement_start"] = self.repo.commit("fixture negative: reference second-parent replacement anchor")
 
     def track_order(self, tip: str) -> list[str]:
         return json.loads(self.repo.show(tip, "records/track-order.json"))
@@ -684,6 +713,9 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
         if repo.blob(verdict_commit, verdict_path) != verdict_blob:
             failures.append("verdict-blob-mismatch")
         pinned_verdict = parse_json(pinned_verdict_bytes)
+        if not isinstance(pinned_verdict, dict):
+            failures.append("verdict-status-invalid")
+            pinned_verdict = {}
         if pinned_verdict.get("slice_id") != ORIGINAL_ID or pinned_verdict.get("release") != current.get("release"):
             failures.append("verdict-status-identity-mismatch")
         pinned_schema_bytes = repo.show(verdict_commit, "schemas/slice-status-v1.json")
@@ -703,14 +735,19 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
         pinned_verdict = {}
         failures.append("verdict-unresolvable")
     verification = pinned_verdict.get("verification", {})
+    if not isinstance(verification, dict):
+        verification = {}
     if verification.get("result") != "blocked" or verification.get("verifier_was_fresh_context") is not True:
         failures.append("verdict-not-fresh-blocked")
+    violations = verification.get("violations", [])
+    if not isinstance(violations, list):
+        violations = []
     typed = [
         violation.get("protocol_history_invalid")
-        for violation in verification.get("violations", [])
-        if violation.get("gate") == "protocol_history_invalid"
+        for violation in violations
+        if isinstance(violation, dict) and violation.get("gate") == "protocol_history_invalid"
     ]
-    if len(typed) != 1 or typed[0].get("invalid_history") != retirement.get("invalid_history"):
+    if len(typed) != 1 or not isinstance(typed[0], dict) or typed[0].get("invalid_history") != retirement.get("invalid_history"):
         failures.append("verifier-retirement-evidence-mismatch")
     try:
         if json_value_bytes(pinned_verdict_bytes, "maintainability") != json_value_bytes(current_bytes, "maintainability"):
@@ -802,6 +839,8 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
         replacement = None
     if replacement and replacement.get("start_commit"):
+        if not repo.is_on_first_parent(replacement["start_commit"], tip):
+            failures.append("replacement-start-not-on-owner-first-parent")
         if not rollback_is_verified:
             failures.append("replacement-started-before-rollback-verification")
         if not rollback_verdict_commit or not repo.is_strictly_before_on_first_parent(rollback_verdict_commit, replacement["start_commit"]):

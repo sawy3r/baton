@@ -92,8 +92,10 @@ use it. Eligibility requires the preserved maintainability lifecycle to be `pass
 those immutable bytes define the rollback envelope. Every cited status must use the owner's exact
 path and parsed slice/release identity and lie strictly on the owner first-parent history; the
 pinned BLOCKED status must reject duplicate keys and validate against its governing schema at that
-commit. The retirement commit, rollback first-status commit, qualifying verified verdict commit,
-and replacement `start_commit` are distinct and strictly ordered on that first-parent history.
+commit; malformed or non-object typed evidence fails closed without dereference. The retirement
+commit, rollback first-status commit, qualifying verified verdict commit, and replacement
+`start_commit` are distinct and strictly ordered on that first-parent history, and the referenced
+replacement start itself must occur on the evaluated owner tip's first-parent chain.
 The named mandatory rollback restores the complete authored semantic envelope to the
 original immutable `start_commit` tree. Only that rollback may immediately follow the retired
 original; every functional replacement waits until the rollback is `verified` / `shipped` and its

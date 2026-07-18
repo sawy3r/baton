@@ -117,6 +117,11 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             "duplicate_key_verdict": "verdict-duplicate-json-key",
             "second_parent_verdict": "verdict-not-before-retirement-first-parent",
             "combined_retirement_rollback": "retirement-after-rollback-planning",
+            "second_parent_replacement_start": "replacement-start-not-on-owner-first-parent",
+            "gate_only_verdict": "verifier-retirement-evidence-mismatch",
+            "null_typed_verdict": "verifier-retirement-evidence-mismatch",
+            "scalar_typed_verdict": "verifier-retirement-evidence-mismatch",
+            "list_typed_verdict": "verifier-retirement-evidence-mismatch",
         }
         for scenario, expected_failure in scenarios.items():
             with self.subTest(scenario=scenario):
@@ -166,6 +171,33 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 self.assertFalse(merge_track_predicate(self.git_fixture, tip))
                 self.assertFalse(merge_release_predicate(self.git_fixture, tip))
                 self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
+    def test_malformed_pinned_typed_evidence_shapes_fail_closed_without_exception(self) -> None:
+        scenarios = [
+            "gate_only_verdict",
+            "null_typed_verdict",
+            "scalar_typed_verdict",
+            "list_typed_verdict",
+        ]
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario):
+                tip = self.git_fixture.commits[scenario]
+                ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
+                self.assertFalse(ready)
+                self.assertIn("verdict-status-invalid", failures)
+                self.assertIn("verifier-retirement-evidence-mismatch", failures)
+                self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+                self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+                self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
+    def test_replacement_start_reachable_only_through_second_parent_fails_all_integrators(self) -> None:
+        tip = self.git_fixture.commits["second_parent_replacement_start"]
+        ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
+        self.assertFalse(ready)
+        self.assertIn("replacement-start-not-on-owner-first-parent", failures)
+        self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+        self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+        self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
 
     def test_combined_retirement_and_rollback_plan_commit_is_not_strict_chronology(self) -> None:
         tip = self.git_fixture.commits["combined_retirement_rollback"]
@@ -225,6 +257,8 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "owner's exact physical path",
                 "reject duplicate JSON keys",
                 "strictly ordered on that first-parent",
+                "non-object typed evidence",
+                "evaluated owner tip's first-parent",
                 "implementation_head",
             ],
             "commands/merge-release.md": [
@@ -236,6 +270,8 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "owner's exact path",
                 "historical-schema-valid",
                 "distinct strict first-parent chronology",
+                "non-object typed evidence",
+                "evaluated owner tip's first-parent",
             ],
             "commands/mark-shipped.md": [
                 "commit/path/blob identity",
@@ -245,6 +281,8 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "owner's exact path",
                 "reject duplicate keys",
                 "distinct and strictly ordered",
+                "non-object typed evidence",
+                "evaluated owner tip's first-parent",
             ],
         }
         for relative_path, clauses in requirements.items():

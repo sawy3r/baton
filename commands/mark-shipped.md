@@ -104,11 +104,13 @@ the oracle.)
    lie strictly on owner first-parent history. Its fresh Verifier BLOCKED status must reject
    duplicate keys, validate against its governing schema at that historical commit, lie strictly
    before retirement, and reproduce commit/path/blob identity from embedded track ancestry. Its
-   typed violation evidence exactly equals retirement `invalid_history`, its
+   typed violation evidence exactly equals retirement `invalid_history`; missing or non-object typed
+   evidence fails deterministically without dereference. Its
    maintainability value is byte-identical to the pinned verdict blob and is qualifying `passed`
    evidence with a concrete PASS-pinned implementation head. Its first retirement commit, rollback
    first status, qualifying rollback verdict, and every replacement `start_commit` are distinct and
-   strictly ordered on first-parent history; equality and ordinary or second-parent ancestry are
+   strictly ordered on first-parent history. Each referenced replacement start itself must occur on
+   the evaluated owner tip's first-parent history; equality and ordinary or second-parent ancestry are
    insufficient. Its verified/shipped rollback restores the complete authored envelope to the
    immutable start tree before every functional replacement. Recompute chronology from embedded
    track ancestry rather than accepting current state or board order alone.

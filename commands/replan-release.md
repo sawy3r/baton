@@ -147,7 +147,8 @@ For each BLOCKED slice surfaced by the Step 2 reconciliation you have exactly **
    owner path and parsed slice/release identity and reject duplicate keys or second-parent-only
    reachability. Resolve the pinned BLOCKED blob at the exact owner path, require it strictly before
    retirement, and validate its whole lifecycle against the governing schema at that historical
-   commit before requiring fresh typed BLOCKED evidence and exact equality. Reproduce the validation
+   commit before requiring fresh typed BLOCKED evidence and exact equality. A missing, null, scalar
+   or array typed evidence value fails closed without dereference. Reproduce the validation
    errors and their fingerprints. Reject the path if the current status is invalid, the evidence is
    not immutable/reproducible, or the underlying problem is an ordinary spec, delivery, test,
    environmental, unavailable-gate, or maintainability failure. After human ratification, preserve
@@ -200,7 +201,8 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
   equality. Record replacement ids in the deferral trail and never reuse the original id.
   Commit retirement, the rollback's first status, its first qualifying authoritative PASS verdict,
   and every functional replacement's non-null `start_commit` as distinct commits in that strict
-  first-parent order. Equality, ordinary ancestry, and current board order are insufficient.
+  first-parent order. Require each referenced replacement start itself on the evaluated owner tip's
+  first-parent chain. Equality, ordinary ancestry, and current board order are insufficient.
 - Re-validate the **touchpoint matrix** and `board.json.shared_touchpoints` for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it unless the human ratifies the narrow machine-readable documented-shared exception from `track-mode.md`; a Markdown row alone cannot license it.
 - Update `board.json` — the `tracks` array, touchpoint matrix, and slice entries — then re-render `index.md` from it, and commit at every checkpoint **to `release-wt/$1`** (see "Where this command runs and commits"). Validate `board.json` against `board-v1` before committing.
 

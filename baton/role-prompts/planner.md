@@ -352,7 +352,8 @@ Before proposing any revision, rebuild the true state table:
   first-parent historical status commit/blob failure against the exact pinned schema blob. Require
   every evidence record's exact owner path and parsed slice/release identity, reject duplicate JSON
   keys, and reject ordinary reachability through a second parent. Validate the pinned BLOCKED status
-  against its governing schema at that commit and require it strictly before retirement; require
+  against its governing schema at that commit and require it strictly before retirement; missing,
+  null, scalar or array typed evidence fails closed rather than being dereferenced. Require
   the defect to be immutable lifecycle-record invalidity that prevents verification, never an
   ordinary spec, delivery, test, environmental, unavailable-gate, or maintainability failure. With
   human ratification, seed the exact BLOCKED status and add the top-level `retirement` record with
@@ -370,7 +371,8 @@ Before proposing any revision, rebuild the true state table:
   implementation head, and a non-empty qualifying PASS ledger whose newest report pins that head.
   Commit retirement, the rollback's first status, its qualifying verified verdict, and every
   replacement's non-null `start_commit` as distinct commits in that strict first-parent order;
-  equality, ordinary ancestry, and board order are not chronology evidence.
+  require each referenced replacement start itself on the evaluated owner tip's first-parent chain.
+  Equality, ordinary ancestry, and board order are not chronology evidence.
 - **Correct a factual spec defect flagged by a BLOCKED verdict** → squarely in remit. A verifier `BLOCKED` routes an inbound slice here precisely because a spec defect has no other owner — the verifier grades against the spec and cannot edit it, the implementer implements against it and cannot edit it. For an ordinary spec-defect BLOCKED there are two outcomes: correct the spec and clear `verification.result` back to `"pending"` so the slice re-enters verification, or escalate to the human if you judge the verdict itself wrong. The distinct third outcome is the exact `protocol_history_invalid` path above; no other BLOCKED reason may use it. Returning the handoff to the verifier ("re-run `/verify-slice` and see") is not an option — see `$HOME/.claude/baton/session-discipline.md`, "Handoff directionality". `/replan-release` Step 2b is the procedure.
 - **Never** create a worktree. Modify the release worktree for planner artefacts and existing track
   worktrees only for the explicit `release-wt → track` propagation step; outside that step, do not

@@ -81,3 +81,18 @@ Warden repair validation:
 - Duplicate-key-aware JSON parsing: all 19 schema, template and fixture JSON files pass.
 - Installer shell syntax and isolated scratch parity: pass; 18 schemas are byte-identical in each install, all eight Claude commands are byte-identical, all eight Codex skills are present, and no stale Claude Baton paths remain in Codex output.
 - `git diff --check` and Python cache audit: pass.
+
+## Gate Warden repair: replacement owner-chain membership and total typed evidence
+
+The third Gate Warden pass found two narrow totality gaps. First, strict ordering against a replacement `start_commit` did not separately state that the referenced commit itself belongs to the evaluated owner tip's first-parent history. The evaluator now emits stable failure `replacement-start-not-on-owner-first-parent` when an otherwise ordered anchor is reachable only through a merge's second parent. A real Git branch creates that exact side-branch anchor, merges it as parent two, references it from the owner replacement status, and proves merge-track, merge-release and mark-shipped all reject it.
+
+Second, the pinned historical verdict path validated the whole status but continued into typed evidence using an object-only assumption. Historical verdict evaluation now type-guards the parsed status, verification object, violations array, each violation and the typed `protocol_history_invalid` value. Missing, null, scalar and list values fail closed with stable `verdict-status-invalid` and `verifier-retirement-evidence-mismatch` findings rather than raising an exception. The exact gate-only violation and the adjacent malformed shapes are committed as real Git histories and exercised through all three integration predicates.
+
+Normative LLM checks, track, Planner/replan, Implementer and the three integration/shipping contracts now explicitly require owner-tip first-parent membership for each replacement start and deterministic failure for missing or non-object pinned typed evidence. This is a totality repair only; it does not broaden the retirement disposition.
+
+Third Warden repair validation:
+
+- `python3 -B -m unittest discover -s tests -v`: 16 tests pass.
+- All 18 schemas pass Draft 2020-12 metaschema validation; all 19 schema, template and fixture JSON files pass duplicate-key-aware parsing.
+- Installer shell syntax and isolated scratch parity pass: 18 schemas are byte-identical in each install, all eight Claude commands are byte-identical, all eight Codex skills are present, and Codex output contains no stale Claude Baton paths.
+- `git diff --check`, Python cache audit and immutable FAIL-report hash checks pass.

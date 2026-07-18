@@ -56,10 +56,12 @@ release-key mismatch BLOCK as malformed oracle output.
      embedded track integration proves every immutable invalid-history record uses its owner's exact
      path and parsed slice/release identity and lies strictly on owner first-parent history. The
      fresh Verifier BLOCKED status must be duplicate-free, historical-schema-valid, strictly before
-     retirement, and preserve exact commit/path/blob identities and typed-evidence equality, plus byte-preserved maintainability
+     retirement, and preserve exact commit/path/blob identities and typed-evidence equality. Missing
+     or non-object typed evidence fails deterministically without dereference, alongside byte-preserved maintainability
      value in qualifying `passed` state with a concrete PASS-pinned implementation head,
      verified/shipped mandatory rollback, and distinct strict first-parent chronology from retirement
-     through rollback first status and verdict to replacement start. Ordinary ancestry or equality,
+     through rollback first status and verdict to replacement start. Each referenced replacement
+     start itself must occur on the evaluated owner tip's first-parent history. Ordinary ancestry or equality,
      sequential ordering, and
      complete-envelope equality to the original `start_commit` tree. Recompute these from embedded
      track ancestry; do not trust only current states.
