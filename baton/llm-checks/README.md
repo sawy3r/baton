@@ -107,10 +107,15 @@ closed. The pinned schema blob supplies the constraint value, so validator-speci
 part of identity.
 
 The fresh Verifier status commit/blob must contain `verification.result: blocked`, fresh-context
-session/time fields, and a `protocol_history_invalid` violation citing the same evidence. Retirement
-status must preserve the complete parsed `maintainability` value and its exact JSON byte span
+session/time fields, and a `protocol_history_invalid` violation whose strict typed
+`protocol_history_invalid.invalid_history` array is exactly equal to the later retirement evidence.
+Free-text evidence is supplementary and is never parsed as identity. The retirement
+`verifier_verdict` pins that status's exact commit, physical path, and blob OID; engines resolve the
+pinned status and use its session/time rather than accepting a second, potentially divergent copy.
+Retirement status must preserve the complete parsed `maintainability` value and its exact JSON byte span
 byte-for-byte from that verdict blob. The Planner may change only top-level retirement/deferral and
-planning fields during the ratified transition; once non-null, the complete retirement record is
+planning fields during the ratified transition; it must also require exact equality between the
+typed Verifier evidence and retirement evidence. Once non-null, the complete retirement record is
 byte-identical in every later committed status version. Any cited commit outside the owner
 first-parent chain, path/slice/release mismatch,
 schema-valid cited record, missing error, verdict mismatch, or maintainability-byte mismatch makes

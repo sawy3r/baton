@@ -70,8 +70,10 @@ Throughout this section, treat `<wt>` as shorthand for `<worktree_path>` from St
    but an immutable earlier first-parent status blob is invalid under the exact governing schema,
    do not collapse that evidence into a generic history failure. Reproduce the invalidity, compute
    deterministic fingerprints from the validator's stable instance-path/schema-path/error tuple,
-   and emit BLOCKED with violation gate `protocol_history_invalid`, listing each exact commit,
-   status path/blob OID, schema id/blob OID, and validation-error fingerprint. This disposition is
+   and emit BLOCKED with violation gate `protocol_history_invalid`. Put the exact evidence in that
+   violation's strict `protocol_history_invalid` object: `disposition` plus `invalid_history`, whose
+   typed entries carry commit, status path/blob OID, schema id/blob OID, and validation-error
+   fingerprints. Free-text `evidence` is supplementary and never identity. This disposition is
    inapplicable to ordinary spec, delivery, test, environment, unavailable-gate, or maintainability
    failures. The Verifier records evidence only; it does not add `retirement` or alter
    `maintainability`. The Planner ratifies retirement and pins this committed BLOCKED status identity.
@@ -365,7 +367,7 @@ A BLOCKED verdict means verification cannot complete because the slice's own **c
 
 The narrow `protocol_history_invalid` BLOCKED form is also a pre-existing protocol-contract defect:
 current status validates, but exact immutable earlier lifecycle blobs do not. It MUST carry the
-reproducible commit/blob/schema/error-fingerprint evidence above, must preserve maintainability
+reproducible typed commit/blob/schema/error-fingerprint evidence above, must preserve maintainability
 unchanged, and may not be used for any ordinary failure. Its proposed amendment is Planner
 ratification of top-level retirement plus a mandatory rollback, not a spec rewrite.
 

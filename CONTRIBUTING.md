@@ -50,8 +50,9 @@ correct? If yes, at least a minor.
 
 ## Contract tests
 
-Protocol schema tests use Python 3 and the development-only dependency declared in
-`tests/requirements.txt`:
+Protocol schema tests use Python 3, Git, and the development-only dependency declared in
+`tests/requirements.txt`. The Git-backed lifecycle fixture creates only temporary local repositories
+and requires no network access:
 
 ```bash
 python3 -m pip install -r tests/requirements.txt

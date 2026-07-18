@@ -100,7 +100,8 @@ the oracle.)
    immutable start, append-only reports, non-decreasing cycle, immutable adjudication, blob identity,
    legal FSM/state coherence, terminal re-slice rollback, protocol-history retirement, and canonical
    integration provenance. A `protocol_history_invalid` original is legal only when its immutable
-   invalid-history and fresh Verifier BLOCKED identities reproduce from embedded track ancestry, its
+   invalid-history and fresh Verifier BLOCKED commit/path/blob identities reproduce from embedded
+   track ancestry, its typed violation evidence exactly equals retirement `invalid_history`, its
    maintainability value is byte-identical to the pinned verdict blob, and its verified/shipped
    rollback restores the complete authored envelope to the immutable start tree before every
    functional replacement.

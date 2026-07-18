@@ -11,7 +11,8 @@ A started slice can have a schema-valid current record and a preserved `maintain
 Add an optional top-level `retirement` record to `slice-status-v1`; it is separate from `maintainability`, so retirement never edits that ledger. Its only disposition is `protocol_history_invalid`, and it records:
 
 - every exact invalid committed status identity: first-parent commit, status blob OID, schema identity and schema blob OID, plus deterministic validation-error fingerprints;
-- the exact fresh Verifier BLOCKED verdict identity: committed status commit/blob, session id and verdict timestamp;
+- the exact fresh Verifier BLOCKED verdict identity: committed status commit/path/blob, from which
+  the typed evidence, session id and verdict timestamp are resolved without a divergent duplicate;
 - the mandatory rollback slice id, rationale, tracker and Coach acknowledgement.
 
 The disposition is legal only for a started, overall `deferred` slice whose current verification result remains `blocked`. Engines must reproduce every invalid-history claim from Git objects and the pinned schema, prove the invalidity is a lifecycle-history/schema defect rather than an ordinary delivery or maintainability failure, preserve the complete maintainability value byte-for-byte from the BLOCKED verdict blob, and require the rollback to restore the complete authored semantic envelope to the immutable `start_commit` tree.

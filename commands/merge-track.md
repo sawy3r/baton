@@ -74,7 +74,9 @@ and integration readiness are derived below. Do not require release-level
    `re_slice_required`. BLOCK on any regression before consulting oracle terminal state except the
    exact historical schema failures pinned by a current `protocol_history_invalid` retirement. For
    that sole exception, independently reproduce every first-parent commit/blob/schema/error
-   fingerprint, require the pinned fresh Verifier BLOCKED status identity, and compare the complete
+   fingerprint, require the pinned fresh Verifier BLOCKED status commit/path/blob identity, require
+   exact structural equality between its typed violation evidence and retirement `invalid_history`,
+   and compare the complete
    current maintainability value byte-for-byte with that verdict blob. Any uncited error, mismatch,
    non-history failure, or non-BLOCKED verdict still BLOCKs. This makes
    a rewritten current ledger incapable of hiding an earlier exhausted lifecycle or narrowing its
@@ -104,7 +106,8 @@ and integration readiness are derived below. Do not require release-level
    restored to the correct durable baseline or blocks.
    Independently inspect every `protocol_history_invalid` retirement. Require overall state
    `deferred`, a Rule-2-complete deferral, a started immutable `start_commit`, reproducible invalid
-   history and fresh Verifier BLOCKED identities, and a byte-identical preserved maintainability
+   history and fresh Verifier BLOCKED identities with exact typed-evidence equality, and a
+   byte-identical preserved maintainability
    value. Its separately recorded rollback must belong to this track, occur after the original and
    before every functional replacement, and be `verified` or `shipped` (never deferred). Only that
    rollback may immediately traverse the original. Derive the union of every authored non-record

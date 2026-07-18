@@ -353,8 +353,10 @@ Before proposing any revision, rebuild the true state table:
   the defect to be immutable lifecycle-record invalidity that prevents verification, never an
   ordinary spec, delivery, test, environmental, unavailable-gate, or maintainability failure. With
   human ratification, seed the exact BLOCKED status and add the top-level `retirement` record with
-  those immutable identities, deterministic validation-error fingerprints, the BLOCKED status
-  commit/blob/session/time identity, and a mandatory rollback id. Mark the original `deferred` with
+  an `invalid_history` array exactly equal to the Verifier violation's strict typed evidence,
+  deterministic validation-error fingerprints, the BLOCKED status commit/path/blob identity, and a
+  mandatory rollback id. Resolve session/time from that pinned blob rather than duplicating it.
+  Mark the original `deferred` with
   a Rule-2-complete record while preserving its entire `maintainability` value byte-for-byte. Put
   the rollback immediately after the original unless already-started slices force it after the
   started prefix; only that rollback may cross the retired predecessor. Its spec restores the

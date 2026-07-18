@@ -148,8 +148,10 @@ For each BLOCKED slice surfaced by the Step 2 reconciliation you have exactly **
    not immutable/reproducible, or the underlying problem is an ordinary spec, delivery, test,
    environmental, unavailable-gate, or maintainability failure. After human ratification, preserve
    the complete seeded `maintainability` value byte-for-byte, preserve the BLOCKED verification,
-   add the top-level `retirement` record including the committed BLOCKED status commit/blob/session/
-   time identity, mark the original `deferred` with a Rule-2-complete record, and create its mandatory
+   require the violation's strict typed invalid-history evidence, then add the top-level `retirement`
+   record with an exactly equal evidence array and the committed BLOCKED status commit/path/blob
+   identity. Resolve session/time only from that pinned blob. Mark the original `deferred` with a
+   Rule-2-complete record, and create its mandatory
    rollback under Steps 3-5. Never convert maintainability PASS to `re_slice_required`.
 
 **Returning the handoff to the verifier is not an option.** "Re-run `/verify-slice` and see" is a return-to-sender handoff — non-terminating by construction (see `$HOME/.claude/baton/session-discipline.md` "Handoff directionality"). The slice re-enters verification only after the planner has cleared `verification.result`.

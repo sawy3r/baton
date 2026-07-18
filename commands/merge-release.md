@@ -54,7 +54,8 @@ release-key mismatch BLOCK as malformed oracle output.
      passing tree-equality gate.
    - started `deferred` with `retirement.disposition: protocol_history_invalid` — OK only when the
      embedded track integration proves the immutable invalid-history and fresh Verifier BLOCKED
-     identities, byte-preserved maintainability value, verified/shipped mandatory rollback,
+     commit/path/blob identities, exact typed-evidence equality, byte-preserved maintainability
+     value, verified/shipped mandatory rollback,
      sequential ordering, and complete-envelope equality to the original `start_commit` tree.
    - Any other state (`planned`, `in_progress`, `implemented`, `failed_verification`) — BLOCK.
 

@@ -5,6 +5,44 @@
   "description": "Machine-readable state for one Baton release-mode slice.",
   "type": "object",
   "additionalProperties": true,
+  "$defs": {
+    "protocolHistoryInvalidRecords": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["commit", "status_path", "status_blob_oid", "schema_id", "schema_blob_oid", "validation_error_fingerprints"],
+        "properties": {
+          "commit": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+          "status_path": {
+            "description": "Exact repository-relative physical status path. Engines reject absolute paths and dot segments and require it to resolve to this slice's release/status record.",
+            "type": "string",
+            "minLength": 12,
+            "pattern": "^[^/].*/status\\.json$"
+          },
+          "status_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+          "schema_id": { "const": "https://baton.sawy3r.net/schemas/slice-status-v1.json" },
+          "schema_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+          "validation_error_fingerprints": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          }
+        }
+      }
+    },
+    "protocolHistoryInvalidViolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "invalid_history"],
+      "properties": {
+        "disposition": { "const": "protocol_history_invalid" },
+        "invalid_history": { "$ref": "#/$defs/protocolHistoryInvalidRecords" }
+      }
+    }
+  },
   "required": ["slice_id", "release", "state", "start_commit", "verification", "maintainability"],
   "properties": {
     "$schema": {
@@ -369,43 +407,19 @@
           "required": ["disposition", "invalid_history", "verifier_verdict", "rollback_slice_id", "rationale", "tracking", "acknowledged_by", "acknowledged_at"],
           "properties": {
             "disposition": { "const": "protocol_history_invalid" },
-            "invalid_history": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["commit", "status_path", "status_blob_oid", "schema_id", "schema_blob_oid", "validation_error_fingerprints"],
-                "properties": {
-                  "commit": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
-                  "status_path": {
-                    "description": "Exact repository-relative physical status path. Engines reject absolute paths and dot segments and require it to resolve to this slice's release/status record.",
-                    "type": "string",
-                    "minLength": 12,
-                    "pattern": "^[^/].*/status\\.json$"
-                  },
-                  "status_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
-                  "schema_id": { "const": "https://baton.sawy3r.net/schemas/slice-status-v1.json" },
-                  "schema_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
-                  "validation_error_fingerprints": {
-                    "type": "array",
-                    "minItems": 1,
-                    "uniqueItems": true,
-                    "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
-                  }
-                }
-              }
-            },
+            "invalid_history": { "$ref": "#/$defs/protocolHistoryInvalidRecords" },
             "verifier_verdict": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["status_commit", "status_blob_oid", "result", "verifier_session_id", "verifier_verdict_at"],
+              "required": ["status_commit", "status_path", "status_blob_oid"],
               "properties": {
                 "status_commit": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
-                "status_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
-                "result": { "const": "blocked" },
-                "verifier_session_id": { "type": "string", "minLength": 1 },
-                "verifier_verdict_at": { "type": "string", "format": "date-time" }
+                "status_path": {
+                  "type": "string",
+                  "minLength": 12,
+                  "pattern": "^[^/].*/status\\.json$"
+                },
+                "status_blob_oid": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" }
               }
             },
             "rollback_slice_id": { "type": "string", "minLength": 1 },
@@ -481,6 +495,7 @@
               "description": { "type": "string" },
               "evidence": { "type": "string" },
               "proposed_amendment": { "type": "string" },
+              "protocol_history_invalid": { "$ref": "#/$defs/protocolHistoryInvalidViolation" },
               "invalidating_sync_merge": {
                 "description": "Recognized release-wt synchronization merge that invalidated a previously verified path during track integration.",
                 "type": "string",
@@ -496,7 +511,23 @@
                 "type": "string",
                 "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": { "gate": { "const": "protocol_history_invalid" } },
+                  "required": ["gate"]
+                },
+                "then": { "required": ["protocol_history_invalid"] }
+              },
+              {
+                "if": { "required": ["protocol_history_invalid"] },
+                "then": {
+                  "properties": { "gate": { "const": "protocol_history_invalid" } },
+                  "required": ["gate"]
+                }
+              }
+            ]
           }
         }
       }

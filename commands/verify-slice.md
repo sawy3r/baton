@@ -92,8 +92,10 @@ Release work runs under **track mode** (`$HOME/.claude/baton/track-mode.md`). Ea
    validates but an immutable earlier
    first-parent status blob does not validate against the exact governing schema, reproduce and
    fingerprint the validator's stable instance-path/schema-path/error tuple. Return BLOCKED with a
-   `verification.violations` item whose gate is `protocol_history_invalid` and that lists every exact
-   status commit/path/blob OID, schema id/blob OID, and validation-error fingerprint. This is legal
+   `verification.violations` item whose gate is `protocol_history_invalid` and whose required strict
+   `protocol_history_invalid` object contains `disposition` plus an `invalid_history` array with
+   every exact status commit/path/blob OID, schema id/blob OID, and validation-error fingerprint.
+   Free-text evidence is not identity. This is legal
    only for protocol lifecycle-history invalidity that makes verification deterministically
    impossible, never an ordinary spec, delivery, test, environment, unavailable-gate, or
    maintainability failure. Do not add `retirement` or edit `maintainability`; the Planner owns
@@ -133,8 +135,8 @@ All artefact edits below land **inside the track worktree** (`<wt>/docs/release/
    - On PASS: `state: verified`, fill `verification.result: pass`, `verifier_was_fresh_context: true`, `verifier_verdict_at: <ISO timestamp>`.
    - On FAIL: `state: failed_verification`, fill `verification.violations` with the numbered list, `verification.result: fail`. If Gate 8 failed, clear `implementation_head`; every cycle-0 failure becomes `needs_coach` (a boundary-expanding disposition permits only Coach `re_slice`), while every cycle-1 failure becomes `re_slice_required`. Never reclassify a Gate-8 maintainability FAIL as BLOCKED.
    - On BLOCKED: `state` unchanged, fill `verification.result: blocked` with reason. For
-     `protocol_history_invalid`, also require fresh-context identity fields and the exact immutable
-     evidence from Step 6; leave the complete maintainability value byte-identical.
+     `protocol_history_invalid`, also require fresh-context identity fields and the exact typed
+     immutable evidence from Step 6; leave the complete maintainability value byte-identical.
 3. Leave `<wt>/docs/release/$2/board.json` byte-identical: it is the validated,
    state-free release plan. Re-render `index.md` from that board plus the
    authoritative `status.json` records in the track worktree so the slice and
