@@ -375,7 +375,10 @@ Before proposing any revision, rebuild the true state table:
   Equality, ordinary ancestry, and board order are not chronology evidence.
   Before inspecting retirement fields, duplicate-aware parse and schema-validate current status;
   any schema error fails immediately. From the first retirement commit through the evaluated tip,
-  compare its raw retirement JSON value bytes in every owner first-parent status version. Removal,
+  structurally extract the sole top-level retirement value, never a nested/escaped text-search decoy,
+  and compare its raw bytes in every owner first-parent status version. Parse/tokenise every version
+  chronologically; malformed JSON or duplicate keys fail and cannot be skipped to a later baseline,
+  while parseable schema-invalid pinned evidence remains eligible. Removal,
   nulling, any field rewrite and mutate-then-restore fail; current equality cannot erase history.
 - **Correct a factual spec defect flagged by a BLOCKED verdict** → squarely in remit. A verifier `BLOCKED` routes an inbound slice here precisely because a spec defect has no other owner — the verifier grades against the spec and cannot edit it, the implementer implements against it and cannot edit it. For an ordinary spec-defect BLOCKED there are two outcomes: correct the spec and clear `verification.result` back to `"pending"` so the slice re-enters verification, or escalate to the human if you judge the verdict itself wrong. The distinct third outcome is the exact `protocol_history_invalid` path above; no other BLOCKED reason may use it. Returning the handoff to the verifier ("re-run `/verify-slice` and see") is not an option — see `$HOME/.claude/baton/session-discipline.md`, "Handoff directionality". `/replan-release` Step 2b is the procedure.
 - **Never** create a worktree. Modify the release worktree for planner artefacts and existing track

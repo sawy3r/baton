@@ -97,6 +97,25 @@ Third Warden repair validation:
 - Installer shell syntax and isolated scratch parity pass: 18 schemas are byte-identical in each install, all eight Claude commands are byte-identical, all eight Codex skills are present, and Codex output contains no stale Claude Baton paths.
 - `git diff --check`, Python cache audit and immutable FAIL-report hash checks pass.
 
+## Gate Warden repair: structural raw-value extraction and pinned replay authority
+
+The fifth Gate Warden pass replaced textual JSON member search with a duplicate-aware structural extractor. The extractor validates the entire document for malformed JSON and duplicate members at every depth, walks only the root object with JSON decoder offsets, and returns the exact UTF-8 bytes of the sole requested top-level value. It understands strings and escapes plus nested arrays/objects, ignores nested or escaped decoys, and distinguishes missing members from null values. Both retirement replay and maintainability byte comparison use it.
+
+Focused adversarial vectors cover nested retirement decoys, escaped strings, surrounding and internal whitespace, null, arrays, objects, missing members, duplicate top-level keys and duplicate nested keys. A real schema-valid status places an old retirement object under a top-level decoy before the real key, mutates the real top-level retirement, then restores it while preserving the decoy. Structural replay detects `retirement-history-mutated`; merge-track, merge-release and mark-shipped all reject it.
+
+Retirement baseline discovery now walks every branch-pinned owner status version chronologically and duplicate-aware parses/tokenises each one. Malformed JSON, duplicate keys or tokenisation failure returns stable `owner-status-history-malformed` immediately and cannot be skipped to a later corrected baseline. Parseable schema-invalid lifecycle records remain available as the exact evidence this disposition exists to retire. A real history commits a duplicate-key first retirement with the wrong rollback id, follows it with a corrected valid record, and is rejected across all integration predicates.
+
+Merge-release and mark-shipped now duplicate-aware parse and schema-validate every current status before reading `state`, `retirement.disposition` or any other shape-dependent field; invalid records stop as `current-status-invalid`. Merge-track keeps the board oracle as sole ownership/topology authority, then permits only exact owner-ref-pinned `git show`, first-parent history and commit-pinned tree/blob/mode reads for retirement replay and evidence validation. Unpinned filesystem rereads, revision expressions and cross-ref fallback remain forbidden.
+
+The canonical checks, track contract, Planner/replan, Implementer and three integration/shipping contracts mirror the same structural extraction, malformed-history and pinned-read boundary. This is a bounded mechanical hardening only.
+
+Fifth Warden repair validation:
+
+- `python3 -B -m unittest discover -s tests -v`: 21 tests pass, including the focused structural-tokenizer and real-Git adversarial cases.
+- All 18 schemas pass Draft 2020-12 metaschema validation; all 19 schema, template and fixture JSON files pass duplicate-key-aware parsing.
+- Installer shell syntax and isolated scratch parity pass: 18 schemas are byte-identical in each install, all eight Claude commands are byte-identical, all eight Codex skills are present, and Codex output contains no stale Claude Baton paths.
+- `git diff --check`, Python cache audit and immutable FAIL-report hash checks pass.
+
 ## Gate Warden repair: history-wide retirement immutability and current-status totality
 
 The fourth Gate Warden pass identified that retirement immutability must be replayed across history, not inferred from the first and current snapshots. The evaluator now captures the exact raw JSON value bytes of `retirement` at the first retirement transition, walks every later owner status version on first-parent history through the evaluated tip, and requires exact byte equality at each version. This rejects removal/nulling and every field rewrite, including rollback id, evidence, acknowledgement, tracking and rationale changes. Because every intermediate version is checked, mutate-then-restore cannot erase the violation.

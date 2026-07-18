@@ -204,8 +204,11 @@ Follow the planner role prompt's **"Re-planning a release in flight"** section:
   first-parent order. Require each referenced replacement start itself on the evaluated owner tip's
   first-parent chain. Equality, ordinary ancestry, and current board order are insufficient.
   Duplicate-aware parse and schema-validate current status before inspecting retirement fields; any
-  schema error fails immediately. Capture the first retirement commit's raw retirement JSON value
-  bytes and require them in every later owner first-parent status version through the evaluated tip.
+  schema error fails immediately. Duplicate-aware parse and structurally tokenise every owner version
+  chronologically; malformed JSON or duplicate keys cannot be skipped to a later corrected baseline.
+  Extract only the sole top-level retirement value, never a nested/escaped text-search decoy. Capture
+  its raw bytes at the first retirement commit and require them in every later owner first-parent
+  status version through the evaluated tip. Parseable schema-invalid pinned evidence remains eligible.
   Removal, nulling, any field rewrite and mutate-then-restore all fail; comparing only first and
   current is insufficient.
 - Re-validate the **touchpoint matrix** and `board.json.shared_touchpoints` for every added slice against every track, including in-flight ones. A collision with an in-flight track means the new slice joins that track or `depends_on` it unless the human ratifies the narrow machine-readable documented-shared exception from `track-mode.md`; a Markdown row alone cannot license it.

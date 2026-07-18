@@ -62,15 +62,50 @@ def validation_fingerprints(errors: list[object]) -> list[str]:
     return sorted(set(fingerprints))
 
 
-def json_value_bytes(document: bytes, member: str) -> bytes:
-    marker = f'"{member}"'.encode()
-    marker_at = document.index(marker)
-    value_at = document.index(b":", marker_at + len(marker)) + 1
-    while document[value_at] in b" \r\n\t":
-        value_at += 1
-    text = document[value_at:].decode()
-    _, consumed = json.JSONDecoder().raw_decode(text)
-    return text[:consumed].encode()
+def top_level_json_value_bytes(document: bytes, member: str) -> bytes:
+    parsed = parse_json(document)
+    if not isinstance(parsed, dict):
+        raise ValueError("JSON document root is not an object")
+
+    text = document.decode("utf-8")
+    decoder = json.JSONDecoder()
+
+    def skip_whitespace(index: int) -> int:
+        while index < len(text) and text[index] in " \r\n\t":
+            index += 1
+        return index
+
+    index = skip_whitespace(0)
+    if index >= len(text) or text[index] != "{":
+        raise ValueError("JSON document root is not an object")
+    index = skip_whitespace(index + 1)
+    found: bytes | None = None
+    if index < len(text) and text[index] == "}":
+        raise KeyError(member)
+
+    while True:
+        key, key_end = decoder.raw_decode(text, index)
+        if not isinstance(key, str):
+            raise ValueError("JSON object member name is not a string")
+        index = skip_whitespace(key_end)
+        if index >= len(text) or text[index] != ":":
+            raise ValueError("JSON object member is missing a colon")
+        value_start = skip_whitespace(index + 1)
+        _, value_end = decoder.raw_decode(text, value_start)
+        if key == member:
+            found = text[value_start:value_end].encode("utf-8")
+        index = skip_whitespace(value_end)
+        if index >= len(text):
+            raise ValueError("unterminated JSON object")
+        if text[index] == "}":
+            break
+        if text[index] != ",":
+            raise ValueError("JSON object members are not comma-separated")
+        index = skip_whitespace(index + 1)
+
+    if found is None:
+        raise KeyError(member)
+    return found
 
 
 class GitRepository:
@@ -442,6 +477,7 @@ class ProtocolHistoryRepositoryFixture:
         self._build_second_parent_replacement_start()
         self._build_retirement_immutability_negatives(retired)
         self._build_current_schema_invalid_negatives()
+        self._build_structural_history_negatives(retired)
         self.repo.run("checkout", "-q", "-B", "fixture-legal", self.commits["legal"])
 
     def _write_mutated_original(self, base: str, mutate: Callable[[dict], None]) -> None:
@@ -701,6 +737,41 @@ class ProtocolHistoryRepositoryFixture:
         self._scenario("current_invalid_history_null", self.commits["legal"], invalid_history_null)
         self._scenario("current_maintainability_null", self.commits["legal"], maintainability_null)
 
+        self.repo.run("checkout", "-q", "-B", "scenario-current_duplicate_key", self.commits["legal"])
+        current_bytes = self.repo.show(self.commits["legal"], STATUS_PATHS[ORIGINAL_ID])
+        duplicate_current = current_bytes[:-2] + b',\n  "state": "deferred"\n}\n'
+        self.repo.write(STATUS_PATHS[ORIGINAL_ID], duplicate_current)
+        self.commits["current_duplicate_key"] = self.repo.commit("fixture negative: duplicate-key current status")
+
+    def _build_structural_history_negatives(self, retired: dict) -> None:
+        self.repo.run("checkout", "-q", "-B", "scenario-retirement_nested_decoy", self.commits["legal"])
+        changed_retirement = copy.deepcopy(retired["retirement"])
+        changed_retirement["rationale"] = "Top-level retirement changed behind a nested decoy."
+        mutated: dict[str, object] = {}
+        for key, value in retired.items():
+            if key == "retirement":
+                mutated["decoy"] = {"retirement": copy.deepcopy(retired["retirement"])}
+                mutated["retirement"] = changed_retirement
+            else:
+                mutated[key] = copy.deepcopy(value)
+        self._write_status(ORIGINAL_ID, mutated)
+        self.repo.commit("fixture negative: mutate top-level retirement behind nested decoy")
+        restored = copy.deepcopy(mutated)
+        restored["retirement"] = copy.deepcopy(retired["retirement"])
+        self._write_status(ORIGINAL_ID, restored)
+        self.commits["retirement_nested_decoy"] = self.repo.commit("fixture negative: restore top-level retirement behind nested decoy")
+
+        self.repo.run("checkout", "-q", "-B", "scenario-malformed_first_retirement", self.commits["blocked"])
+        wrong = copy.deepcopy(retired)
+        wrong["retirement"]["rollback_slice_id"] = "S99-wrong"
+        wrong_bytes = render_json(wrong)
+        correct_retirement_bytes = top_level_json_value_bytes(render_json(retired), "retirement")
+        duplicate_retirement = wrong_bytes[:-2] + b',\n  "retirement": ' + correct_retirement_bytes + b"\n}\n"
+        self.repo.write(STATUS_PATHS[ORIGINAL_ID], duplicate_retirement)
+        self.repo.commit("fixture negative: duplicate-key first retirement with wrong rollback")
+        self._write_status(ORIGINAL_ID, copy.deepcopy(retired))
+        self.commits["malformed_first_retirement"] = self.repo.commit("fixture negative: correct malformed first retirement")
+
     def track_order(self, tip: str) -> list[str]:
         return json.loads(self.repo.show(tip, "records/track-order.json"))
 
@@ -710,9 +781,12 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     failures: list[str] = []
     try:
         current_bytes = repo.show(tip, STATUS_PATHS[ORIGINAL_ID])
-        current = parse_json(current_bytes)
-    except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError):
+    except subprocess.CalledProcessError:
         return False, ["original-status-missing"]
+    try:
+        current = parse_json(current_bytes)
+    except (json.JSONDecodeError, DuplicateJSONKeyError, UnicodeDecodeError):
+        return False, ["current-status-invalid"]
     schema_errors = list(fixture.validator.iter_errors(current))
     if schema_errors:
         return False, ["current-status-invalid"]
@@ -738,6 +812,37 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     if implementation_head and not repo.is_ancestor(implementation_head, tip):
         failures.append("retirement-implementation-head-not-in-history")
 
+    owner_status_commits = repo.commits_for_path(tip, STATUS_PATHS[ORIGINAL_ID])
+    retirement_commit: str | None = None
+    retirement_bytes: bytes | None = None
+    for status_commit in owner_status_commits:
+        try:
+            status_bytes = repo.show(status_commit, STATUS_PATHS[ORIGINAL_ID])
+            status = parse_json(status_bytes)
+        except (subprocess.CalledProcessError, json.JSONDecodeError, DuplicateJSONKeyError, UnicodeDecodeError):
+            return False, ["owner-status-history-malformed"]
+        if retirement_commit is None:
+            if isinstance(status, dict) and isinstance(status.get("retirement"), dict):
+                try:
+                    retirement_bytes = top_level_json_value_bytes(status_bytes, "retirement")
+                except (KeyError, ValueError, UnicodeDecodeError):
+                    return False, ["owner-status-history-malformed"]
+                retirement_commit = status_commit
+            continue
+        try:
+            candidate_bytes = top_level_json_value_bytes(status_bytes, "retirement")
+        except KeyError:
+            failures.append("retirement-history-mutated")
+            break
+        except (ValueError, UnicodeDecodeError):
+            return False, ["owner-status-history-malformed"]
+        if candidate_bytes != retirement_bytes:
+            failures.append("retirement-history-mutated")
+            break
+
+    if not retirement_commit:
+        failures.append("retirement-transition-missing")
+
     def first_status_commit(path: str, predicate: Callable[[dict], bool]) -> str | None:
         for commit in repo.commits_for_path(tip, path):
             try:
@@ -747,31 +852,6 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
             if isinstance(status, dict) and predicate(status):
                 return commit
         return None
-
-    retirement_commit = first_status_commit(
-        STATUS_PATHS[ORIGINAL_ID],
-        lambda status: isinstance(status.get("retirement"), dict),
-    )
-    if not retirement_commit:
-        failures.append("retirement-transition-missing")
-    else:
-        try:
-            retirement_bytes = json_value_bytes(
-                repo.show(retirement_commit, STATUS_PATHS[ORIGINAL_ID]),
-                "retirement",
-            )
-            status_commits = repo.commits_for_path(tip, STATUS_PATHS[ORIGINAL_ID])
-            retirement_index = status_commits.index(retirement_commit)
-            for status_commit in status_commits[retirement_index:]:
-                candidate_bytes = json_value_bytes(
-                    repo.show(status_commit, STATUS_PATHS[ORIGINAL_ID]),
-                    "retirement",
-                )
-                if candidate_bytes != retirement_bytes:
-                    failures.append("retirement-history-mutated")
-                    break
-        except (ValueError, IndexError, subprocess.CalledProcessError, json.JSONDecodeError):
-            failures.append("retirement-history-mutated")
 
     verdict_ref = retirement.get("verifier_verdict", {})
     verdict_commit = verdict_ref.get("status_commit", "")
@@ -823,7 +903,7 @@ def evaluate_protocol_history_retirement(fixture: ProtocolHistoryRepositoryFixtu
     if len(typed) != 1 or not isinstance(typed[0], dict) or typed[0].get("invalid_history") != retirement.get("invalid_history"):
         failures.append("verifier-retirement-evidence-mismatch")
     try:
-        if json_value_bytes(pinned_verdict_bytes, "maintainability") != json_value_bytes(current_bytes, "maintainability"):
+        if top_level_json_value_bytes(pinned_verdict_bytes, "maintainability") != top_level_json_value_bytes(current_bytes, "maintainability"):
             failures.append("maintainability-bytes-changed")
     except (ValueError, IndexError, json.JSONDecodeError):
         failures.append("maintainability-bytes-unreadable")

@@ -36,7 +36,7 @@ You are operating in the **Track Integrator role** for track `$1` in release `$2
 
 The merge target is `release-wt/$2`, which the release worktree owns.
 
-**Read the board through the oracle** (reference implementation: `sworn board --json`). Run it from anywhere inside the repo — it reads `board.json` and every `status.json` straight from the `release-wt/$2` and `track/$2/*` **git refs**, so the track and slice states it reports are branch-accurate regardless of which branch the launch directory sits on. Every gate in Steps 0-1 reads this one JSON; do not re-read `board.json` or `status.json` by hand. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
+**Read the board through the oracle** (reference implementation: `sworn board --json`). Run it from anywhere inside the repo — it reads `board.json` and every `status.json` straight from the `release-wt/$2` and `track/$2/*` **git refs**, so the track and slice states it reports are branch-accurate regardless of which branch the launch directory sits on. The oracle remains sole authority for release/track/slice ownership and topology `sourceRef` selection; do not re-read an unpinned filesystem `board.json` or `status.json`, and never fall back across refs. Narrow mechanical exception: after unique oracle ownership is established, resolve `<owner_source_ref>` exactly as `refs/heads/track/$2/$1`, verify that full ref with `git show-ref --verify --quiet`, and use only branch-pinned `git show <owner_source_ref>:<status-path>`, `git rev-list --first-parent <owner_source_ref> -- <status-path>`, and commit-pinned tree/blob/mode reads derived from that history for retirement replay and evidence validation. Those reads validate the oracle-selected owner; they do not replace oracle ownership or permit working-tree rereads. Two distinct failures, two distinct remedies — do not conflate them. If the oracle command is **not on PATH**, BLOCK: "no Baton engine installed — Release Mode requires a conformant engine (reference implementation: `go install github.com/swornagent/sworn/cmd/sworn@latest`)." If the oracle **is installed but exits non-zero**, it ran and could not resolve the board: BLOCK with the engine's own stderr verbatim — "board oracle failed: `<stderr>`" — and do NOT advise installing or repairing the engine, or paraphrase its error.
 
 1. If `$2` is empty, find the release from the oracle: the release whose `.tracks[]` contains an entry with `.id == "$1"`. Exactly one match ⇒ that is `$2`; none ⇒ BLOCK ("no release contains track `$1`"); more than one ⇒ stop and ask the human.
 2. Derive `<release_worktree_branch>` as `release-wt/$2` and
@@ -65,6 +65,9 @@ and integration readiness are derived below. Do not require release-level
    dependencies as the stable `dependsOnTracks` value on the track's slice
    rows after normalizing `null` to `[]`; inconsistent normalized dependency
    arrays across rows BLOCK as malformed oracle projection.
+   Set `<owner_source_ref>` only from that unique oracle ownership to
+   `refs/heads/track/$2/$1`, verify the exact full ref, and do not substitute a
+   short name, revision expression, filesystem copy, release ref or sibling ref.
 2. **Lifecycle-history integrity gate — before every success path.** For every slice in `<slices>`,
    duplicate-aware parse and validate current `status.json` against `slice-status-v1`; on any schema
    error, BLOCK immediately before inspecting shape-dependent lifecycle fields. Then enumerate every committed version
@@ -127,8 +130,13 @@ and integration readiness are derived below. Do not require release-level
    relabelling, invalid order/state, late retirement, insufficient PASS ledger, or tree mismatch
    BLOCKs. Ordinary ancestry, equality, second-parent reachability, current board order, and current
    terminal state are insufficient chronology evidence.
-   Capture the raw retirement JSON value bytes at the first retirement transition and compare them
-   with every later owner status version on first-parent history through the evaluated tip. Removal,
+   Walk every branch-pinned owner status version chronologically. Duplicate-aware parse and
+   structurally tokenise each one; malformed JSON or duplicate members BLOCK and cannot be skipped
+   to a later corrected baseline (`owner-status-history-malformed`), while parseable schema-invalid
+   pinned evidence remains eligible.
+   Extract the sole top-level retirement value, never a nested/escaped text-search decoy. Capture
+   its raw bytes at the first retirement transition and compare them with every later owner status
+   version on first-parent history through the evaluated tip. Removal,
    nulling, rollback/evidence/acknowledgement/tracking/rationale changes, and mutate-then-restore all
    BLOCK; first-versus-current comparison is insufficient.
    For every other `deferred` slice, require an unstarted Rule-2 deferral: `start_commit: null`, the

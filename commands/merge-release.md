@@ -43,8 +43,11 @@ its enclosing track, inconsistent normalized dependencies within a track, or a
 release-key mismatch BLOCK as malformed oracle output.
 
 1. **Slice gate.** Flatten the nested
-   `.releases["$1"].tracks[] | (.slices // [])[]` rows into a state table and validate each complete
-   `status.json` from `release-wt/$1`. Every slice must satisfy track-mode's canonical
+   `.releases["$1"].tracks[] | (.slices // [])[]` rows without classifying state. For every row,
+   first duplicate-aware parse and schema-validate its complete current `status.json` from the exact
+   oracle-selected owner ref. Any error BLOCKs as `current-status-invalid` before reading `state`,
+   `retirement.disposition` or any other shape-dependent field. Only after every current record
+   passes may the command build a state table. Every slice must then satisfy track-mode's canonical
    integration-ready predicate:
    - `verified` / `shipped` — OK to merge.
    - `deferred` with null `start_commit`, the empty pending cycle-0 maintainability template, and a
@@ -52,11 +55,13 @@ release-key mismatch BLOCK as malformed oracle output.
    - `deferred` with terminal `re_slice_required` — OK only when its recorded rollback is
      `verified` / `shipped` and the originating `/merge-track` provenance contains the applicable
      passing tree-equality gate.
-   - started `deferred` with `retirement.disposition: protocol_history_invalid` — OK only when the
-     current owner status duplicate-aware parses and validates; any schema error BLOCKs immediately
-     before retirement fields are inspected. Require the raw retirement JSON value bytes from the
-     first retirement transition in every later owner first-parent status version through the
-     evaluated tip; removal, nulling, any field rewrite and mutate-then-restore BLOCK. Then require that
+   - started `deferred` with `retirement.disposition: protocol_history_invalid` — OK only when
+     every chronological owner version duplicate-aware parses and structurally tokenises. Malformed
+     JSON or duplicate keys cannot be skipped to a later baseline; parseable schema-invalid pinned
+     evidence remains eligible. Extract only the sole top-level retirement value, never a nested or
+     escaped text-search decoy. Require its raw bytes from the first retirement transition in every
+     later owner first-parent status version through the evaluated tip; removal, nulling, any field
+     rewrite and mutate-then-restore BLOCK. Then require that
      embedded track integration proves every immutable invalid-history record uses its owner's exact
      path and parsed slice/release identity and lies strictly on owner first-parent history. The
      fresh Verifier BLOCKED status must be duplicate-free, historical-schema-valid, strictly before

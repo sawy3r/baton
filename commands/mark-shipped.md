@@ -90,20 +90,24 @@ the oracle.)
    "No release `$1` on `<integration>`. Either the release name is wrong or
    `/merge-release $1` has not run."
 2. Enumerate every slice folder under `docs/release/$1/` (a subdirectory
-   containing a `status.json`). For each, read `status.json` `state`.
-3. **Authoritative maintainability gate.** Validate every current status against
-   `slice-status-v1` and validate every ledger-referenced full report against
+   containing a `status.json`) without reading or classifying state.
+3. **Authoritative maintainability gate.** First duplicate-aware parse and validate every current
+   status against `slice-status-v1`. Any error BLOCKs as `current-status-invalid` before reading
+   `state`, `retirement.disposition` or another shape-dependent field. Only after every current
+   record passes, validate every ledger-referenced full report against
    `llm-check-report-v1`, including its pinned Git blob id. Locate the release integration merge in
    `<integration>` history, walk its embedded release-assembly first-parent integrations, and for
    each slice identify the originating track integration/second-parent commit from its board-declared
    `track` id. Apply the complete canonical committed-history check to that durable track history:
    immutable start, append-only reports, non-decreasing cycle, immutable adjudication, blob identity,
    legal FSM/state coherence, terminal re-slice rollback, protocol-history retirement, and canonical
-   integration provenance. A `protocol_history_invalid` original is legal only when its immutable
-   current owner status duplicate-aware parses and schema-validates; any error BLOCKs immediately
-   before retirement fields are inspected. Capture the first retirement transition's raw retirement
-   JSON value bytes and require them in every later owner first-parent status version through the
-   evaluated tip; removal, nulling, any field rewrite and mutate-then-restore BLOCK. Then require that
+   integration provenance. A `protocol_history_invalid` original is legal only when every
+   chronological owner version duplicate-aware parses and structurally tokenises. Malformed JSON or
+   duplicate keys cannot be skipped to a later baseline; parseable schema-invalid pinned evidence
+   remains eligible. Extract only the sole top-level retirement value, never a nested or escaped
+   text-search decoy. Capture its raw bytes at the first retirement transition and require them in
+   every later owner first-parent status version through the evaluated tip; removal, nulling, any
+   field rewrite and mutate-then-restore BLOCK. Then require that
    its invalid-history records use the owner's exact path and matching parsed slice/release identity and
    lie strictly on owner first-parent history. Its fresh Verifier BLOCKED status must reject
    duplicate keys, validate against its governing schema at that historical commit, lie strictly
@@ -129,7 +133,7 @@ the oracle.)
    verified tree-equality proof already mandated by `/merge-track`. BLOCK on any missing,
    malformed, Implementer-only, or incoherent lifecycle; displayed overall state alone is never
    shipping authority.
-4. **Ship gate.** Every slice must be in a terminal state:
+4. **Ship gate.** Now read each validated current `state`. Every slice must be in a terminal state:
    - `verified` — will be flipped to `shipped` by this command.
    - `shipped` — already shipped (idempotent re-run, or a hot-patch slice
      shipped earlier); left untouched.

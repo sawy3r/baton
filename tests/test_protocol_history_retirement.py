@@ -14,6 +14,7 @@ from protocol_history_git_fixture import (
     merge_release_predicate,
     merge_track_predicate,
     parse_json,
+    top_level_json_value_bytes,
 )
 
 
@@ -114,7 +115,7 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             "unrelated_evidence_release": "invalid-record-owner-identity-mismatch",
             "second_parent_evidence": "invalid-record-not-before-verdict-first-parent",
             "schema_invalid_verdict": "verdict-status-invalid",
-            "duplicate_key_verdict": "verdict-duplicate-json-key",
+            "duplicate_key_verdict": "owner-status-history-malformed",
             "second_parent_verdict": "verdict-not-before-retirement-first-parent",
             "combined_retirement_rollback": "retirement-after-rollback-planning",
             "second_parent_replacement_start": "replacement-start-not-on-owner-first-parent",
@@ -126,6 +127,9 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             "retirement_wrong_rollback_rewrite": "retirement-history-mutated",
             "current_invalid_history_null": "current-status-invalid",
             "current_maintainability_null": "current-status-invalid",
+            "current_duplicate_key": "current-status-invalid",
+            "retirement_nested_decoy": "retirement-history-mutated",
+            "malformed_first_retirement": "owner-status-history-malformed",
         }
         for scenario, expected_failure in scenarios.items():
             with self.subTest(scenario=scenario):
@@ -140,6 +144,33 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
     def test_duplicate_json_keys_are_rejected_before_schema_validation(self) -> None:
         with self.assertRaises(DuplicateJSONKeyError):
             parse_json(b'{"verification": {}, "verification": {}}')
+
+    def test_top_level_raw_value_extractor_is_structural_and_duplicate_aware(self) -> None:
+        nested_decoy = b'{"decoy":{"retirement":{"wrong":true}},"retirement":{"real":[1,{"escaped":"a\\\"b"}]}}'
+        self.assertEqual(
+            b'{"real":[1,{"escaped":"a\\\"b"}]}',
+            top_level_json_value_bytes(nested_decoy, "retirement"),
+        )
+        self.assertEqual(
+            b'"line\\nquote\\\"slash\\\\"',
+            top_level_json_value_bytes(b'{ \n "retirement" \t : \t "line\\nquote\\\"slash\\\\" \n}', "retirement"),
+        )
+        cases = [
+            (b'{"retirement":null}', b"null"),
+            (b'{"retirement":[ 1, {"nested": true} ]}', b'[ 1, {"nested": true} ]'),
+            (b'{"retirement": { "a" : [false, null] }}', b'{ "a" : [false, null] }'),
+        ]
+        for document, expected in cases:
+            with self.subTest(document=document):
+                self.assertEqual(expected, top_level_json_value_bytes(document, "retirement"))
+        with self.assertRaises(KeyError):
+            top_level_json_value_bytes(b'{"other":null}', "retirement")
+        for duplicate in (
+            b'{"retirement":null,"retirement":{}}',
+            b'{"decoy":{"retirement":null,"retirement":{}},"retirement":{}}',
+        ):
+            with self.subTest(duplicate=duplicate), self.assertRaises(DuplicateJSONKeyError):
+                top_level_json_value_bytes(duplicate, "retirement")
 
     def test_owner_bound_history_rejects_other_slice_release_and_second_parent(self) -> None:
         expectations = {
@@ -163,7 +194,7 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
     def test_historical_verdict_must_be_unique_schema_valid_and_first_parent(self) -> None:
         expectations = {
             "schema_invalid_verdict": "verdict-status-invalid",
-            "duplicate_key_verdict": "verdict-duplicate-json-key",
+            "duplicate_key_verdict": "owner-status-history-malformed",
             "second_parent_verdict": "verdict-not-before-retirement-first-parent",
         }
         for scenario, expected in expectations.items():
@@ -204,7 +235,7 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
         self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
 
     def test_retirement_record_is_byte_immutable_across_every_owner_status_version(self) -> None:
-        for scenario in ("retirement_wrong_rollback_rewrite", "retirement_mutate_restore"):
+        for scenario in ("retirement_wrong_rollback_rewrite", "retirement_mutate_restore", "retirement_nested_decoy"):
             with self.subTest(scenario=scenario):
                 tip = self.git_fixture.commits[scenario]
                 ready, failures = evaluate_protocol_history_retirement(self.git_fixture, tip)
@@ -214,8 +245,18 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 self.assertFalse(merge_release_predicate(self.git_fixture, tip))
                 self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
 
+    def test_malformed_owner_status_cannot_be_skipped_to_later_retirement_baseline(self) -> None:
+        tip = self.git_fixture.commits["malformed_first_retirement"]
+        self.assertEqual(
+            (False, ["owner-status-history-malformed"]),
+            evaluate_protocol_history_retirement(self.git_fixture, tip),
+        )
+        self.assertFalse(merge_track_predicate(self.git_fixture, tip))
+        self.assertFalse(merge_release_predicate(self.git_fixture, tip))
+        self.assertFalse(mark_shipped_predicate(self.git_fixture, tip))
+
     def test_current_schema_invalid_shapes_stop_before_shape_dependent_evaluation(self) -> None:
-        for scenario in ("current_invalid_history_null", "current_maintainability_null"):
+        for scenario in ("current_invalid_history_null", "current_maintainability_null", "current_duplicate_key"):
             with self.subTest(scenario=scenario):
                 tip = self.git_fixture.commits[scenario]
                 self.assertEqual(
@@ -286,9 +327,15 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "strictly ordered on that first-parent",
                 "non-object typed evidence",
                 "evaluated owner tip's first-parent",
-                "raw retirement JSON value bytes",
+                "raw bytes at the first retirement transition",
                 "mutate-then-restore",
                 "BLOCK immediately",
+                "structurally tokenise",
+                "text-search decoy",
+                "owner-status-history-malformed",
+                "<owner_source_ref>",
+                "git rev-list --first-parent <owner_source_ref>",
+                "never fall back across refs",
                 "implementation_head",
             ],
             "commands/merge-release.md": [
@@ -302,9 +349,12 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "distinct strict first-parent chronology",
                 "non-object typed evidence",
                 "evaluated owner tip's first-parent",
-                "raw retirement JSON value bytes",
+                "raw bytes from the first retirement transition",
                 "mutate-then-restore",
-                "BLOCKs immediately",
+                "current-status-invalid",
+                "structurally tokenises",
+                "text-search decoy",
+                "cannot be skipped",
             ],
             "commands/mark-shipped.md": [
                 "commit/path/blob identity",
@@ -316,9 +366,12 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
                 "distinct and strictly ordered",
                 "non-object typed evidence",
                 "evaluated owner tip's first-parent",
-                "raw retirement JSON value bytes",
+                "raw bytes at the first retirement transition",
                 "mutate-then-restore",
-                "BLOCKs immediately",
+                "current-status-invalid",
+                "structurally tokenises",
+                "text-search decoy",
+                "cannot be skipped",
             ],
         }
         for relative_path, clauses in requirements.items():
@@ -326,6 +379,18 @@ class ProtocolHistoryRetirementContractTest(unittest.TestCase):
             for clause in clauses:
                 with self.subTest(surface=relative_path, clause=clause):
                     self.assertIn(clause, contract)
+
+    def test_integration_commands_validate_current_status_before_classification(self) -> None:
+        merge_release = (ROOT / "commands/merge-release.md").read_text()
+        self.assertLess(
+            merge_release.index("Any error BLOCKs as `current-status-invalid`"),
+            merge_release.index("started `deferred` with `retirement.disposition"),
+        )
+        mark_shipped = (ROOT / "commands/mark-shipped.md").read_text()
+        self.assertLess(
+            mark_shipped.index("Any error BLOCKs as `current-status-invalid`"),
+            mark_shipped.index("4. **Ship gate.** Now read each validated current `state`"),
+        )
 
 
 if __name__ == "__main__":

@@ -122,7 +122,9 @@ Retirement status must preserve the complete parsed `maintainability` value and 
 byte-for-byte from that verdict blob. The Planner may change only top-level retirement/deferral and
 planning fields during the ratified transition; it must also require exact equality between the
 typed Verifier evidence and retirement evidence. Once non-null, the complete retirement record is
-byte-identical in every later committed owner status version. Capture the raw retirement JSON value
+byte-identical in every later committed owner status version. Duplicate-aware parse each complete
+owner status, then use a structural JSON tokenizer to extract the sole top-level `retirement` value;
+string search is forbidden because nested/escaped decoys are not authority. Capture those exact raw value
 bytes at the first retirement transition and compare them with every later version on the complete
 owner first-parent history through the evaluated tip. Removal, nulling, field rewrites and
 mutate-then-restore histories all fail; first-versus-current comparison is insufficient. Any cited commit outside the owner
@@ -146,6 +148,13 @@ Parse the current owner status with duplicate-key rejection and validate it agai
 `slice-status-v1` before any retirement field is dereferenced. Any schema error returns the sole
 deterministic current-status-invalid failure immediately; shape-dependent retirement evaluation
 must not continue.
+
+Baseline discovery walks every owner status version chronologically on the selected first-parent
+chain. Every version must be valid JSON with no duplicate member at any depth and must tokenise
+structurally; malformed JSON, duplicate keys or extraction failure stops with
+owner-status-history-malformed and cannot be skipped to a later corrected retirement. Parseable
+schema-invalid lifecycle records remain eligible for the exact pinned invalid-history disposition;
+malformed JSON never does.
 
 Maintainability has two role-specific uses; they are intentionally not equal:
 

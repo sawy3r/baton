@@ -84,12 +84,17 @@ the separate top-level retirement record. The record pins each owner-bound inval
 schema blob and deterministic validation-error fingerprints, and the fresh Verifier BLOCKED status
 commit/path/blob identity. The Verifier stores the invalid-history identities in a strict typed
 violation object, and retirement must repeat that array exactly; free-text evidence is never parsed.
-Once committed, the complete retirement record is immutable. Engines capture its raw JSON value
-bytes at the first retirement commit and require the same bytes in every later owner status version
+Once committed, the complete retirement record is immutable. Engines duplicate-aware parse every
+owner version and structurally extract the sole top-level retirement value, never text-searching or
+selecting a nested/escaped decoy. They capture its raw JSON value bytes at the first retirement
+commit and require the same bytes in every later owner status version
 on first-parent history through the evaluated tip; removal, nulling, any field rewrite and
 mutate-then-restore all fail. Engines reproduce those facts from Git before accepting the
 disposition. Current status is duplicate-aware parsed and schema-validated first; any schema error
 fails immediately before retirement shapes are inspected.
+Every chronological owner version is parsed/tokenised before baseline discovery; malformed JSON or
+duplicate members fail closed and cannot be skipped to a later corrected retirement. Parseable
+schema-invalid evidence records remain available to this disposition.
 Ordinary delivery, contract, test, ambiguity, unavailable-gate, or maintainability failures cannot
 use it. Eligibility requires the preserved maintainability lifecycle to be `passed`, with a concrete
 `implementation_head` and a non-empty qualifying PASS ledger whose newest report pins that head;
@@ -248,6 +253,13 @@ Aggregate `sourceRef` is either the empty read-only filesystem-fallback sentinel
 or a syntactically safe fully qualified `refs/heads/...` / `refs/remotes/...`
 name. A mutating command rejects the empty sentinel, verifies the exact ref with
 `git show-ref --verify`, and only then uses it in an object selector.
+
+The oracle remains authority for release/track/slice ownership and topology source selection. A
+command that mechanically replays retirement history MAY, after unique oracle ownership, resolve
+the exact full owner track ref and perform only ref-pinned `git show`, `git rev-list --first-parent`
+and commit-pinned tree/blob/mode reads against it. This validates the selected owner history; it is
+not authority to reread an unpinned filesystem status, use a revision expression, or fall back to a
+release, sibling, current-checkout or other ref.
 
 An engine MAY expose convenience fields such as `worktreePath`,
 `worktreeBranch`, `releaseWorktreePath`, `blockedBy`, `readyToMerge`, or a
