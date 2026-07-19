@@ -22,7 +22,7 @@ The repository boundary in this decision was executed on 2026-07-19:
   `732ba47672e12edb55494d120bb7325850187643` is published on
   `feat/baton-core-v1` after its portable suite passed;
 - fresh clone `/home/brad/projects/sworn-v1` contains disconnected orphan branch
-  `v1`, whose root commit is
+  `release/v1.0.0`, whose root commit is
   `035226666a529959ec862f4855e27f3b2b9863f0`; and
 - the root commit's GitHub CI passed formatting, tests, and vet. The repository
   default branch remains `main` deliberately.
@@ -47,10 +47,10 @@ clone**.
 2. After authorizer confirmation, protect the chosen head with a legacy branch,
    annotated non-release tag, and remote branch/tag rules. Record and verify the
    exact local and remote object IDs.
-3. Create the orphan v1 branch in a fresh clone of the same remote. Do not add
-   another linked worktree to the current clone: linked worktrees share Git
-   configuration, refs, objects, hooks, and the common directory even when their
-   checked-out files are separate.
+3. Create the orphan `release/v1.0.0` branch in a fresh clone of the same remote.
+   Do not add another linked worktree to the current clone: linked worktrees
+   share Git configuration, refs, objects, hooks, and the common directory even
+   when their checked-out files are separate.
 4. Install v1-specific CI on the orphan branch from its first commit. Do not
    change the repository default branch until the recovery proof has passed.
 5. Preserve issues, captures, and selected black-box failure fixtures.
@@ -71,9 +71,10 @@ The live `release/v0.2.0` checkout is currently at `303dc1d2`, three commits
 ahead of `origin/release/v0.2.0`; `origin/main` is a different, older head. The
 clone currently has 40 linked worktrees, 17 local branches not merged into that
 release head, and at least one substantially dirty linked worktree containing
-both modified and untracked files. The remote has no existing tags, v1 branch,
-branch protection, or tag ruleset. Phase 0 must resolve which exact commit is
-the canonical archive while preserving the other archaeology; it must
+both modified and untracked files. The remote has no existing tags,
+`release/v1.0.0` branch, branch protection, or tag ruleset. Phase 0 must resolve
+which exact commit is the canonical archive while preserving the other
+archaeology; it must
 not infer one from a branch name, discard unmerged refs, clean worktrees, or
 capture only the first dirty path. A tag matching `v*` also triggers the current
 release workflow, so use a non-release archival tag such as `legacy/v0-final`
@@ -876,8 +877,8 @@ promoted.
 Only after that resolution and successful external restore proof, create and push
 a protected legacy branch and non-release annotated tag, install branch/tag rules
 that make them effectively immutable, and verify their remote object IDs. Create
-the orphan v1 branch in a fresh separate clone, with v1 CI matching that branch
-from its first commit.
+the orphan `release/v1.0.0` branch in a fresh separate clone, with v1 CI matching
+that branch from its first commit.
 Keep the current default branch and scheduled workflows unchanged until the
 recovery proof is complete. Turn confirmed failures into a compact black-box
 corpus by copying fixture bytes, never by merging v0 production history. Do not
