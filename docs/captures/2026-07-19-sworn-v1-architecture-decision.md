@@ -1,7 +1,36 @@
 # Sworn v1 architecture decision
 
 Date: 2026-07-19
-Status: conditional GO; Sworn repository cutover not yet performed
+Status: foundation executed; unattended use remains NO-GO
+
+## Execution record
+
+The repository boundary in this decision was executed on 2026-07-19:
+
+- canonical v0 commit
+  `303dc1d2fc86b3775ef3cb00961e70c49bec87bf` is retained by protected branch
+  `legacy/v0` and protected annotated non-release tag `legacy/v0-final`;
+- the private restoration-tested archive is at
+  `/mnt/SG4000/sworn-archives/sworn-v0-2026-07-19`, with checksum-manifest
+  digest `f226cdf5909af940d0cfc79b98036a7a0ab7eff0f5fd1d3834a18fe1011f8241`;
+- the archive preserves 214 normal local refs, 106 remote refs, 40 linked
+  worktrees, four stashes, the exact 28-record dirty worktree state, selected
+  runtime state, and refutation fixtures. Restored local and remote mirrors
+  passed `git fsck`; dirty bytes, symlinks, executable modes, index state, and
+  Git status matched the source;
+- Baton 1.0 release-candidate protocol commit
+  `732ba47672e12edb55494d120bb7325850187643` is published on
+  `feat/baton-core-v1` after its portable suite passed;
+- fresh clone `/home/brad/projects/sworn-v1` contains disconnected orphan branch
+  `v1`, whose root commit is
+  `035226666a529959ec862f4855e27f3b2b9863f0`; and
+- the root commit's GitHub CI passed formatting, tests, and vet. The repository
+  default branch remains `main` deliberately.
+
+This proves the archive and source-history boundary, not the delivery engine.
+The 18 Baton real-boundary engine cases remain `NOT RUN`; no Baton final tag,
+Sworn conformance claim, default-branch cutover, or unattended-use approval has
+been made.
 
 ## Decision
 
