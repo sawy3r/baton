@@ -20,9 +20,10 @@ approved plan -> builder -> exact submission -> fresh verifier -> safe integrati
 On the normal path Baton requires two model roles: a builder and a fresh
 verifier. Heavy review is added only by risk-selected assurance packs.
 
-The 1.0 protocol is a release candidate. Passing the portable record suite is
-necessary but not sufficient: the final `v1.0.0` tag waits until a real engine
-passes every published Git, persistence, subprocess, sandbox, and recovery case.
+The current protocol release is [`v1.0.0-rc.1`](docs/releases/v1.0.0-rc.1.md).
+Passing the portable record suite is necessary but not sufficient: the final
+`v1.0.0` tag waits until a real engine passes every published Git, persistence,
+subprocess, sandbox, and recovery case.
 
 ## What is here
 
