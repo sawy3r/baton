@@ -1,7 +1,8 @@
 # Baton v1 course correction
 
 Date: 2026-07-22
-Status: proposed for ratification
+Status: ratified
+Ratified: 2026-07-22
 
 ## Decision
 
@@ -343,14 +344,14 @@ directory layout, or Sworn internals.
 ## Release consequence
 
 `v1.0.0-rc.1` remains an immutable and useful experiment, but it is not the
-final Baton product contract. Before final `v1.0.0`:
+final Baton product contract. With this responsibility, artefact, and recovery
+baseline ratified, final `v1.0.0` requires:
 
-1. ratify this responsibility and artefact model;
-2. revise Core, Protocol, Assurance, Conformance, schemas, and public language;
-3. restore the portable skill/command kit;
-4. restore the shared oracle, terminal board, and single-file WebUI;
-5. dogfood the complete manual workflow without Sworn;
-6. publish a new release candidate; and only then
-7. require Sworn to pin and conform to that Baton release candidate before its
+1. revising Core, Protocol, Assurance, Conformance, schemas, and public language;
+2. restoring the portable skill/command kit;
+3. restoring the shared oracle, terminal board, and single-file WebUI;
+4. dogfooding the complete manual workflow without Sworn;
+5. publishing a new release candidate; and only then
+6. requiring Sworn to pin and conform to that Baton release candidate before its
    engine proceeds; Sworn's evaluation system and hosted product scope remain
    explicit product decisions in Sworn.
