@@ -35,6 +35,51 @@ The target is not a return to Baton 0.x. It is the original working loop with th
 RC1 trust kernel and without the accumulated rule, schema, prompt, and artefact
 burden.
 
+## Archaeological baseline
+
+`fired/baton-install-backup` at its current head is not the baseline. It is the
+end of an accretion history.
+
+The strict pre-Sworn cutoff is Fired commit `386d4589` on 14 June 2026, when the
+SwornAgent name and the Baton/Sworn product split were first ratified. The final
+backup sync before that decision, `b5b996b8`, was already 70 canonical files and
+18,984 lines, plus a copied OpenCode surface. Its loop was 2,614 lines and its
+single-file WebUI was 1,613 lines. Restoring it wholesale would restore much of
+the complexity this correction is intended to remove.
+
+There is no single pristine fork point. The useful lineage is:
+
+- `e984d658` (27 May): earliest complete recoverable five-responsibility loop,
+  role prompts, slash commands, Git oracle, terminal board, and read-only
+  single-file WebUI;
+- `5d836ed6` (29 May): removes tmux and makes each loop responsibility a fresh
+  inline dispatch;
+- `2c8ce241` (29 May): makes the board a stateless projection, with authored
+  plans separated from the sole machine-authoritative work state;
+- `0c7b1460` (30 May): adds calibrated autonomous Captain triage; and
+- `b7654a30` (10 June): introduces one role-independent runtime-driver contract
+  used by every responsibility.
+
+Later pre-Sworn commits remain valuable failure and conformance evidence, but
+not source to restore. In particular, the WebUI became an active mission-control
+surface, provider implementations grew toward 900 lines each, model rotation
+entered the loop, and platform copies duplicated the workflow. The fuller
+multi-provider behaviour is visible at `124265bd` (14 June, about an hour before
+Sworn was ratified); its compatibility cases are requirements evidence, not a
+fork point.
+
+Every useful pre-Sworn checkpoint still had only seven Baton rules and no JSON
+Schema catalogue. The later twelve-rule and multi-schema system was therefore
+not part of the working essence. The inverse warning also matters: substantial
+overhead had already accumulated in prompts, recovery code, UI actions, and
+copied platform surfaces before the extra rules arrived. Cutting the rule count
+is necessary, but it is not sufficient.
+
+The recovery formula is therefore:
+
+> Rebuild from the May 29 stateless loop and board semantics, add only the June
+> 10 common driver boundary, and treat the surrounding code as archaeology.
+
 ## The core in ordinary language
 
 1. Stay inside the work that was agreed.
@@ -140,36 +185,50 @@ on it.
 ## Artefact and schema budget
 
 An artefact is mandatory only when the next role or the board consumes it. Baton
-should have four small authored record shapes at most:
+should have four logical record shapes at most. They may be separate files for a
+multi-work release or co-located for a small change:
 
-1. `plan` — Planner's proposed delivery and work contracts, required checks,
-   heightened review policy when applicable, and protected approval reference;
-2. `handoff` — one compact append-only per-work stream carrying design revisions,
-   Captain decisions, operational control results, Verifier dispatch, and Merge
-   result;
-3. `submission` — the exact candidate, changed paths, check results, and
+1. `plan` — intent, bounded work contracts, acceptance checks, dependencies,
+   required checks, and the protected approval reference;
+2. `design` — the Implementer's proposed approach and revision, consumed by the
+   Captain before implementation;
+3. `proof` — the exact candidate, changed paths, check results, and
    acceptance-linked evidence; and
-4. `verdict` — Verifier's result bound to that submission.
+4. `status` — the sole machine-authoritative current projection, including the
+   active plan revision, stage, owner, blocker, Captain gate, Verifier gate,
+   candidate binding, and Merge result.
 
-Every accepted handoff is immutable; a role appends a new event rather than
-rewriting history. The board is derived from these facts and Git, not another
-authored state file. A concise design body can live in or be referenced by its
-handoff; it does not need a second design schema or duplicated review report.
-The Merge handoff binds the expected target and observed Git result, while Git
-independently proves the recorded repository fact.
+The portable reference kit should normally render these as concise Markdown for
+`plan`, `design`, and `proof`, plus one small versioned `status.json`. A
+multi-work plan may list work items and dependencies in its frontmatter; that is
+an authored registry, not another state store. Detailed Captain or Verifier
+findings may be referenced when they do not fit in the compact gate payload, but
+they do not require parallel Markdown and JSON copies.
+
+`status.json` is validated before every transition. Its gate payloads bind the
+Captain decision to a design revision, the Verifier decision to an exact
+candidate and proof revision, and Merge to the exact passed candidate and
+expected target. The board is derived from this record and Git. It never owns a
+second lifecycle state.
+
+The manual kit relies on Git history for record history. It does not require a
+generic append-only event stream or hand-written activity log. Sworn may retain
+richer immutable engine events for crash recovery, audit, evaluation, and
+hosted observability without making those events part of the protocol handoff.
 
 The Implementer presents the candidate and evidence. Small vendor-neutral Baton
 tooling independently derives Git identity, changed paths, and check results; an
 Implementer's unsupported claim is never proof. An autonomous engine may
 produce the same record through stronger containment and attestation.
 
-The standard path must not require intake, journal, RTM, journey, QA-runbook,
-maintainability-cycle, assurance-policy, dedicated control-receipt,
-rendered-board, or narrative-capture artefacts. Projects may add their own
-documents, and engines may retain richer internal events and receipts, but these
-do not become universal Baton handoffs.
+The standard path must not require separate intake, journal, activity, ack,
+RTM, journey, QA-runbook, maintainability-cycle, assurance-policy, dedicated
+control-receipt, rendered-board, or narrative-capture artefacts. Projects may
+add their own documents, and engines may retain richer internal events and
+receipts, but these do not become universal Baton handoffs.
 
-Schemas should validate the few facts that make a gate trustworthy. They should
+Schemas should validate the few facts that make a gate trustworthy. One work
+status schema with small embedded gate payloads is the default budget. It must
 not encode a second orchestration engine or every historical incident.
 
 ## Rule admission
@@ -215,11 +274,12 @@ separate reading material and are not required context for every run.
 
 ## Thin board
 
-Restore and generalise the proven Baton board architecture from
-`fired/baton-install-backup` behind one stable, read-only oracle contract:
+Restore and generalise the proven board behaviour from Fired commits
+`e984d658` / `2c8ce241` behind one stable, read-only oracle contract. Preserve
+the architecture, not the historical files:
 
-- the original branch-aware `.mjs` oracle is the reference implementation and
-  resolves authoritative committed records and Git facts;
+- a small branch-aware `.mjs` oracle resolves authoritative committed
+  `status.json` records, authored plan membership, and Git facts;
 - JSON, terminal, and WebUI views consume that same projection;
 - the single-file local WebUI remains presentation-only, auto-refreshing, and
   dependency-free beyond built-in Node.js;
@@ -229,8 +289,11 @@ Restore and generalise the proven Baton board architecture from
 
 The old oracle's sound ownership-over-recency rule, Git-ref reads, dependency
 derivation, and shared presentation source should be retained in the Git
-reference adapter. Coupling to old frontmatter parsing, historical recovery
-hacks, and the expanded 0.x state set should be removed.
+reference adapter. Its working-tree fallbacks, malformed-record healing,
+project-specific path recovery, unescaped historical UI rendering, and expanded
+0.x state vocabulary should not be copied. The later mission-control actions,
+worker controls, SSE stream, and cost dashboard belong to Sworn, not Baton's
+thin board.
 
 The reference kit needs one documented default record location, with a local
 configuration override. Directory layout and Node.js are not protocol
