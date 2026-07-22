@@ -26,6 +26,7 @@ compatibility layer.
 |---|---|
 | Five principles and five responsibility contracts | Scheduling and autonomous looping |
 | Plan, design, proof, and status handoffs | Leases, retries, cancellation, and crash recovery |
+| Reference `release-wt` / owning-track topology, authority, and oracle rules | Creating worktrees, enforcing one active writer per track, and bounded parallel execution |
 | Five canonical operations and generated host adapters | Provider drivers and per-role runtime/model configuration |
 | Record validation and workflow conformance | Process, credential, and authority isolation |
 | One read-only oracle with JSON, terminal, and WebUI views | Runtime events, evals, cost, alerts, and hosted operations |
@@ -39,21 +40,63 @@ engine. Manual Baton users do not need a driver or Sworn.
 ```text
 baton-plan
   -> external approval
-  -> baton-implement       (write or revise design, then stop)
-  -> baton-design-review   (PROCEED | REVISE | ESCALATE)
-       REVISE   -> baton-implement
-       ESCALATE -> external decision
-  -> baton-implement       (build exact candidate and proof)
-  -> baton-verify          (fresh context; PASS | FAIL | BLOCKED)
-       FAIL     -> baton-implement
-       BLOCKED  -> baton-plan or external decision
-       no result -> fresh retry or operational attention
-  -> baton-merge           (deterministic exact-candidate gate)
+
+  for each dependency-ready track              (tracks may run in parallel)
+    for each ordered slice                      (one at a time in the track)
+      -> baton-implement       (write or revise design, then stop)
+      -> baton-design-review   (PROCEED | REVISE | ESCALATE)
+           REVISE   -> baton-implement
+           ESCALATE -> external decision
+      -> baton-implement       (build candidate and proof)
+      -> baton-verify          (fresh context; PASS | FAIL | BLOCKED)
+           FAIL     -> baton-implement
+           BLOCKED  -> baton-plan or external decision
+           no result -> fresh retry or operational attention
+    -> baton-merge --track     (compose the frozen, passed track head)
+
+  -> baton-verify --assembly   (fresh; complete plan over assembled product)
+  -> baton-merge --release     (deterministic exact-assembly gate)
 ```
 
 The Implementer may resume its own context after Captain review. Captain is a
 distinct responsibility invocation. Verifier freshness is unconditional. Merge
 uses no model turn unless a real conflict or product decision requires one.
+
+The same five responsibilities cover both merge levels. Track merge is
+mechanical composition after every slice passes. Assembly verification is the
+fresh quality gate over the composed whole; only that release-level PASS permits
+Merge to the target.
+
+## Release and track topology
+
+A release has one assembly workspace. The Planner divides its work items
+(`slices` in release mode) into ordered tracks. Each track has one owning
+workspace and advances its slices serially; independent, dependency-ready
+tracks may advance in parallel.
+
+The reference Git layout is the one proven by the Coach loop:
+
+- `release-wt/<release>` is the release assembly branch and worktree. Its
+  approved plan defines the ordered work in each track, ownership, dependencies,
+  and baseline statuses.
+- `track/<release>/<track-id>` is the branch and worktree for one track, created
+  from `release-wt` only after its dependencies are present there.
+- Parallel tracks must have non-conflicting declared touch surfaces. Overlapping
+  work belongs in one serial track or behind an explicit track dependency; an
+  unexpected merge conflict blocks for replan or repair and re-verification.
+- Only one invocation may have write authority in a track at a time. Baton
+  defines that invariant and rejects stale branch-head transitions; Sworn owns
+  leases and active-worker enforcement for autonomous execution.
+- Slices commit directly to their owning track. A track whose exact frozen head
+  has passed its gates is composed into `release-wt`; the assembled release is
+  then verified and merged to its target.
+
+The plan on `release-wt` remains authoritative even though track branches carry
+stale copies. Ownership cannot be reassigned after a track materialises; a
+replan abandons that work identity and creates a new one on its new track. Track
+Merge records the exact frozen head on `release-wt` and transfers record
+authority there only after Git ancestry and record equality prove inclusion.
+The track ref then freezes and may be archived after release completion.
 
 ## Record model
 
@@ -70,40 +113,66 @@ Plan, design, and proof bytes are content-addressed. `status.json` references
 those digests and independently observable Git facts; it does not make them true
 by assertion.
 
-The reference kit stores record history on a dedicated Git metadata ref, updated
-with compare-and-set and never merged into the product candidate. This prevents
-recording `PASS` from changing the candidate that passed. The protocol permits
-another candidate-independent durable store, but the board and conformance
-behavior remain identical.
+Git commits provide record history and branch-head compare-and-set. There is no
+global Baton records branch, workflow database, or second mutable authority in
+the manual kit. An autonomous engine may retain additional runtime evidence in
+its own store, but its durable Baton projection follows the same release and
+owning-track rules.
 
-The default Git reference is `refs/heads/baton/records`, maintained without a
-working-tree checkout through compare-and-set. Rewriting its history is a
-conformance failure; collaboration setups should enforce that with remote ref
-protection where available. Its logical tree is:
+The plan is also the release registry. Its concise machine-readable header maps
+an ordered work list to each track and records track dependencies. The reference
+default is `.baton/releases`, with one repo-local override. The root must resolve
+to one canonical, repo-relative metadata path; symlinked or escaping roots fail
+closed. Every branch uses that same root:
 
 ```text
-deliveries/<delivery-id>/
+.baton/releases/<release>/
   plan.md
   work/<work-id>/
     design.md
     proof.md
     status.json
+  assembly/
+    proof.md
+    status.json
 ```
 
-Only `plan.md` and each work item's `status.json` exist after planning. The
-metadata branch is publishable for collaboration but is never merged into the
-product target.
+Only `plan.md` and each work item's `status.json` exist after planning. Only
+`release-wt` may change the plan or ownership map; a track may advance only the
+next incomplete work assigned to it.
 
-The single `work-status-v1` schema covers only:
+Implementation records the exact candidate commit and a canonical product-tree
+identity in proof and status. The product tree is the ordered Git path, mode,
+and blob projection outside the configured Baton record root. Later gate-record
+commits may touch only that work item's record subtree. Merge recomputes the
+product tree, so recording a verdict cannot silently change what was verified.
+The record root is reserved metadata: if build, test, package, deploy, hook, or
+runtime behavior consumes a path beneath it, that path is part of the product
+projection and cannot use the record-only exception.
 
-- work identity and monotonic projection revision;
-- write-once gate identities and store-CAS predecessor binding;
-- authoritative source and target refs;
+Per-work verification is not authority to ship an unverified composition. Once
+all frozen track heads have been composed into `release-wt`, the same proof and
+status shapes record one release-level assembly candidate. A fresh Verifier
+checks that exact product tree against the complete approved plan. Only its PASS
+authorizes Merge to the expected target. This adds no role, record shape, or
+schema; it closes the seam that parallel composition creates.
+
+Product-tree equality alone never authorizes release Merge. The expected target
+must still be current, and the observed result must contain the exact recorded
+assembly candidate through either a fast-forward to that commit or a
+deterministic two-parent merge of the expected target and that candidate. The
+reference kit retains `release-wt` as the audit ref for proof, PASS, and Merge
+result commits made after candidate capture.
+
+The single `work-status-v1` schema covers work and assembly status, and only:
+
+- record kind and identity, release, optional track ownership, and source and
+  target refs;
 - active plan digest plus protected approval reference and digest;
 - durable stage, disposition, next responsibility, and optional blocker;
 - design digest and Captain outcome bound to that digest;
-- proof digest plus exact repository, base, candidate commit, and tree identity,
-  bound to the approval and Captain decision under which it was built;
+- proof digest plus exact repository, base, candidate commit, and product-tree
+  identity, bound to the approval and Captain decision under which it was built;
 - Verifier outcome bound to the candidate and proof, with a distinct fresh-run
   dispatch attestation; and
 - Merge's passed candidate, expected target, outcome, and observed target.
@@ -239,20 +308,24 @@ conformance/
 ```
 
 Platform installers render adapters from `operations/`; they do not introduce a
-second role-prompt directory. `reference/records` owns metadata-ref reads,
-content digests, validation, and compare-and-set transitions shared by the
-operations and board.
+second role-prompt directory. `reference/records` owns release/track ref reads,
+content digests, semantic validation, and branch-head compare-and-set shared by
+the operations and board.
 
 ## Read-only board
 
 The reference oracle:
 
-1. resolves the configured plan or metadata ref;
-2. discovers work status records;
-3. follows each record's authoritative source ref;
-4. validates its record and bound Git objects;
-5. selects ownership over recency; and
-6. emits one deterministic `baton.board/v1` JSON projection.
+1. resolves the approved plan from `release-wt/<release>`;
+2. discovers its ordered work, track ownership, dependencies, and exact track
+   refs from that plan;
+3. reads baseline records from `release-wt` and records from every track ref;
+4. before a track materialises, selects its release baseline; while it is
+   unmerged, requires each slice's owning-track record; after the exact frozen
+   head is composed, selects the merge-recorded `release-wt` copy;
+5. validates that selection, its transition, and its bound Git objects; and
+6. derives track actionability and emits one deterministic `baton.board/v1`
+   JSON projection.
 
 Terminal and WebUI renderers consume that exact projection. They do not derive
 state independently.
@@ -262,9 +335,15 @@ escaped, protected by a restrictive content-security policy, and refreshed by
 polling. It has no POST routes, subprocess execution, actions, workers, event
 stream, model data, cost data, or hidden mutable state.
 
-Malformed or conflicting authoritative records fail visibly. The oracle does
-not heal them, fall back silently to a working tree, or choose a newer foreign
-branch over the owning ref.
+This surfaces the authoritative state on each owning lineage, with the first
+incomplete slice as the only actionable slice in a dependency-ready track. It
+does not take a maximum across arbitrary branch copies. While a materialised
+track is unmerged, a missing or malformed owning record is an error rather than
+a baseline fallback. The oracle does not heal malformed records, fall back
+silently to a working tree, or choose a newer foreign branch over the owning
+ref. Track merge state is derived from the frozen track head's ancestry and the
+recorded authority transfer on `release-wt`; delivery completion is derived
+from the final assembly Merge gate and observed target.
 
 ## Active-tree disposition
 
@@ -296,15 +375,21 @@ Portable workflow scenarios cover:
 - `FAIL` repair and `BLOCKED` replan routing;
 - invalidation after candidate, proof, design, plan, or target change;
 - Merge refusing a changed candidate or moved target;
-- stale metadata writers, reused gate identities, and product-tree record writes
+- stale branch-head writers and changes to product paths after candidate capture
   failing closed;
-- ownership-over-recency and malformed-record failure; and
+- a behaviorally consumed record path, same-product commit substitution, and an
+  unexpected target topology failing closed;
+- an owning track advancing only its assigned work, foreign stale copies never
+  winning, and missing or malformed authoritative records failing visibly;
+- final assembly verification covering the composed release before target
+  Merge; and
 - JSON, terminal, and WebUI projection parity and read-only behavior.
 
 Autonomous-engine scenarios additionally cover protected authority, builder and
-Verifier containment, write-once identity, persistence failure, resource bounds,
-durable-effect recovery, and compare-and-set Merge. Sworn must run these through
-its real binary and storage/process boundaries.
+Verifier containment, one active worker per track, write-once identity,
+persistence failure, resource bounds, durable-effect recovery, and
+compare-and-set Merge. Sworn must run these through its real binary and
+storage/process boundaries.
 
 RFC 8785 rebinding, assurance-registry semantics, control-receipt catalogues,
 and the 99-case RC1 cross-record mutation matrix are removed unless a surviving
@@ -314,7 +399,7 @@ real boundary demonstrates that exact mechanism is still needed.
 
 ```text
 R1 contract and vocabulary
-  -> R2 records, metadata channel, schema, and validator
+  -> R2 release/track records, schema, and validator
        -> R3 canonical operations and templates
             -> R4 generated adapters and installer
        -> R5 oracle JSON and terminal renderer
@@ -332,14 +417,16 @@ record meanings, guided versus autonomous conformance, and the Baton/Sworn seam.
 
 ### R2 — Records and validation
 
-Implement the candidate-independent metadata channel, `work-status-v1`, semantic
-transition validator, raw-digest helpers, and minimal fixtures. Prove stale
-design, candidate, proof, verifier, and target bindings fail closed.
+Implement the `release-wt` / owning-track topology, `work-status-v1`, semantic
+transition validator, branch-head compare-and-set, raw-digest helpers, and
+minimal fixtures. Prove foreign-track writes, stale heads, and stale design,
+candidate, proof, verifier, assembly, and target bindings fail closed.
 
 ### R3 — Operations and templates
 
-Write the three Markdown templates and five canonical operations. Run the flow
-manually before generating any adapter.
+Write the three Markdown templates and five canonical operations, with Verify
+and Merge covering their explicit work/assembly and track/release scopes. Run
+the flow manually before generating any adapter.
 
 ### R4 — Adapters and installation
 
@@ -363,10 +450,11 @@ Do not add provider code to Baton.
 
 ### R8 — Conformance and dogfood
 
-Run a complete manual Baton delivery without Sworn. Replace the RC1 checker and
-manifest with the retained portable scenarios and publish the autonomous-engine
-cases for the later Sworn rebuild. Exercise generated adapters and the fake
-driver, and record the budgets below against the measured Baton 0.16 baseline.
+Run a complete multi-track manual Baton delivery without Sworn, including final
+assembly verification. Replace the RC1 checker and manifest with the retained
+portable scenarios and publish the autonomous-engine cases for the later Sworn
+rebuild. Exercise generated adapters and the fake driver, and record the budgets
+below against the measured Baton 0.16 baseline.
 
 ### R9 — Public contract and release
 
@@ -383,13 +471,18 @@ RC2 is not ready until:
 - effective fixed Baton material loaded by one invocation is at most 500 words;
 - generated adapters match the canonical operation version and digest;
 - canonical operations contain no provider or default-model choice;
+- stale concurrent transitions fail branch-head compare-and-set, while Sworn's
+  autonomous profile demonstrates one active writer per track;
 - the reference runtime has no package dependency beyond Node.js built-ins and
   Git;
 - the board loads 100 work items across 20 refs in under one second on the
   published fixture;
 - every renderer consumes the same oracle JSON and the WebUI cannot mutate;
+- the oracle resolves each slice from its owning track or `release-wt` baseline,
+  never a foreign stale copy;
 - manual dogfood completes without Sworn;
-- verifier freshness and exact-candidate Merge are demonstrated, not asserted;
+- verifier freshness, final assembly verification, and exact-assembly Merge are
+  demonstrated, not asserted;
 - the happy-path fixed protocol and record-reading token load is at most 20% of
   the measured Baton 0.16 baseline; and
 - every retained autonomous-engine case is published with an executable adapter
