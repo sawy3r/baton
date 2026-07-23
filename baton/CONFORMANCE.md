@@ -37,11 +37,15 @@ Every implementation MUST:
 14. validate each prepared immutable result against a prospective plan-bound
     snapshot before applying one exact ref transaction, then recheck the
     installed heads;
-15. reconcile an exact retry without another commit or ref movement only after
+15. inventory the complete release namespace before plan installation or
+    pristine rebound: installation starts from an absent namespace, while a
+    rebound predecessor and result contain exactly `plan.md` plus every planned
+    baseline `status.json`, with no stale handoff, assembly, or unknown file;
+16. reconcile an exact retry without another commit or ref movement only after
     replaying its predecessor, lifecycle eligibility, candidate or assembly
-    history, and exact action effect; a stale, copied, or divergent retry
-    fails; and
-16. require Merge-prepared proof and fresh verification of the complete
+    history, and canonical deterministic action OIDs; a stale, copied,
+    sibling, or divergent retry fails; and
+17. require Merge-prepared proof and fresh verification of the complete
     assembled release before final Merge.
 
 The only authored JSON Schema is `work-status-v1`. Plan metadata has a closed

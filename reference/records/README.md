@@ -32,6 +32,12 @@ receipt. An exact retry returns `changed: false` without another commit.
 That result is admitted only after the same predecessor, lifecycle,
 candidate/assembly-history, and exact-effect checks as the original action; an
 existing status with a matching projection is not an idempotency proof.
+Install begins only when the plan's release namespace is absent. Rebound
+requires both its predecessor and result namespaces to contain exactly the
+plan plus planned baseline statuses; stale handoffs, assembly records, and
+unknown extras fail before mutation. Composition and integration retries also
+recompute their canonical deterministic commits, so a structurally equivalent
+sibling OID is not accepted as the engine's effect.
 
 The lower-level modules also export explicitly named `unsafe*` primitives for
 the facade implementation and adversarial fixtures. They are not a substitute

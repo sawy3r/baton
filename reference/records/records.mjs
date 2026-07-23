@@ -15,6 +15,7 @@ import {
   isAncestor,
   productTreeIdentity,
   readFileAtOID,
+  readRecordTreeAtOID,
   resolveRef,
   changedPathsBetween,
   captureHeadRefs,
@@ -1381,6 +1382,48 @@ export function assemblyProofPath(plan) {
 
 export function releasePlanPath(plan) {
   return `${plan.metadata.record_root}/${plan.metadata.release}/plan.md`;
+}
+
+export function validatePristineRecordNamespace(
+  repo,
+  plan,
+  head,
+  {
+    recordRootAdmission,
+    expectAbsent = false,
+  } = {},
+) {
+  requirePlanAdmission(plan);
+  if (typeof expectAbsent !== 'boolean') {
+    fail('INVALID_NAMESPACE_EXPECTATION', 'expectAbsent must be one boolean');
+  }
+  const prefix = `${plan.metadata.record_root}/${plan.metadata.release}`;
+  const entries = readRecordTreeAtOID(repo, head, recordRootAdmission, prefix);
+  const expectedPaths = expectAbsent
+    ? []
+    : [
+      releasePlanPath(plan),
+      ...plan.metadata.tracks.flatMap((track) => (
+        track.work.map((work) => workStatusPath(plan, work.id))
+      )),
+    ].sort((left, right) => Buffer.from(left).compare(Buffer.from(right)));
+  const observedPaths = entries
+    .map((entry) => entry.path)
+    .sort((left, right) => Buffer.from(left).compare(Buffer.from(right)));
+  if (
+    !isDeepStrictEqual(observedPaths, expectedPaths)
+    || entries.some((entry) => entry.mode !== '100644' || entry.type !== 'blob')
+  ) {
+    fail(
+      'UNBOUND_RECORD_NAMESPACE',
+      `${prefix} contains files outside its exact pristine plan namespace`,
+    );
+  }
+  return Object.freeze({
+    head,
+    prefix,
+    paths: Object.freeze(observedPaths),
+  });
 }
 
 export function validateHandoffDigestAtRef(repo, ref, relativePath, expectedDigest) {

@@ -28,6 +28,8 @@ const MAX_HEAD_REFS = 128;
 const MAX_BATCH_PATHS = 1025;
 const MAX_BATCH_FILE_BYTES = 262_144;
 const MAX_BATCH_TOTAL_BYTES = MAX_BATCH_PATHS * MAX_BATCH_FILE_BYTES;
+const MAX_RECORD_TREE_ENTRIES = MAX_BATCH_PATHS;
+const MAX_RECORD_TREE_BYTES = 8 * 1024 * 1024;
 const MAX_RECORD_CHANGES = 1025;
 const MAX_RECORD_VALUE_BYTES = 262_144;
 const MAX_RECORD_TOTAL_BYTES = 64 * 1024 * 1024;
@@ -780,6 +782,52 @@ export function assertRecordRootAtRef(repo, ref, recordRoot, options = {}) {
     }
   }
   return root;
+}
+
+export function readRecordTreeAtOID(repo, refOID, admission, subtree) {
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(refOID)) {
+    throw new GitRecordError(
+      'INVALID_REF_OID',
+      'record-tree inventory requires a full captured commit OID',
+    );
+  }
+  const root = requireRecordPathAdmission(repo, admission);
+  const prefix = assertRepositoryPath(subtree);
+  if (prefix !== root && !prefix.startsWith(`${root}/`)) {
+    throw new GitRecordError(
+      'NON_RECORD_PATH',
+      `record-tree inventory must remain below ${root}`,
+    );
+  }
+  assertRecordRootAtRef(repo, refOID, root, { allowMissing: true });
+  const raw = runGit(repo, ['ls-tree', '-r', '-z', refOID, '--', prefix], {
+    encoding: null,
+    maxBuffer: MAX_RECORD_TREE_BYTES,
+    code: 'RECORD_TREE_INVENTORY_FAILED',
+    label: `inventory record tree ${prefix} at ${refOID}`,
+  });
+  const entries = [];
+  let offset = 0;
+  while (offset < raw.length) {
+    const nul = raw.indexOf(0, offset);
+    if (nul < 0) {
+      throw new GitRecordError(
+        'MALFORMED_GIT_TREE',
+        'record-tree inventory is not NUL terminated',
+      );
+    }
+    if (nul > offset) {
+      entries.push(Object.freeze(parseTreeEntry(raw.subarray(offset, nul))));
+      if (entries.length > MAX_RECORD_TREE_ENTRIES) {
+        throw new GitRecordError(
+          'RECORD_TREE_INVENTORY_LIMIT',
+          `record-tree inventory exceeds ${MAX_RECORD_TREE_ENTRIES} entries`,
+        );
+      }
+    }
+    offset = nul + 1;
+  }
+  return Object.freeze(entries);
 }
 
 export function productTreeIdentity(repo, commit, admission) {

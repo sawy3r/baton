@@ -31,6 +31,7 @@ import {
   selectAuthoritativeStatusFromSnapshot,
   trackRefSnapshot,
   validateAssemblyStatus,
+  validatePristineRecordNamespace,
   validateStatusHandoffsAtRef,
   validateTrackMaterialization,
   validateWorkStatusIdentity,
@@ -486,6 +487,15 @@ export function createBatonActions({
     if (before.tracks.some((track) => track.head !== null)) {
       fail('EXTERNAL_AUTHORITY_REQUIRED', 'approved plan installation requires every owner ref to be absent');
     }
+    validatePristineRecordNamespace(repo, plan, before.target.head, {
+      recordRootAdmission: recordPathAdmission,
+      expectAbsent: true,
+    });
+    if (before.release.head !== null) {
+      validatePristineRecordNamespace(repo, plan, before.release.head, {
+        recordRootAdmission: recordPathAdmission,
+      });
+    }
     const statuses = baselineStatuses(plan, approvalDigest);
     for (const status of Object.values(statuses)) admit(status);
     const prepared = unsafePrepareRecordTransition(repo, {
@@ -494,6 +504,9 @@ export function createBatonActions({
       recordPathAdmission,
       productExclusionAdmission,
       changes: baselineChanges(plan, statuses),
+    });
+    validatePristineRecordNamespace(repo, plan, prepared.commit, {
+      recordRootAdmission: recordPathAdmission,
     });
     if (before.release.head !== null) {
       if (before.release.head !== prepared.commit) {
@@ -551,6 +564,9 @@ export function createBatonActions({
     if (before.tracks.some((track) => track.head !== null)) {
       fail('EXTERNAL_AUTHORITY_REQUIRED', 'materialized plans require a new release identity');
     }
+    validatePristineRecordNamespace(repo, previousPlan, before.release.head, {
+      recordRootAdmission: recordPathAdmission,
+    });
     const installedPlan = parsePlanBytes(
       readFileAtOID(repo, before.release.head, releasePlanPath(previousPlan)),
     );
@@ -565,6 +581,12 @@ export function createBatonActions({
         ref: before.release.ref,
         head: parents[0],
       }]);
+      validatePristineRecordNamespace(repo, previousPlan, parents[0], {
+        recordRootAdmission: recordPathAdmission,
+      });
+      validatePristineRecordNamespace(repo, plan, current.release.head, {
+        recordRootAdmission: recordPathAdmission,
+      });
       const parentPlan = parsePlanBytes(
         readFileAtOID(repo, parents[0], releasePlanPath(previousPlan)),
       );
@@ -610,6 +632,9 @@ export function createBatonActions({
         productExclusionAdmission,
         changes: baselineChanges(plan, nextStatuses),
       });
+      validatePristineRecordNamespace(repo, plan, prepared.commit, {
+        recordRootAdmission: recordPathAdmission,
+      });
       if (prepared.commit !== current.release.head) {
         fail('INVALID_RECONCILIATION', 'rebound retry does not match the exact Baton effect');
       }
@@ -650,6 +675,9 @@ export function createBatonActions({
       recordPathAdmission,
       productExclusionAdmission,
       changes: baselineChanges(plan, nextStatuses),
+    });
+    validatePristineRecordNamespace(repo, plan, prepared.commit, {
+      recordRootAdmission: recordPathAdmission,
     });
     unsafeAtomicUpdateRefs(repo, [
       {
@@ -1175,15 +1203,16 @@ export function createBatonActions({
         ref: before.release.ref,
         head: expectedReleaseHead,
       }]);
+      const composedStatuses = Object.fromEntries(track.work.map((work, index) => [
+        work.id,
+        selections[index].status,
+      ]));
       const aggregate = validateTrackCompositionTransition(
         repo,
         plan,
         trackId,
         previousStatuses,
-        Object.fromEntries(track.work.map((work, index) => [
-          work.id,
-          selections[index].status,
-        ])),
+        composedStatuses,
         {
           beforeSnapshot: originalBefore,
           afterSnapshot: before,
@@ -1192,6 +1221,28 @@ export function createBatonActions({
           profile,
         },
       );
+      const composition = unsafePrepareExactComposition(repo, {
+        targetRef: plan.metadata.release_ref,
+        expectedHead: expectedReleaseHead,
+        candidate: frozenTrackHead,
+        productExclusionAdmission,
+      });
+      if (composition.result !== aggregate.composition_commit) {
+        fail('INVALID_RECONCILIATION', `track ${trackId} composition is not the exact Baton effect`);
+      }
+      const transfer = unsafePrepareRecordTransition(repo, {
+        expectedHead: composition.result,
+        message: `Transfer composed Baton track ${trackId}`,
+        recordPathAdmission,
+        productExclusionAdmission,
+        changes: Object.fromEntries(track.work.map((work) => [
+          workStatusPath(plan, work.id),
+          statusBytes(composedStatuses[work.id]),
+        ])),
+      });
+      if (transfer.commit !== before.release.head) {
+        fail('INVALID_RECONCILIATION', `track ${trackId} transfer is not the exact Baton effect`);
+      }
       return receipt('composeTrack', {
         changed: false,
         ...aggregate,
@@ -1342,6 +1393,19 @@ export function createBatonActions({
           profile,
         },
       );
+      const replay = unsafePrepareRecordTransition(repo, {
+        expectedHead: status.proof.candidate_commit,
+        message: `Prepare Baton assembly ${plan.metadata.release}`,
+        recordPathAdmission,
+        productExclusionAdmission,
+        changes: {
+          [assemblyProofPath(plan)]: exactProofBytes,
+          [assemblyStatusPath(plan)]: statusBytes(status),
+        },
+      });
+      if (replay.commit !== before.release.head) {
+        fail('INVALID_RECONCILIATION', 'assembly preparation is not the exact Baton effect');
+      }
       return receipt('prepareAssembly', {
         changed: false,
         ...aggregate,
@@ -1495,6 +1559,30 @@ export function createBatonActions({
           profile,
         },
       );
+      const integration = unsafePrepareExactComposition(repo, {
+        targetRef: plan.metadata.target_ref,
+        expectedHead: previous.merge.expected_target,
+        candidate: prior.proof.candidate_commit,
+        productExclusionAdmission,
+      });
+      if (
+        integration.result !== previous.merge.result_commit
+        || integration.result !== before.target.head
+      ) {
+        fail('INVALID_RECONCILIATION', 'release integration is not the exact Baton effect');
+      }
+      const finalStatus = unsafePrepareRecordTransition(repo, {
+        expectedHead: parents[0],
+        message: `Integrate Baton release ${plan.metadata.release}`,
+        recordPathAdmission,
+        productExclusionAdmission,
+        changes: {
+          [assemblyStatusPath(plan)]: statusBytes(previous),
+        },
+      });
+      if (finalStatus.commit !== before.release.head) {
+        fail('INVALID_RECONCILIATION', 'release status is not the exact Baton effect');
+      }
       return receipt('integrateRelease', {
         changed: false,
         ...aggregate,

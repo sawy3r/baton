@@ -10,6 +10,7 @@ import {
   unsafePrepareRecordTransition,
 } from '../../reference/records/git.mjs';
 import {
+  assemblyProofPath,
   assemblyStatusPath,
   captureRefSnapshot,
   digestBytes,
@@ -70,6 +71,12 @@ function exactRetryWithoutMovement(repo, operation) {
   return result;
 }
 
+function rejectedWithoutMovement(repo, operation, code) {
+  const before = repositoryCommitState(repo);
+  throwsCode(operation, code);
+  assert.deepEqual(repositoryCommitState(repo), before);
+}
+
 function assertJsonOnly(value, label = 'receipt', seen = new Set()) {
   assert.equal(ArrayBuffer.isView(value), false, `${label} contains a typed array`);
   assert.equal(value instanceof ArrayBuffer, false, `${label} contains an ArrayBuffer`);
@@ -94,6 +101,31 @@ function prepareRawRecord(repo, plan, expectedHead, message, changes) {
 
 function encodedStatus(status) {
   return Buffer.from(`${JSON.stringify(status)}\n`);
+}
+
+function noncanonicalTwoParent(repo, canonicalCommit, message) {
+  const [commit, ...parents] = git(
+    repo,
+    'rev-list',
+    '--parents',
+    '-n',
+    '1',
+    canonicalCommit,
+  ).split(' ');
+  assert.equal(commit, canonicalCommit);
+  assert.equal(parents.length, 2);
+  const tree = git(repo, 'rev-parse', `${canonicalCommit}^{tree}`);
+  return git(
+    repo,
+    'commit-tree',
+    tree,
+    '-p',
+    parents[0],
+    '-p',
+    parents[1],
+    '-m',
+    message,
+  );
 }
 
 function oneWorkPlanBytes(mutator = () => {}) {
@@ -259,6 +291,35 @@ test('the seven-action facade carries one release through a complete trusted loo
     ));
     assert.equal(installRetry.changed, false);
     assert.equal(installRetry.release_head, installed.release_head);
+    const copiedInstall = prepareRawRecord(
+      fixture.repo,
+      plan,
+      installed.release_head,
+      'untrusted install namespace copy',
+      {
+        [`${plan.metadata.record_root}/${plan.metadata.release}/unexpected.txt`]:
+          Buffer.from('not plan-bound\n'),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      copiedInstall,
+      installed.release_head,
+    );
+    rejectedWithoutMovement(
+      fixture.repo,
+      () => actions.installApprovedPlan({ approvalDigest: DIGESTS.b }),
+      'UNBOUND_RECORD_NAMESPACE',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      installed.release_head,
+      copiedInstall,
+    );
 
     const materialized = actions.materializeTrack({ trackId: 'T1' });
     assert.equal(materialized.owner_head, materialized.after.release.head);
@@ -420,6 +481,24 @@ test('the seven-action facade carries one release through a complete trusted loo
     assert.equal(passRetry.changed, false);
     assert.equal(passRetry.commit, passed.commit);
 
+    const releaseBeforeAdvance = resolveRef(fixture.repo, plan.metadata.release_ref);
+    const releaseAdvance = prepareRawRecord(
+      fixture.repo,
+      plan,
+      releaseBeforeAdvance,
+      'independent release advance before composition',
+      {
+        [`${plan.metadata.record_root}/composition-base.txt`]:
+          Buffer.from('force deterministic two-parent composition\n'),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      releaseAdvance,
+      releaseBeforeAdvance,
+    );
     const composed = actions.composeTrack({ trackId: 'T1' });
     assert.equal(composed.frozen_track_head, composed.before.tracks[0].head);
     assert.equal(composed.transfer_commit, composed.after.release.head);
@@ -435,15 +514,51 @@ test('the seven-action facade carries one release through a complete trusted loo
       composedSnapshot,
       { recordRootAdmission: testRecordPathAdmission(fixture.repo) },
     );
+    const canonicalComposedStatus = selectAuthoritativeStatusFromSnapshot(
+      plan,
+      'W1',
+      composedRecords,
+    ).status;
+    const forgedComposition = noncanonicalTwoParent(
+      fixture.repo,
+      composed.composition_commit,
+      'noncanonical composition result',
+    );
+    assert.notEqual(forgedComposition, composed.composition_commit);
+    const forgedComposedStatus = clone(canonicalComposedStatus);
+    forgedComposedStatus.merge.result_commit = forgedComposition;
+    const forgedTransfer = prepareRawRecord(
+      fixture.repo,
+      plan,
+      forgedComposition,
+      'Transfer composed Baton track T1',
+      { [workStatusPath(plan, 'W1')]: encodedStatus(forgedComposedStatus) },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      forgedTransfer,
+      composedSnapshot.release.head,
+    );
+    throwsCode(
+      () => actions.composeTrack({ trackId: 'T1' }),
+      'INVALID_RECONCILIATION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      composedSnapshot.release.head,
+      forgedTransfer,
+    );
     const copiedComposition = prepareRawRecord(
       fixture.repo,
       plan,
       composedSnapshot.release.head,
       'untrusted copied composition result',
       {
-        [workStatusPath(plan, 'W1')]: encodedStatus(
-          selectAuthoritativeStatusFromSnapshot(plan, 'W1', composedRecords).status,
-        ),
+        [workStatusPath(plan, 'W1')]: encodedStatus(canonicalComposedStatus),
       },
     );
     git(
@@ -463,6 +578,33 @@ test('the seven-action facade carries one release through a complete trusted loo
       plan.metadata.release_ref,
       composedSnapshot.release.head,
       copiedComposition,
+    );
+    const siblingComposition = prepareRawRecord(
+      fixture.repo,
+      plan,
+      composed.composition_commit,
+      'noncanonical composition transfer message',
+      {
+        [workStatusPath(plan, 'W1')]: encodedStatus(canonicalComposedStatus),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      siblingComposition,
+      composedSnapshot.release.head,
+    );
+    throwsCode(
+      () => actions.composeTrack({ trackId: 'T1' }),
+      'INVALID_RECONCILIATION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      composedSnapshot.release.head,
+      siblingComposition,
     );
 
     const prepared = actions.prepareAssembly({
@@ -517,6 +659,40 @@ test('the seven-action facade carries one release through a complete trusted loo
       preparedSnapshot.release.head,
       copiedPreparation,
     );
+    const assemblyProofBytes = Buffer.from('# Assembly proof\n');
+    const siblingPreparation = prepareRawRecord(
+      fixture.repo,
+      plan,
+      prepared.assembly_candidate,
+      'noncanonical assembly preparation message',
+      {
+        [assemblyProofPath(plan)]: assemblyProofBytes,
+        [assemblyStatusPath(plan)]: encodedStatus(
+          selectAssemblyFromSnapshot(plan, preparedRecords).status,
+        ),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      siblingPreparation,
+      preparedSnapshot.release.head,
+    );
+    throwsCode(
+      () => actions.prepareAssembly({
+        proofBytes: assemblyProofBytes,
+        producerInvocation: 'release-merge-assembly',
+      }),
+      'INVALID_RECONCILIATION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      preparedSnapshot.release.head,
+      siblingPreparation,
+    );
     const assemblySnapshot = captureRefSnapshot(fixture.repo, plan);
     const assemblyRecords = readAuthoritativeRecordSnapshot(
       fixture.repo,
@@ -545,7 +721,10 @@ test('the seven-action facade carries one release through a complete trusted loo
     assert.equal(assemblyPassRetry.changed, false);
     assert.equal(assemblyPassRetry.commit, assemblyPassed.commit);
 
+    write(fixture.repo, 'target-note.txt', 'independent target advance\n');
+    const targetAdvance = commitAll(fixture.repo, 'advance target before integration');
     const integrated = actions.integrateRelease();
+    assert.equal(integrated.before.target.head, targetAdvance);
     assert.equal(integrated.integration_commit, integrated.after.target.head);
     assert.equal(integrated.status_commit, integrated.after.release.head);
     assert.equal(Object.isFrozen(integrated.after), true);
@@ -563,15 +742,65 @@ test('the seven-action facade carries one release through a complete trusted loo
       integratedSnapshot,
       { recordRootAdmission: testRecordPathAdmission(fixture.repo) },
     );
+    const canonicalIntegratedStatus = selectAssemblyFromSnapshot(
+      plan,
+      integratedRecords,
+    ).status;
+    const forgedIntegrationResult = noncanonicalTwoParent(
+      fixture.repo,
+      integrated.integration_commit,
+      'noncanonical integration result',
+    );
+    assert.notEqual(forgedIntegrationResult, integrated.integration_commit);
+    const forgedIntegratedStatus = clone(canonicalIntegratedStatus);
+    forgedIntegratedStatus.merge.result_commit = forgedIntegrationResult;
+    const forgedFinalStatus = prepareRawRecord(
+      fixture.repo,
+      plan,
+      assemblyPassed.commit,
+      `Integrate Baton release ${plan.metadata.release}`,
+      { [assemblyStatusPath(plan)]: encodedStatus(forgedIntegratedStatus) },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.target_ref,
+      forgedIntegrationResult,
+      integratedSnapshot.target.head,
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      forgedFinalStatus,
+      integratedSnapshot.release.head,
+    );
+    rejectedWithoutMovement(
+      fixture.repo,
+      () => actions.integrateRelease(),
+      'INVALID_RECONCILIATION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      integratedSnapshot.release.head,
+      forgedFinalStatus,
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.target_ref,
+      integratedSnapshot.target.head,
+      forgedIntegrationResult,
+    );
     const copiedIntegration = prepareRawRecord(
       fixture.repo,
       plan,
       integratedSnapshot.release.head,
       'untrusted copied integration result',
       {
-        [assemblyStatusPath(plan)]: encodedStatus(
-          selectAssemblyFromSnapshot(plan, integratedRecords).status,
-        ),
+        [assemblyStatusPath(plan)]: encodedStatus(canonicalIntegratedStatus),
       },
     );
     git(
@@ -591,6 +820,33 @@ test('the seven-action facade carries one release through a complete trusted loo
       plan.metadata.release_ref,
       integratedSnapshot.release.head,
       copiedIntegration,
+    );
+    const siblingIntegration = prepareRawRecord(
+      fixture.repo,
+      plan,
+      assemblyPassed.commit,
+      'noncanonical integration status message',
+      {
+        [assemblyStatusPath(plan)]: encodedStatus(canonicalIntegratedStatus),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      siblingIntegration,
+      integratedSnapshot.release.head,
+    );
+    throwsCode(
+      () => actions.integrateRelease(),
+      'INVALID_RECONCILIATION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      integratedSnapshot.release.head,
+      siblingIntegration,
     );
     for (const actionReceipt of [
       installed,
@@ -667,6 +923,32 @@ test('install target contention leaves no release and work order fails before a 
     assert.equal(refExists(contended.repo, plan.metadata.release_ref), false);
   } finally {
     contended.cleanup();
+  }
+
+  const unboundInstall = temporaryRepository();
+  try {
+    write(unboundInstall.repo, 'README.md', 'base product\n');
+    write(
+      unboundInstall.repo,
+      '.baton/releases/v1.0.0/unbound.txt',
+      'stale release data\n',
+    );
+    commitAll(unboundInstall.repo, 'base with unbound release namespace');
+    const plan = parsePlanBytes(oneWorkPlanBytes());
+    const actions = createBatonActions({
+      repo: unboundInstall.repo,
+      plan,
+      profile: 'guided',
+      ...trustedResolvers(plan),
+    });
+    rejectedWithoutMovement(
+      unboundInstall.repo,
+      () => actions.installApprovedPlan({ approvalDigest: DIGESTS.b }),
+      'UNBOUND_RECORD_NAMESPACE',
+    );
+    assert.equal(refExists(unboundInstall.repo, plan.metadata.release_ref), false);
+  } finally {
+    unboundInstall.cleanup();
   }
 
   const ordered = temporaryRepository();
@@ -1054,6 +1336,60 @@ test('pristine plans rebound only across an identical topology', () => {
       profile: 'guided',
       ...trustedResolvers(nextPlan),
     });
+    const pristineHead = resolveRef(fixture.repo, previousPlan.metadata.release_ref);
+    const staleNamespaceCases = [
+      [
+        workDesignPath(previousPlan, 'W1'),
+        Buffer.from('# stale design\n'),
+      ],
+      [
+        workProofPath(previousPlan, 'W1'),
+        Buffer.from('# stale proof\n'),
+      ],
+      [
+        assemblyStatusPath(previousPlan),
+        Buffer.from('stale assembly status\n'),
+      ],
+      [
+        assemblyProofPath(previousPlan),
+        Buffer.from('# stale assembly proof\n'),
+      ],
+      [
+        `${previousPlan.metadata.record_root}/${previousPlan.metadata.release}/unknown.bin`,
+        Buffer.from([0x00, 0x01, 0x02]),
+      ],
+    ];
+    for (const [relativePath, bytes] of staleNamespaceCases) {
+      const unbound = prepareRawRecord(
+        fixture.repo,
+        previousPlan,
+        pristineHead,
+        `untrusted pristine namespace ${relativePath}`,
+        { [relativePath]: bytes },
+      );
+      git(
+        fixture.repo,
+        'update-ref',
+        previousPlan.metadata.release_ref,
+        unbound,
+        pristineHead,
+      );
+      rejectedWithoutMovement(
+        fixture.repo,
+        () => nextActions.reboundPristinePlan({
+          previousPlan,
+          approvalDigest: DIGESTS.b,
+        }),
+        'UNBOUND_RECORD_NAMESPACE',
+      );
+      git(
+        fixture.repo,
+        'update-ref',
+        previousPlan.metadata.release_ref,
+        pristineHead,
+        unbound,
+      );
+    }
     const rebound = nextActions.reboundPristinePlan({
       previousPlan,
       approvalDigest: DIGESTS.b,
