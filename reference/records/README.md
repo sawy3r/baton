@@ -29,10 +29,13 @@ authority refs, expected heads, Git topology, and commit messages from the
 admitted plan. It validates prepared commits before compare-and-set, applies
 the complete effect in one ref transaction, and returns a deeply frozen
 receipt. An exact retry returns `changed: false` without another commit.
-Options must be plain data records. Work transitions require an own primitive
-string `workId`; assembly transitions forbid the property entirely. Receipts
-contain only engine-owned JSON data and remain deeply frozen even where an
-internal parent object was already frozen.
+Options must be non-Proxy plain data records. The facade snapshots each
+enumerable value descriptor once into engine-owned storage; accessors, symbols,
+and non-enumerable fields fail. Work transitions require an own primitive
+string `workId`; assembly transitions forbid the property entirely. Handoffs
+are copied before any repository snapshot. Receipts contain only engine-owned
+JSON data and remain deeply frozen even where an internal parent object was
+already frozen.
 That result is admitted only after the same predecessor, lifecycle,
 candidate/assembly-history, and exact-effect checks as the original action; an
 existing status with a matching projection is not an idempotency proof.

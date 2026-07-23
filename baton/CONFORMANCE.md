@@ -33,9 +33,10 @@ Every implementation MUST:
 13. expose one admission-gated action surface for plan installation, pristine
     rebound, ordinary transition, materialisation, track composition, assembly
     preparation, and release integration; raw Git or record primitives are not
-    the normal caller path; action options are plain data, work transitions
-    require one string work identity, assembly transitions forbid it, and
-    receipts contain only engine-owned deeply frozen JSON data;
+    the normal caller path; action options are non-Proxy plain data snapshotted
+    once from enumerable value descriptors, work transitions require one
+    string work identity, assembly transitions forbid it, and receipts contain
+    only engine-owned deeply frozen JSON data;
 14. validate each prepared immutable result against a prospective plan-bound
     snapshot before applying one exact ref transaction, then recheck the
     installed heads;

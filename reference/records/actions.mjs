@@ -1,4 +1,4 @@
-import { isDeepStrictEqual } from 'node:util';
+import { isDeepStrictEqual, types as utilTypes } from 'node:util';
 
 import {
   captureHeadRefs,
@@ -76,26 +76,31 @@ function fail(code, message, cause) {
 }
 
 function exactOptions(value, required, optional, label) {
-  if (value === undefined && required.length === 0) return {};
+  if (value === undefined && required.length === 0) return Object.freeze({});
   if (
     value === null
     || typeof value !== 'object'
     || Array.isArray(value)
+    || utilTypes.isProxy(value)
     || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
   ) {
     fail('INVALID_ACTION_INPUT', `${label} requires one options object`);
   }
   const ownKeys = Reflect.ownKeys(value);
-  if (ownKeys.some((key) => {
-    if (typeof key !== 'string') return true;
+  const descriptors = new Map();
+  for (const key of ownKeys) {
+    if (typeof key !== 'string') {
+      fail('INVALID_ACTION_INPUT', `${label} options must be plain enumerable data`);
+    }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return (
+    if (
       !descriptor
       || descriptor.enumerable !== true
       || !Object.hasOwn(descriptor, 'value')
-    );
-  })) {
-    fail('INVALID_ACTION_INPUT', `${label} options must be plain enumerable data`);
+    ) {
+      fail('INVALID_ACTION_INPUT', `${label} options must be plain enumerable data`);
+    }
+    descriptors.set(key, descriptor);
   }
   const keys = ownKeys.sort();
   const admitted = [...required, ...optional].sort();
@@ -103,11 +108,14 @@ function exactOptions(value, required, optional, label) {
     fail('INVALID_ACTION_INPUT', `${label} received an unknown option`);
   }
   for (const key of required) {
-    if (!Object.hasOwn(value, key)) {
+    if (!keys.includes(key)) {
       fail('INVALID_ACTION_INPUT', `${label} requires ${key}`);
     }
   }
-  return value;
+  return Object.freeze(Object.fromEntries(keys.map((key) => [
+    key,
+    descriptors.get(key).value,
+  ])));
 }
 
 function frozen(value, seen = new WeakSet()) {
@@ -362,8 +370,26 @@ function mergedAssemblyStatus(previous, plan, expectedTarget, resultCommit) {
   return canonicalStatus(next, plan);
 }
 
-function handoffChanges(plan, previous, next, handoffs) {
-  const provided = exactOptions(handoffs, [], ['design', 'proof'], 'recordTransition.handoffs');
+function snapshotHandoffs(handoffs) {
+  const provided = exactOptions(
+    handoffs,
+    [],
+    ['design', 'proof'],
+    'recordTransition.handoffs',
+  );
+  const snapshot = {};
+  for (const [field, value] of Object.entries(provided)) {
+    if (utilTypes.isProxy(value)) {
+      fail('INVALID_HANDOFF', `${field} handoff must not be a Proxy`);
+    }
+    if (Buffer.isBuffer(value)) snapshot[field] = Buffer.from(value);
+    else if (typeof value === 'string') snapshot[field] = value;
+    else fail('INVALID_HANDOFF', `${field} handoff must be bytes or text`);
+  }
+  return Object.freeze(snapshot);
+}
+
+function handoffChanges(plan, previous, next, provided) {
   if (next.kind === 'assembly' && Object.hasOwn(provided, 'design')) {
     fail('INVALID_HANDOFF', 'assembly transitions cannot write a design handoff');
   }
@@ -397,8 +423,7 @@ function handoffChanges(plan, previous, next, handoffs) {
   return changes;
 }
 
-function validateRetryHandoffs(repo, plan, status, head, handoffs) {
-  const provided = exactOptions(handoffs, [], ['design', 'proof'], 'recordTransition.handoffs');
+function validateRetryHandoffs(repo, plan, status, head, provided) {
   for (const [field, value] of Object.entries(provided)) {
     if (status.kind === 'assembly' && field === 'design') {
       fail('INVALID_HANDOFF', 'assembly transitions cannot carry a design handoff');
@@ -739,7 +764,7 @@ export function createBatonActions({
       workId,
       result,
       nextStatus,
-      handoffs,
+      handoffs: callerHandoffs,
     } = admittedOptions;
     if (!['work', 'assembly'].includes(scope) || !ORDINARY_RESULTS.has(result)) {
       fail('INVALID_ACTION_INPUT', 'recordTransition accepts only ordinary work/assembly results');
@@ -754,6 +779,17 @@ export function createBatonActions({
         'work transitions require one string workId; assembly transitions forbid workId',
       );
     }
+    const handoffs = snapshotHandoffs(callerHandoffs);
+    if (scope === 'assembly' && Object.hasOwn(handoffs, 'design')) {
+      fail('INVALID_HANDOFF', 'assembly transitions cannot carry a design handoff');
+    }
+    const next = canonicalStatus(nextStatus, plan);
+    let workContext;
+    if (scope === 'work') {
+      workContext = allPlannedWork(plan).find(({ work }) => work.id === workId);
+      if (!workContext) fail('UNKNOWN_WORK', `plan has no work ${workId}`);
+      validateWorkStatusIdentity(next, plan, workContext.track, workContext.work);
+    }
     const before = captureRefSnapshot(repo, plan);
     const records = readAuthoritativeRecordSnapshot(
       repo,
@@ -762,11 +798,8 @@ export function createBatonActions({
       { recordRootAdmission: recordPathAdmission },
     );
     let selected;
-    let workContext;
     let trackStatuses;
     if (scope === 'work') {
-      workContext = allPlannedWork(plan).find(({ work }) => work.id === workId);
-      if (!workContext) fail('UNKNOWN_WORK', `plan has no work ${workId}`);
       trackStatuses = Object.fromEntries(workContext.track.work.map((work) => {
         const authoritative = selectAuthoritativeStatusFromSnapshot(plan, work.id, records);
         if (work.id === workId) selected = authoritative;
@@ -777,10 +810,7 @@ export function createBatonActions({
     }
     if (!selected) fail('AUTHORITATIVE_STATUS_MISSING', 'assembly has not been prepared');
     const previous = selected.status;
-    const next = canonicalStatus(nextStatus, plan);
-    if (scope === 'work') {
-      validateWorkStatusIdentity(next, plan, workContext.track, workContext.work);
-    } else {
+    if (scope === 'assembly') {
       validateAssemblyStatus(repo, plan, previous, {
         snapshot: before,
         recordRootAdmission: productExclusionAdmission,

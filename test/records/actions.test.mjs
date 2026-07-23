@@ -339,6 +339,39 @@ test('the seven-action facade carries one release through a complete trusted loo
     assert.equal(materializeRetry.changed, false);
     assert.equal(materializeRetry.owner_head, materialized.owner_head);
     assert.equal(materializeRetry.before.release.head, materialized.after.release.head);
+    const trackOptionsProxy = new Proxy({ trackId: 'T1' }, {});
+    rejectedWithoutMovement(
+      fixture.repo,
+      () => actions.materializeTrack(trackOptionsProxy),
+      'INVALID_ACTION_INPUT',
+    );
+    let optionGetterReads = 0;
+    const accessorOptions = {};
+    Object.defineProperty(accessorOptions, 'trackId', {
+      enumerable: true,
+      get() {
+        optionGetterReads += 1;
+        return 'T1';
+      },
+    });
+    const symbolOptions = { trackId: 'T1', [Symbol('extra')]: true };
+    const nonEnumerableOptions = { trackId: 'T1' };
+    Object.defineProperty(nonEnumerableOptions, 'extra', {
+      enumerable: false,
+      value: true,
+    });
+    for (const invalidOptions of [
+      accessorOptions,
+      symbolOptions,
+      nonEnumerableOptions,
+    ]) {
+      rejectedWithoutMovement(
+        fixture.repo,
+        () => actions.materializeTrack(invalidOptions),
+        'INVALID_ACTION_INPUT',
+      );
+    }
+    assert.equal(optionGetterReads, 0);
     let current = bindInitialStatus(
       plan,
       plan.metadata.tracks[0].ref,
@@ -409,6 +442,18 @@ test('the seven-action facade carries one release through a complete trusted loo
         result: 'DESIGN_WRITTEN',
         nextStatus: current,
         handoffs: { design: designBytes },
+      }),
+      'INVALID_ACTION_INPUT',
+    );
+    const handoffProxy = new Proxy({ design: designBytes }, {});
+    rejectedWithoutMovement(
+      fixture.repo,
+      () => actions.recordTransition({
+        scope: 'work',
+        workId: 'W1',
+        result: 'DESIGN_WRITTEN',
+        nextStatus: current,
+        handoffs: handoffProxy,
       }),
       'INVALID_ACTION_INPUT',
     );
@@ -738,6 +783,27 @@ test('the seven-action facade carries one release through a complete trusted loo
       passedAssembly.verification.attestation_ref,
       clone(passedAssembly),
     );
+    let workIdDescriptorReads = 0;
+    const statefulAssemblyOptions = new Proxy({
+      scope: 'assembly',
+      workId: new Date(0),
+      result: 'PASS',
+      nextStatus: passedAssembly,
+    }, {
+      getOwnPropertyDescriptor(target, property) {
+        if (property === 'workId') {
+          workIdDescriptorReads += 1;
+          if (workIdDescriptorReads > 1) return undefined;
+        }
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+    });
+    rejectedWithoutMovement(
+      fixture.repo,
+      () => actions.recordTransition(statefulAssemblyOptions),
+      'INVALID_ACTION_INPUT',
+    );
+    assert.equal(workIdDescriptorReads, 0);
     const frozenNestedWorkId = Object.freeze({
       nested: { remains_caller_owned: true },
     });
