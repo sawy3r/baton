@@ -114,6 +114,7 @@ test('plan rejects invalid refs, escaping paths, dependency cycles, and parallel
 
   const conflict = makePlanMetadata();
   conflict.tracks[1].touch_surfaces = ['src/alpha/nested'];
+  conflict.tracks[1].work[0].scope.include = ['src/alpha/nested/one.mjs'];
   throwsCode(() => validatePlanMetadata(conflict), 'PARALLEL_TOUCH_CONFLICT');
 
   const recordOverlap = makePlanMetadata();
@@ -121,7 +122,7 @@ test('plan rejects invalid refs, escaping paths, dependency cycles, and parallel
   throwsCode(() => validatePlanMetadata(recordOverlap), 'RECORD_ROOT_IN_PRODUCT_SCOPE');
 });
 
-test('record root is canonical, repository-relative, and never symlinked', () => {
+test('record root is fixed to canonical non-symlinked .baton/releases', () => {
   const fixture = temporaryRepository();
   try {
     const valid = { metadata: makePlanMetadata() };

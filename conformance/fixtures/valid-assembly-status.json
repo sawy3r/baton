@@ -39,8 +39,6 @@
     "invocation": "verifier-assembly-1",
     "attestation_ref": "attestation://verifier/assembly-1",
     "attestation_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
-    "fresh_context": true,
-    "read_only": true,
     "plan_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
     "proof_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
     "candidate_commit": "ffffffffffffffffffffffffffffffffffffffff",

@@ -79,6 +79,39 @@
         }
       }
     },
+    "materialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_commit",
+        "dependencies"
+      ],
+      "properties": {
+        "base_commit": {
+          "$ref": "#/$defs/objectId"
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "track_id",
+              "frozen_head"
+            ],
+            "properties": {
+              "track_id": {
+                "$ref": "#/$defs/identity"
+              },
+              "frozen_head": {
+                "$ref": "#/$defs/objectId"
+              }
+            }
+          }
+        }
+      }
+    },
     "stage": {
       "enum": [
         "plan",
@@ -233,6 +266,7 @@
         },
         "components": {
           "type": "array",
+          "maxItems": 64,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -260,8 +294,6 @@
         "invocation",
         "attestation_ref",
         "attestation_digest",
-        "fresh_context",
-        "read_only",
         "plan_digest",
         "proof_digest",
         "candidate_commit",
@@ -283,12 +315,6 @@
         },
         "attestation_digest": {
           "$ref": "#/$defs/digest"
-        },
-        "fresh_context": {
-          "const": true
-        },
-        "read_only": {
-          "const": true
         },
         "plan_digest": {
           "$ref": "#/$defs/digest"

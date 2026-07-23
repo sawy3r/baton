@@ -2,21 +2,27 @@ import { isDeepStrictEqual } from 'node:util';
 
 import {
   RecordError,
+  assemblyProofPath,
   assemblyStatusPath,
   assertTrackReadyForComposition,
+  assertWorkMayAdvance,
+  findTrack,
   parseStatusBytes,
+  requireEvidenceAdmission,
+  trackRefSnapshot,
   validateAssemblyStatus,
-  validateProofGitIdentity,
+  validateRefSnapshot,
   validateStatusHandoffsAtRef,
   validateStatusSemantics,
+  validateTrackMaterialization,
+  validateWorkCandidate,
+  validateWorkRecordTail,
   workStatusPath,
 } from './records.mjs';
 import {
   assertRecordOnlyTransition,
   commitParents,
-  isAncestor,
   readFileAtRef,
-  resolveRef,
   verifyTrackComposition,
   verifyReleaseIntegration,
 } from './git.mjs';
@@ -88,6 +94,7 @@ function assertIdentity(previous, next, { allowAuthority = false, allowTarget = 
 function assertNormalBindings(previous, next, options = {}) {
   assertIdentity(previous, next, options);
   same(previous.plan, next.plan, 'status.plan');
+  same(previous.materialization, next.materialization, 'status.materialization');
 }
 
 function assertPreviousGatesPreserved(previous, next, fields) {
@@ -181,8 +188,11 @@ function validateVerification(previous, next, result) {
     return;
   }
   if (result === 'FAIL') {
-    if (previous.kind !== 'work') {
-      fail('INVALID_TRANSITION', 'assembly FAIL does not invent an implementation owner');
+    if (previous.kind === 'assembly') {
+      requireProjection(next, 'verify/ready/planner', 'assembly FAIL result');
+      if (next.outcome !== 'fail') fail('INVALID_TRANSITION', 'assembly FAIL must persist outcome fail');
+      absent(next, ['merge', 'blocker'], 'assembly FAIL result');
+      return;
     }
     requireProjection(next, 'implement/ready/implementer', 'FAIL result');
     if (next.outcome !== 'fail') fail('INVALID_TRANSITION', 'FAIL result must persist outcome fail');
@@ -220,15 +230,28 @@ function validateMaterialize(previous, next) {
   if (previous.stage === 'merge' && previous.status === 'complete') {
     fail('TERMINAL_REWRITE', 'terminal work cannot be materialised');
   }
+  requireProjection(previous, 'design/ready/implementer', 'MATERIALIZE source');
+  if (
+    previous.outcome !== 'none'
+    || Object.hasOwn(previous, 'materialization')
+    || ['design', 'captain', 'proof', 'verification', 'merge', 'blocker']
+      .some((field) => Object.hasOwn(previous, field))
+  ) {
+    fail('INVALID_TRANSITION', 'MATERIALIZE requires a pristine release baseline');
+  }
   assertIdentity(previous, next, { allowAuthority: true });
   const releaseRef = `refs/heads/release-wt/${previous.release}`;
   if (previous.authority_ref !== releaseRef || next.authority_ref !== previous.owner_ref) {
     fail('INVALID_AUTHORITY_TRANSFER', 'MATERIALIZE transfers release baseline authority to the exact owner ref');
   }
+  if (!Object.hasOwn(next, 'materialization')) {
+    fail('INVALID_MATERIALIZATION', 'MATERIALIZE must persist its captured base and dependency heads');
+  }
   const previousWithoutAuthority = { ...previous };
   const nextWithoutAuthority = { ...next };
   delete previousWithoutAuthority.authority_ref;
   delete nextWithoutAuthority.authority_ref;
+  delete nextWithoutAuthority.materialization;
   same(previousWithoutAuthority, nextWithoutAuthority, 'materialised durable projection');
 }
 
@@ -239,9 +262,23 @@ function validateRebound(previous, next) {
   if (previous.stage === 'merge' && previous.status === 'complete') {
     fail('TERMINAL_REWRITE', 'terminal work cannot be rebound');
   }
+  const releaseRef = `refs/heads/release-wt/${previous.release}`;
+  if (
+    previous.authority_ref !== releaseRef
+    || Object.hasOwn(previous, 'materialization')
+    || projection(previous) !== 'design/ready/implementer'
+    || previous.outcome !== 'none'
+    || ['blocker', 'design', 'captain', 'proof', 'verification', 'merge']
+      .some((field) => Object.hasOwn(previous, field))
+  ) {
+    fail('MATERIALIZED_REBOUND', 'REBOUND applies only to a pristine unmaterialized release baseline');
+  }
   assertIdentity(previous, next, { allowTarget: true });
   if (isDeepStrictEqual(previous.plan, next.plan)) {
     fail('REPLAN_NOT_CHANGED', 'REBOUND requires a new plan or approval binding');
+  }
+  if (Object.hasOwn(next, 'materialization')) {
+    fail('MATERIALIZED_REBOUND', 'REBOUND result cannot retain materialization');
   }
   requireProjection(next, 'design/ready/implementer', 'REBOUND result');
   if (next.outcome !== 'none') fail('INVALID_TRANSITION', 'REBOUND resets the durable outcome');
@@ -296,8 +333,86 @@ export function validateTransition(previous, next, result) {
   return next;
 }
 
+export function validateAdmittedTransition(
+  previous,
+  next,
+  result,
+  {
+    previousAdmission,
+    nextAdmission,
+    profile,
+  } = {},
+) {
+  validateTransition(previous, next, result);
+  requireEvidenceAdmission(previous, previousAdmission, profile);
+  requireEvidenceAdmission(next, nextAdmission, profile);
+  return next;
+}
+
 function statusFor(statuses, workId) {
   return statuses instanceof Map ? statuses.get(workId) : statuses[workId];
+}
+
+function validateRecordedCandidateTransitions(admission) {
+  const ordinaryResults = TRANSITION_RESULTS.filter((result) => (
+    !['MATERIALIZE', 'NO_VERDICT'].includes(result)
+  ));
+  for (const recorded of admission.record_transitions) {
+    if (recorded.collective_materialization) {
+      validateTransition(recorded.before, recorded.after, 'MATERIALIZE');
+      continue;
+    }
+    const accepted = [];
+    for (const result of ordinaryResults) {
+      try {
+        validateTransition(recorded.before, recorded.after, result);
+        accepted.push(result);
+      } catch (error) {
+        if (!(error instanceof RecordError)) throw error;
+      }
+    }
+    if (accepted.length !== 1) {
+      fail(
+        'INVALID_RECORDED_TRANSITION',
+        `candidate record ${recorded.path} at ${recorded.commit} matches ${accepted.length} lifecycle transitions`,
+      );
+    }
+  }
+}
+
+function validateCandidateTemporalOrder(plan, admission) {
+  const statuses = structuredClone(admission.initial_statuses);
+  const currentWork = admission.work_id;
+  for (const event of admission.history_events) {
+    if (event.kind === 'record') {
+      for (const recorded of event.transitions) {
+        const before = statuses[recorded.before.work_id];
+        if (!isDeepStrictEqual(before, recorded.before)) {
+          fail(
+            'OUT_OF_ORDER_RECORD',
+            `record ${recorded.path} does not follow the prior durable status`,
+          );
+        }
+        if (recorded.before.work_id === currentWork) {
+          assertWorkMayAdvance(plan, statuses, admission.track_id, currentWork);
+        }
+        statuses[recorded.after.work_id] = recorded.after;
+      }
+      continue;
+    }
+    assertWorkMayAdvance(plan, statuses, admission.track_id, currentWork);
+    const current = statuses[currentWork];
+    if (
+      projection(current) !== 'implement/ready/implementer'
+      || current.captain?.outcome !== 'proceed'
+      || !['proceed', 'fail'].includes(current.outcome)
+    ) {
+      fail(
+        'PRODUCT_BEFORE_PROCEED',
+        `product commit ${event.commit} occurred before ${currentWork} had implementation authority`,
+      );
+    }
+  }
 }
 
 export function validateTrackCompositionTransition(
@@ -306,10 +421,19 @@ export function validateTrackCompositionTransition(
   trackId,
   previousStatuses,
   nextStatuses,
+  {
+    snapshot,
+    recordRootAdmission,
+    evidenceAdmissions: admittedStatuses,
+    profile,
+  } = {},
 ) {
+  validateRefSnapshot(plan, snapshot);
   const track = assertTrackReadyForComposition(plan, previousStatuses, trackId);
-  const frozenTrackHead = resolveRef(repo, track.ref);
-  let previousCandidate;
+  const frozenTrackHead = trackRefSnapshot(snapshot, track.id).head;
+  if (frozenTrackHead === null) fail('AUTHORITATIVE_STATUS_MISSING', `track ${trackId} has no captured owner head`);
+  validateTrackMaterialization(repo, plan, trackId, previousStatuses);
+  let previousPassedStatus;
   let sharedMerge;
   const transferPaths = [];
 
@@ -317,6 +441,7 @@ export function validateTrackCompositionTransition(
     const previous = statusFor(previousStatuses, work.id);
     const next = statusFor(nextStatuses, work.id);
     if (!next) fail('AUTHORITATIVE_STATUS_MISSING', `missing transferred status for ${work.id}`);
+    requireEvidenceAdmission(previous, statusFor(admittedStatuses ?? {}, work.id), profile);
 
     const recordedOwner = parseStatusBytes(
       readFileAtRef(repo, frozenTrackHead, workStatusPath(plan, work.id)),
@@ -324,18 +449,13 @@ export function validateTrackCompositionTransition(
     );
     same(recordedOwner, previous, `frozen owner status for ${work.id}`);
     validateStatusHandoffsAtRef(repo, plan, previous, frozenTrackHead);
-    validateProofGitIdentity(repo, previous, plan.metadata.record_root, {
-      repository: plan.metadata.repository,
+    const candidateAdmission = validateWorkCandidate(repo, plan, previous, previousPassedStatus, {
       authorityHead: frozenTrackHead,
-      requireCurrentProduct: index === track.work.length - 1,
+      recordRootAdmission,
     });
-    if (
-      previousCandidate
-      && !isAncestor(repo, previousCandidate, previous.proof.candidate_commit)
-    ) {
-      fail('NON_SERIAL_CANDIDATE', `work ${work.id} candidate does not descend from prior passed work`);
-    }
-    previousCandidate = previous.proof.candidate_commit;
+    validateRecordedCandidateTransitions(candidateAdmission);
+    validateCandidateTemporalOrder(plan, candidateAdmission);
+    previousPassedStatus = previous;
 
     validateTransition(previous, next, 'MERGED');
     if (next.merge.frozen_track_head !== frozenTrackHead) {
@@ -354,6 +474,13 @@ export function validateTrackCompositionTransition(
     else same(sharedMerge, binding, `shared track Merge binding for ${work.id}`);
     transferPaths.push(workStatusPath(plan, work.id));
   }
+  validateRecordedCandidateTransitions(validateWorkRecordTail(
+    repo,
+    plan,
+    previousPassedStatus,
+    frozenTrackHead,
+    recordRootAdmission,
+  ));
 
   verifyTrackComposition(
     repo,
@@ -361,12 +488,12 @@ export function validateTrackCompositionTransition(
     frozenTrackHead,
     sharedMerge.result_commit,
   );
-  const releaseHead = resolveRef(repo, plan.metadata.release_ref);
+  const releaseHead = snapshot.release.head;
   assertRecordOnlyTransition(
     repo,
     sharedMerge.result_commit,
     releaseHead,
-    plan.metadata.record_root,
+    recordRootAdmission,
     transferPaths,
   );
   for (const work of track.work) {
@@ -385,9 +512,167 @@ export function validateTrackCompositionTransition(
   };
 }
 
-export function validateAssemblyMergeTransition(repo, plan, previous, next) {
-  validateAssemblyStatus(repo, plan, previous);
-  validateAssemblyStatus(repo, plan, next);
+export function validateTrackMaterializationTransition(
+  repo,
+  plan,
+  trackId,
+  previousStatuses,
+  nextStatuses,
+  {
+    beforeSnapshot,
+    afterSnapshot,
+    recordRootAdmission,
+    evidenceAdmissions: admittedStatuses,
+    profile,
+  } = {},
+) {
+  validateRefSnapshot(plan, beforeSnapshot);
+  validateRefSnapshot(plan, afterSnapshot);
+  const track = findTrack(plan, trackId);
+  if (trackRefSnapshot(beforeSnapshot, track.id).head !== null) {
+    fail('INVALID_MATERIALIZATION', `track ${trackId} already existed before materialization`);
+  }
+  const ownerHead = trackRefSnapshot(afterSnapshot, track.id).head;
+  if (
+    ownerHead === null
+    || ownerHead !== afterSnapshot.release.head
+    || afterSnapshot.release.head === beforeSnapshot.release.head
+  ) {
+    fail(
+      'INVALID_MATERIALIZATION',
+      'materialization must leave release and owner refs at the same new marker commit',
+    );
+  }
+  if (beforeSnapshot.target.head !== afterSnapshot.target.head) {
+    fail('MOVED_TARGET', 'materialization cannot move the release target');
+  }
+  for (const plannedTrack of plan.metadata.tracks) {
+    if (plannedTrack.id === track.id) continue;
+    if (
+      trackRefSnapshot(beforeSnapshot, plannedTrack.id).head
+      !== trackRefSnapshot(afterSnapshot, plannedTrack.id).head
+    ) {
+      fail('INVALID_MATERIALIZATION', `materialization unexpectedly moved track ${plannedTrack.id}`);
+    }
+  }
+  validateTrackMaterialization(repo, plan, trackId, nextStatuses, beforeSnapshot);
+  const statusPaths = [];
+  for (const work of track.work) {
+    const previous = statusFor(previousStatuses, work.id);
+    const next = statusFor(nextStatuses, work.id);
+    if (!previous || !next) {
+      fail('AUTHORITATIVE_STATUS_MISSING', `materialization requires both states for ${work.id}`);
+    }
+    requireEvidenceAdmission(
+      previous,
+      statusFor(admittedStatuses ?? {}, work.id),
+      profile,
+    );
+    const recordedPrevious = parseStatusBytes(
+      readFileAtRef(repo, beforeSnapshot.release.head, workStatusPath(plan, work.id)),
+      { planDigest: plan.digest },
+    );
+    const recordedNext = parseStatusBytes(
+      readFileAtRef(repo, ownerHead, workStatusPath(plan, work.id)),
+      { planDigest: plan.digest },
+    );
+    same(recordedPrevious, previous, `materialization baseline for ${work.id}`);
+    same(recordedNext, next, `materialized owner status for ${work.id}`);
+    validateTransition(previous, next, 'MATERIALIZE');
+    statusPaths.push(workStatusPath(plan, work.id));
+  }
+  assertRecordOnlyTransition(
+    repo,
+    beforeSnapshot.release.head,
+    ownerHead,
+    recordRootAdmission,
+    statusPaths,
+  );
+  return {
+    track_id: track.id,
+    base_commit: beforeSnapshot.release.head,
+    owner_head: ownerHead,
+  };
+}
+
+export function validateAssemblyPreparationTransition(
+  repo,
+  plan,
+  status,
+  {
+    beforeSnapshot,
+    afterSnapshot,
+    recordRootAdmission,
+    evidenceAdmission,
+    profile,
+  } = {},
+) {
+  validateRefSnapshot(plan, beforeSnapshot);
+  validateRefSnapshot(plan, afterSnapshot);
+  requireEvidenceAdmission(status, evidenceAdmission, profile);
+  if (beforeSnapshot.target.head !== afterSnapshot.target.head) {
+    fail('MOVED_TARGET', 'assembly preparation cannot move the release target');
+  }
+  for (const track of plan.metadata.tracks) {
+    if (
+      trackRefSnapshot(beforeSnapshot, track.id).head
+      !== trackRefSnapshot(afterSnapshot, track.id).head
+    ) {
+      fail('MOVED_OWNER', `assembly preparation moved track ${track.id}`);
+    }
+  }
+  const statusPath = assemblyStatusPath(plan);
+  const proofPath = assemblyProofPath(plan);
+  for (const relativePath of [statusPath, proofPath]) {
+    let exists = true;
+    try {
+      readFileAtRef(repo, beforeSnapshot.release.head, relativePath);
+    } catch (error) {
+      if (error?.code !== 'RECORD_NOT_FOUND') throw error;
+      exists = false;
+    }
+    if (exists) fail('ASSEMBLY_ALREADY_PREPARED', `${relativePath} already exists before preparation`);
+  }
+  if (status.proof?.candidate_commit !== beforeSnapshot.release.head) {
+    fail('STALE_BINDING', 'assembly proof candidate must equal the exact pre-preparation release head');
+  }
+  validateAssemblyStatus(repo, plan, status, {
+    snapshot: afterSnapshot,
+    recordRootAdmission,
+  });
+  assertRecordOnlyTransition(
+    repo,
+    beforeSnapshot.release.head,
+    afterSnapshot.release.head,
+    recordRootAdmission,
+    [proofPath, statusPath],
+  );
+  const recorded = parseStatusBytes(
+    readFileAtRef(repo, afterSnapshot.release.head, statusPath),
+    { planDigest: plan.digest },
+  );
+  same(recorded, status, 'prepared assembly status');
+  return {
+    assembly_candidate: beforeSnapshot.release.head,
+    preparation_commit: afterSnapshot.release.head,
+  };
+}
+
+export function validateAssemblyMergeTransition(
+  repo,
+  plan,
+  previous,
+  next,
+  {
+    snapshot,
+    recordRootAdmission,
+    evidenceAdmission,
+    profile,
+  } = {},
+) {
+  requireEvidenceAdmission(previous, evidenceAdmission, profile);
+  validateAssemblyStatus(repo, plan, previous, { snapshot, recordRootAdmission });
+  validateAssemblyStatus(repo, plan, next, { snapshot, recordRootAdmission });
   validateTransition(previous, next, 'MERGED');
 
   const binding = next.merge;
@@ -400,7 +685,7 @@ export function validateAssemblyMergeTransition(repo, plan, previous, next) {
     previous.proof.candidate_commit,
     binding.result_commit,
   );
-  const actualTarget = resolveRef(repo, plan.metadata.target_ref);
+  const actualTarget = snapshot.target.head;
   if (actualTarget !== binding.result_commit) {
     fail(
       'MOVED_TARGET',
@@ -408,7 +693,7 @@ export function validateAssemblyMergeTransition(repo, plan, previous, next) {
     );
   }
 
-  const releaseHead = resolveRef(repo, plan.metadata.release_ref);
+  const releaseHead = snapshot.release.head;
   const parents = commitParents(repo, releaseHead);
   if (parents.length !== 1) {
     fail('UNEXPECTED_RECORD_TRANSITION', 'final assembly status must be one record-only commit');
@@ -419,7 +704,7 @@ export function validateAssemblyMergeTransition(repo, plan, previous, next) {
     repo,
     previousReleaseHead,
     releaseHead,
-    plan.metadata.record_root,
+    recordRootAdmission,
     [statusPath],
   );
   const recordedPrevious = parseStatusBytes(

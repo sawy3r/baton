@@ -85,7 +85,7 @@ The metadata defines:
 - ordered work membership in each track;
 - work outcome, scope, acceptance criteria, required checks, constraints, and
   dependencies; and
-- the configured canonical record root.
+- the fixed v1 record root, `.baton/releases`.
 
 The approval reference is part of the immutable proposed plan. External
 approval evidence binds the raw plan digest and is then referenced by each
@@ -107,9 +107,9 @@ The default canonical root is:
     status.json
 ```
 
-One repository-local configuration may override `.baton/releases`, but the
-resolved root must be one canonical repository-relative path. Absolute,
-escaping, ambiguous, or symlinked roots fail closed.
+Baton v1 has no record-root override. Plan metadata must name exactly
+`.baton/releases`; any other, absolute, escaping, ambiguous, or symlinked root
+fails closed.
 
 Only `plan.md` and initial work `status.json` records exist immediately after
 external approval. Design and proof are created only by their owning
@@ -131,8 +131,8 @@ and assembly with a closed shape containing:
 - design digest, producer invocation, and Captain gate;
 - proof digest, exact repository/base/candidate/product-tree identity, and the
   authority and design decision under which it was produced;
-- Verifier outcome and distinct clean dispatch attestation bound to candidate
-  and proof; and
+- Verifier outcome and a dispatch evidence reference/digest bound to candidate
+  and proof, whose clean/read-only provenance is resolved externally; and
 - track or release Merge binding, expected target, outcome, and observed Git
   result.
 
@@ -145,8 +145,9 @@ next_role:  planner | implementer | captain | verifier | merge | none
 outcome:    none | proceed | revise | escalate | pass | fail | blocked | merged
 ```
 
-`active` and `no_verdict` are runtime/board overlays and are invalid in durable
-status.
+`active` may be a runtime board overlay. `NO_VERDICT` is the sole
+projection-preserving redispatch path and leaves durable status byte-for-byte
+unchanged. Persisted `active` or `no_verdict` is invalid.
 
 Git history supplies revision history and time. Status does not contain an event
 array, transcript, activity log, retry ledger, worker state, cost, or copied
@@ -164,16 +165,20 @@ diff.
 | `verify / ready / verifier` | `PASS` | `merge / ready / merge` |
 | `verify / ready / verifier` | `FAIL` | `implement / ready / implementer` |
 | `verify / ready / verifier` | `BLOCKED` | `verify / blocked / planner` |
-| `verify / ready / verifier` | runner/transport failure | unchanged; runtime `no_verdict` |
+| `verify / ready / verifier` | runner/transport failure / `NO_VERDICT` | unchanged; redispatch same candidate |
 | `merge / ready / merge` | exact track composition | `merge / complete / none` |
 
 Assembly uses the same schema with `kind: assembly`, no track owner, and begins
-at `verify / ready / verifier` after exact track composition and assembly proof
-capture. Assembly `PASS` advances to release Merge; exact release integration
-advances to `merge / complete / none`.
+at `verify / ready / verifier` after every exact track transfer and
+Merge-prepared assembly proof/status capture. Assembly `PASS` advances to
+release Merge; exact release integration advances to `merge / complete / none`.
+Assembly `FAIL` persists as `verify / ready / planner`; assembly `BLOCKED`
+persists as `verify / blocked / planner`.
 
-A new authorized plan revision creates explicitly rebound statuses; it cannot
-rewrite terminal history or reuse stale Captain, proof, Verifier, or Merge
+`REBOUND` applies only to a pristine, unmaterialised release baseline. After
+materialisation, Captain `ESCALATE`, Verifier `BLOCKED`, or assembly `FAIL`
+requires `baton-plan` to create a newly approved work and release identity. It
+cannot rewrite the old lineage or reuse stale Captain, proof, Verifier, or Merge
 bindings.
 
 ## Responsibility invariants
@@ -183,29 +188,39 @@ bindings.
   `PROCEED`.
 - Captain invocation identity differs from the design producer and binds the
   exact plan and design digests.
-- Verifier invocation identity differs from the Implementer and Captain, binds
-  exact candidate/proof bytes, and includes a trusted clean/read-only dispatch
-  attestation.
-- A runner failure produces no Baton verdict.
-- `FAIL` returns to implementation; `BLOCKED` requires changed contract,
-  authority, or external decision.
+- Verifier invocation identity differs from the Implementer and Captain and
+  binds exact candidate/proof bytes. A trusted external resolver establishes
+  clean/read-only dispatch provenance and mints an opaque admission bound to
+  the exact status/profile.
+- Structural validation and board projection do not authorize state-changing
+  actions.
+- A runner failure produces `NO_VERDICT`, no record change, and only unchanged
+  candidate redispatch.
+- Work `FAIL` returns to implementation. `BLOCKED`, Captain `ESCALATE`, and
+  assembly `FAIL` require a newly approved work and release identity once
+  materialised.
 - Merge has no discretionary model outcome. It either proves exact eligibility
-  and composes/integrates, or stops without claiming success.
+  and composes a track, prepares the assembly handoff, or integrates a passed
+  assembly; otherwise it stops without claiming success.
 
 ## Git and ownership invariants
 
 - `release-wt/<release>` owns the approved plan and baseline statuses.
 - `track/<release>/<track-id>` owns its assigned work after materialisation.
+- Materialisation atomically advances the release ref and creates the owner ref
+  at one shared record-only marker containing the exact base and dependency
+  heads. Release history must retain that marker.
 - Only the next incomplete work in an owning track may advance.
 - A dependency track is created from a release head that already contains its
   required frozen track heads.
 - Ownership cannot be reassigned after materialisation; replan creates a new
-  work identity when ownership changes.
+  work and release identity.
 - A track status may be selected from `release-wt` again only after the exact
   frozen track head is an ancestor of the release head and the release record
   contains the matching authority-transfer binding.
 - A foreign or stale sibling copy never wins.
-- Missing or malformed authoritative owner state is an error.
+- Missing or malformed authoritative owner state is an error. Deleting the
+  owner and erasing its release records is detected from marker ancestry.
 
 Every transition names the exact previously observed ref head. The reference
 helper constructs the next record-only commit and updates the ref with
@@ -219,7 +234,7 @@ Implementation records:
 - exact base and candidate commits;
 - the normal Git candidate tree; and
 - a deterministic product-tree digest over ordered path, mode, type, and object
-  identity outside the configured record root.
+  identity outside the fixed `.baton/releases` record root.
 
 Later record-only commits may preserve product-tree identity. Any product-path
 change invalidates the proof and verdict.
@@ -291,13 +306,15 @@ runtime gains no package dependency.
 
 ### Transitions and bindings
 
-- Every positive transition in the closed table passes for work and assembly.
+- Every positive transition in the closed table passes for work and assembly,
+  including durable assembly `FAIL`.
 - Captain revision cycles and implementation repair cycles remain bounded by
   the plan/engine rather than new status fields.
 - Stale plan, approval, design, Captain, proof, candidate, product tree,
   Verifier, assembly, and target bindings fail.
 - Captain or Verifier self-review identities fail.
-- False/missing fresh-dispatch evidence fails autonomous admission.
+- Missing, substituted, false, copied, or self-declared approval/dispatch
+  evidence fails guided/autonomous action admission.
 - A durable `no_verdict` fails schema/semantic validation.
 - Terminal identities and outcomes are write-once.
 
@@ -307,14 +324,21 @@ Temporary real repositories prove:
 
 - three authored tracks with serial slices;
 - independent and dependency-gated materialisation;
+- atomic dual-ref materialisation and erased-marker rejection;
 - foreign stale copies never selected;
 - missing/malformed owning state fails;
 - exactly one of two same-head CAS writers succeeds;
 - record-only commits preserve product identity;
 - product changes invalidate downstream gates;
+- candidate history replays from the exact materialisation or prior passed
+  candidate base;
+- product before Captain `PROCEED`, later work before earlier `PASS`, and
+  cross-work record commits fail;
 - frozen track composition is exact and idempotent;
 - conflict blocks without partial authority transfer;
-- assembly covers all composed track heads; and
+- assembly covers all composed track heads;
+- Merge preparation binds the exact pre-preparation release candidate and
+  changes only assembly proof/status records; and
 - moved target or unexpected topology prevents release Merge.
 
 ## Verification commands

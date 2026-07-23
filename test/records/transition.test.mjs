@@ -71,7 +71,7 @@ test('Verifier FAIL enables a fresh repair and BLOCKED goes to Planner', () => {
   throwsCode(() => validateTransition(failed, staleRepair, 'IMPLEMENTED'), 'EVIDENCE_NOT_REFRESHED');
 });
 
-test('assembly begins with proof, receives fresh PASS, and completes exact release Merge', () => {
+test('assembly persists PASS, BLOCKED, and FAIL while FAIL recovery requires a new release identity', () => {
   const initial = initialAssemblyStatus();
   const passed = verified(initial, 'pass');
   const merged = mergedAssembly(passed);
@@ -82,13 +82,16 @@ test('assembly begins with proof, receives fresh PASS, and completes exact relea
   validateTransition(initial, blocked, 'BLOCKED');
 
   const failed = verified(initial, 'fail');
-  throwsCode(() => validateTransition(initial, failed, 'FAIL'), 'INVALID_STATE_BINDING');
+  validateTransition(initial, failed, 'FAIL');
+  throwsCode(() => validateTransition(failed, initial, 'RETRY_ASSEMBLY'), 'UNKNOWN_TRANSITION_RESULT');
+  throwsCode(() => validateTransition(failed, passed, 'PASS'), 'INVALID_TRANSITION');
 });
 
-test('materialisation changes only authority and runner failure changes nothing', () => {
+test('materialisation adds exact ownership evidence and NO_VERDICT changes nothing', () => {
   const baseline = initialWorkStatus({ authority: 'refs/heads/release-wt/v1.0.0' });
   const owner = clone(baseline);
   owner.authority_ref = owner.owner_ref;
+  owner.materialization = { base_commit: OIDS.a, dependencies: [] };
   validateTransition(baseline, owner, 'MATERIALIZE');
   validateTransition(owner, clone(owner), 'NO_VERDICT');
 
@@ -98,28 +101,33 @@ test('materialisation changes only authority and runner failure changes nothing'
 
   const progressed = designReady(baseline);
   progressed.authority_ref = progressed.owner_ref;
+  progressed.materialization = { base_commit: OIDS.a, dependencies: [] };
   throwsCode(() => validateTransition(baseline, progressed, 'MATERIALIZE'), 'IMMUTABLE_BINDING_CHANGED');
 });
 
-test('authorized rebind resets every downstream gate without changing ownership', () => {
-  const failed = verified(proofReady(), 'fail');
-  const rebound = initialWorkStatus();
+test('REBOUND changes only a pristine unmaterialised baseline', () => {
+  const baseline = initialWorkStatus({ authority: 'refs/heads/release-wt/v1.0.0' });
+  const rebound = initialWorkStatus({ authority: 'refs/heads/release-wt/v1.0.0' });
   rebound.plan = {
     digest: DIGESTS.k,
     approval: { ref: 'approval://v1.0.0/2', digest: DIGESTS.l },
   };
   rebound.target_ref = 'refs/heads/release/v2';
-  validateTransition(failed, rebound, 'REBOUND');
+  validateTransition(baseline, rebound, 'REBOUND');
 
   const stale = clone(rebound);
-  stale.plan = clone(failed.plan);
-  throwsCode(() => validateTransition(failed, stale, 'REBOUND'), 'REPLAN_NOT_CHANGED');
+  stale.plan = clone(baseline.plan);
+  throwsCode(() => validateTransition(baseline, stale, 'REBOUND'), 'REPLAN_NOT_CHANGED');
 
   const ownerChanged = clone(rebound);
   ownerChanged.owner_ref = 'refs/heads/track/v1.0.0/T2';
   ownerChanged.track_id = 'T2';
   ownerChanged.authority_ref = ownerChanged.owner_ref;
-  throwsCode(() => validateTransition(failed, ownerChanged, 'REBOUND'), 'IMMUTABLE_BINDING_CHANGED');
+  ownerChanged.materialization = { base_commit: OIDS.a, dependencies: [] };
+  throwsCode(() => validateTransition(baseline, ownerChanged, 'REBOUND'), 'IMMUTABLE_BINDING_CHANGED');
+
+  const materialized = verified(proofReady(), 'fail');
+  throwsCode(() => validateTransition(materialized, rebound, 'REBOUND'), 'MATERIALIZED_REBOUND');
 });
 
 test('stale bindings and reviewer self-identity fail before admission', () => {
@@ -148,11 +156,9 @@ test('stale bindings and reviewer self-identity fail before admission', () => {
   throwsCode(() => validateStatusSemantics(verifierSelfReview), 'SELF_REVIEW');
 });
 
-test('Verifier attestation and proof bindings are exact', () => {
+test('Verifier artifact and proof bindings are exact', () => {
   const pass = verified();
   const cases = [
-    ['UNTRUSTED_VERIFIER_DISPATCH', (status) => { status.verification.fresh_context = false; }],
-    ['MISSING_FIELD', (status) => { delete status.verification.read_only; }],
     ['STALE_BINDING', (status) => { status.verification.plan_digest = DIGESTS.m; }],
     ['STALE_BINDING', (status) => { status.verification.proof_digest = DIGESTS.m; }],
     ['STALE_BINDING', (status) => { status.verification.candidate_commit = OIDS['3']; }],

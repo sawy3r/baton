@@ -39,7 +39,20 @@ or reinterpreted.
 ## The boundary
 
 Baton owns five principles, five responsibilities, four concise handoff forms,
-one status schema, deterministic reference validation, and a read-only board.
+one status schema, the fixed `.baton/releases` root, deterministic reference
+validation, and a read-only board.
+
+The board deliberately stops at structural and authority truth. Protected
+approval and clean Verifier dispatch are resolved into opaque action admissions
+outside the candidate. Likewise, Merge prepares the assembly handoff but does
+not certify it: work `PASS` advances a track, while a separate assembly `PASS`
+alone authorizes release integration.
+
+Recovery stays equally small. `NO_VERDICT` redispatches the unchanged
+candidate. `REBOUND` exists only before materialisation. Once work has an owner,
+`ESCALATE`, `BLOCKED`, or assembly `FAIL` preserves the lineage and starts a
+newly approved work and release identity instead of growing an in-place repair
+protocol.
 
 Sworn owns autonomous scheduling, leases, retries, cancellation, crash recovery,
 process and credential isolation, concrete provider drivers, runtime events,

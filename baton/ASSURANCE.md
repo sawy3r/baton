@@ -13,7 +13,8 @@ Standard delivery requires:
 - an exact candidate and acceptance-linked proof;
 - the project's required deterministic checks;
 - a fresh, read-only, adversarial Verifier;
-- exact track composition and fresh assembly verification; and
+- exact track composition, Merge-prepared assembly proof, and fresh assembly
+  verification; and
 - expected-target Merge or an honest stop when Merge is not authorized.
 
 Projects decide which checks are relevant to their product. A check name in a
@@ -40,8 +41,22 @@ covered by its raw digest. They cannot silently appear, disappear, or change
 meaning during implementation.
 
 An engine or Verifier may request stronger assurance but cannot weaken the
-approved requirements. If the current plan is insufficient, the truthful result
-is `BLOCKED` followed by a newly approved plan revision.
+approved requirements. If materialised work or assembly cannot proceed under
+the current plan, the truthful result is `ESCALATE`, `BLOCKED`, or assembly
+`FAIL`, followed by `baton-plan` creating a newly approved work and release
+identity. The existing identity is not rebound or repaired in place.
+
+## Evidence admission
+
+Schema-valid records and a structural board projection are not trusted action
+authority. Guided and autonomous hosts resolve the exact protected approval and
+Verifier-dispatch bytes outside the candidate, verify their provenance, and
+mint an opaque admission bound to the exact status and profile. Every
+state-changing transition and Merge action requires that admission.
+
+A work `PASS` covers one Captain-reviewed design, candidate, and proof. Assembly
+`PASS` separately covers the exact composed component heads and Merge-prepared
+assembly proof. Neither can stand in for the other.
 
 ## Admission rule
 

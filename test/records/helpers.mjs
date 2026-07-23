@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   mkdirSync,
   mkdtempSync,
@@ -9,12 +10,16 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-export const DIGESTS = Object.freeze(
-  Object.fromEntries('abcdefghijklmnop'.split('').map((letter, index) => [
+export const APPROVAL_BYTES = Buffer.from('Baton test approval\n');
+export const DISPATCH_BYTES = Buffer.from('Baton test Verifier dispatch\n');
+
+const testDigests = Object.fromEntries('abcdefghijklmnop'.split('').map((letter, index) => [
     letter,
     `sha256:${(index + 1).toString(16).padStart(64, '0')}`,
-  ])),
-);
+  ]));
+testDigests.b = `sha256:${createHash('sha256').update(APPROVAL_BYTES).digest('hex')}`;
+testDigests.f = `sha256:${createHash('sha256').update(DISPATCH_BYTES).digest('hex')}`;
+export const DIGESTS = Object.freeze(testDigests);
 
 export const OIDS = Object.freeze(
   Object.fromEntries('abcdef0123456789'.split('').map((letter) => [
@@ -84,8 +89,12 @@ export function initialWorkStatus({
   workId = 'W1',
   trackId = 'T1',
   authority = `refs/heads/track/v1.0.0/${trackId}`,
+  materialization = {
+    base_commit: OIDS.a,
+    dependencies: [],
+  },
 } = {}) {
-  return {
+  const result = {
     $schema: 'https://baton.sawy3r.net/schemas/work-status-v1.json',
     schema_version: 'baton.work-status/v1',
     kind: 'work',
@@ -104,6 +113,8 @@ export function initialWorkStatus({
     next_role: 'implementer',
     outcome: 'none',
   };
+  if (authority === result.owner_ref) result.materialization = clone(materialization);
+  return result;
 }
 
 export function designReady(previous = initialWorkStatus(), {
@@ -186,8 +197,6 @@ export function verified(previous = proofReady(), outcome = 'pass') {
     invocation: `verifier-${outcome}-1`,
     attestation_ref: `dispatch://verifier-${outcome}-1`,
     attestation_digest: DIGESTS.f,
-    fresh_context: true,
-    read_only: true,
     plan_digest: result.plan.digest,
     proof_digest: result.proof.digest,
     candidate_commit: result.proof.candidate_commit,
@@ -199,9 +208,9 @@ export function verified(previous = proofReady(), outcome = 'pass') {
     result.status = 'ready';
     result.next_role = 'merge';
   } else if (outcome === 'fail') {
-    result.stage = 'implement';
+    result.stage = result.kind === 'assembly' ? 'verify' : 'implement';
     result.status = 'ready';
-    result.next_role = 'implementer';
+    result.next_role = result.kind === 'assembly' ? 'planner' : 'implementer';
   } else {
     result.stage = 'verify';
     result.status = 'blocked';

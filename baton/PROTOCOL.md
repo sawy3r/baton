@@ -59,9 +59,10 @@ Merge proves eligibility and composes or integrates the exact passed candidate.
 It has no discretionary model verdict. It either performs the authorized,
 expected-target Git operation and records the observed result, or stops.
 
-Merge operates at two levels: one eligible frozen track head is composed into
-the release worktree, and a passed assembly candidate is integrated into the
-release target.
+Merge has three mechanical scopes: compose an eligible frozen track and record
+the collective authority transfer; prepare the assembled release proof and
+status for a fresh Verifier; and, only after assembly `PASS`, integrate that
+exact candidate into the release target.
 
 The external authorizer remains outside these five responsibilities. It owns
 approval, consequential product judgement, and any standing authority granted
@@ -95,14 +96,23 @@ names the exact ref head it observed. The reference helper creates a
 record-only commit and updates the ref with compare-and-set; a stale writer
 leaves the ref untouched.
 
+Materialisation is one atomic ref transaction. The release ref and newly
+created owner ref first point to the same record-only marker, which records one
+exact release base and dependency-head set for every work in the track. The
+release lineage must retain that marker. Deleting the owner ref, or resetting
+release records to make the materialisation appear not to have happened, fails
+closed.
+
 Ownership does not move because another branch has a newer timestamp. Before a
 track materialises, its release baseline is authoritative. While it is active,
 its owning ref is authoritative and a missing or malformed owner record is an
 error. Authority returns to `release-wt` only after Git proves that the exact
 frozen track head was composed and the matching Merge binding was recorded.
 
-Reassigning materialised work creates a new work identity under a newly
-approved plan. It does not rewrite the old lineage.
+After materialisation, `ESCALATE`, `BLOCKED`, or assembly `FAIL` cannot rebind
+the existing identity. The Planner creates a newly approved work and release
+identity; the old lineage remains durable archaeology. `REBOUND` is limited to
+a pristine, unmaterialised release baseline whose plan or approval changes.
 
 ## 3. Durable handoffs
 
@@ -120,9 +130,9 @@ The standard release root is:
     status.json
 ```
 
-One repository-local configuration may replace `.baton/releases`. The resolved
-root MUST be one canonical repository-relative path. Absolute, escaping,
-ambiguous, or symlinked roots fail closed.
+Baton 1 uses exactly `.baton/releases`. Plan metadata records that fixed value;
+it is not a configuration seam. Any other, absolute, escaping, ambiguous, or
+symlinked root fails closed.
 
 Plan, design, and proof identities are
 `sha256:<64 lowercase hexadecimal characters>` over their exact raw bytes.
@@ -165,8 +175,10 @@ observable evidence. Its status binding records the exact repository, base,
 candidate commit, normal Git tree, product-tree digest, required checks, and
 Implementer invocation.
 
-Assembly proof additionally names every composed track and frozen head. Per-work
-verification is not authority to ship an unverified composition.
+Assembly proof is prepared by Merge after every exact track transfer. It names
+every composed track and frozen head and binds the pre-preparation release head
+as its candidate. Per-work verification is not authority to ship an unverified
+composition.
 
 ### Status
 
@@ -184,8 +196,10 @@ next_role:  planner | implementer | captain | verifier | merge | none
 outcome:    none | proceed | revise | escalate | pass | fail | blocked | merged
 ```
 
-`active` and `no_verdict` are optional runtime board overlays. Persisting either
-as status is invalid.
+`active` may be a runtime board overlay. A runner failure is `NO_VERDICT`: the
+durable status remains byte-for-byte unchanged and the same candidate may be
+redispatched. Persisting `active`, `no_verdict`, or any replacement result is
+invalid. `NO_VERDICT` is the only unchanged redispatch path.
 
 Git provides history and timestamps. Status contains no transcript, event
 array, activity log, retry ledger, worker, lease, token, or cost state.
@@ -205,22 +219,32 @@ After external approval, each initial work status is
 | `verify / ready / verifier` | `PASS` | `merge / ready / merge` |
 | `verify / ready / verifier` | `FAIL` | `implement / ready / implementer` |
 | `verify / ready / verifier` | `BLOCKED` | `verify / blocked / planner` |
-| `verify / ready / verifier` | runner failure | unchanged; no verdict |
+| `verify / ready / verifier` | runner failure / `NO_VERDICT` | unchanged; redispatch same candidate |
 | `merge / ready / merge` | exact composition or integration | `merge / complete / none` |
 
-A work `PASS` leaves its status at `merge / ready / merge` on the owning track.
-When every ordered work item is there, the exact final track head is frozen and
-composed once. One following record-only commit transfers every work status to
-`merge / complete / none` together. Partial transfer is invalid.
+A work `PASS` means its Captain-reviewed design and Implementer candidate proof
+passed independently. It leaves the status at `merge / ready / merge` on the
+owning track and admits the next serial work; it does not pass the assembled
+release. When every ordered work item is there, the exact final track head is
+frozen and composed once. One following record-only commit transfers every work
+status to `merge / complete / none` together. Partial transfer is invalid.
 
 A materialised track may perform one projection-preserving authority transfer
-from its release baseline to its exact owner ref. An authorized replan may
-rebind a non-terminal work identity to a new plan and approval, clearing every
-downstream gate. Neither operation invents lifecycle progress.
+from its release baseline to its exact owner ref. A `REBOUND` may change plan
+and approval only for a pristine, unmaterialised release baseline. Any replan
+after materialisation creates new work and release identity rather than
+clearing gates in place. Neither operation invents lifecycle progress.
 
 Assembly uses the same status shape with `kind: assembly`, no work or track
-identity, and the release-worktree as owner. Exact composition and assembly
-proof create `verify / ready / verifier`; `PASS` permits release Merge.
+identity, and the release-worktree as owner. After every work transfer is
+complete, Merge atomically prepares the proof and initial
+`verify / ready / verifier` status, then hands it to a fresh Verifier. Assembly
+`PASS` means that exact set of components and the Merge-produced assembly proof
+passed together; only this permits release Merge. Assembly `FAIL` persists as
+`verify / ready / planner`, while assembly `BLOCKED` persists as
+`verify / blocked / planner`. Either requires `baton-plan` to create a newly
+approved work and release identity; there is no in-place assembly repair or
+`RETRY_ASSEMBLY` transition.
 
 ## 5. Binding rules
 
@@ -230,8 +254,8 @@ proof create `verify / ready / verifier`; `PASS` permits release Merge.
 - Proof binds the current plan, approval, design, Captain invocation, repository,
   base, candidate, candidate tree, and product tree.
 - Verifier invocation differs from the design producer, proof producer, and
-  Captain. Its trusted dispatch evidence attests clean context and read-only
-  candidate access.
+  Captain. Its trusted dispatch evidence resolves outside the candidate and
+  attests clean context and read-only candidate access.
 - Verification binds the current proof, candidate, and product tree.
 - Each Work Merge binds its own passed candidate plus the shared frozen track
   head, expected and observed release-worktree head, composition result, and
@@ -243,11 +267,18 @@ proof create `verify / ready / verifier`; `PASS` permits release Merge.
 Any stale or mismatched binding fails. A runner result boolean or status field
 alone never proves separation, evidence, Git history, or effect success.
 
+Structural parsing and the board establish record shape and current authority
+only. Before an admitted transition or Merge action, a trusted external
+resolver must verify the exact approval and Verifier-dispatch bytes and their
+protected provenance. The engine mints an opaque admission bound to that exact
+status and execution profile; a copied status, self-declared boolean, or board
+row cannot substitute for it.
+
 ## 6. Product identity and composition
 
 Candidate proof records the ordinary Git tree and a deterministic SHA-256 over
-the ordered path, mode, type, and object identity outside the configured Baton
-record root. Later record-only commits may preserve that product identity.
+the ordered path, mode, type, and object identity outside the fixed Baton record
+root. Later record-only commits may preserve that product identity.
 
 The exclusion is valid only while the record root is behaviorally inert. If a
 build, test, package, deploy, hook, or runtime consumes it, the exclusion cannot
@@ -260,9 +291,15 @@ whose ordered parents and tree equal Git's deterministic merge of the expected
 release head and that track head. Release integration applies the same rule to
 the expected target and passed assembly candidate.
 
-After all tracks are composed, a fresh Verifier checks the complete approved
-plan over the assembled product. Only that assembly `PASS` permits release
-Merge.
+Candidate admission replays the full first-parent history from the exact
+materialisation or prior passed-candidate base. Product commits are admitted
+only after the current work has Captain `PROCEED`; record commits must form the
+closed lifecycle, may not span work identities, and later work cannot advance
+before earlier work `PASS`. The final candidate commit is product-only.
+
+After all tracks are composed, Merge prepares the assembly handoff and a fresh
+Verifier checks the complete approved plan over that exact product. Only that
+assembly `PASS` permits release Merge.
 
 ## 7. Guided and autonomous use
 

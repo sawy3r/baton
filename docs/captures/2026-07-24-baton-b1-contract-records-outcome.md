@@ -1,11 +1,17 @@
 # Baton B1 contract and records outcome
 
 Date: 2026-07-24
-Status: complete
+Status: superseded — failed independent review
 Stage: B1 / RC2 R1-R2
 Track: `track/v1.0.0/B1-contract-records`
 Contract commit: `b65b6b893cb468a22165c2c11ab992a9dd1ab2fa`
 Scope: [B1 contract and records scope](./2026-07-24-baton-b1-contract-records-scope.md)
+
+> This was the outcome claimed at `65cd466`. Independent Captain and Verifier
+> review subsequently failed that head on six load-bearing boundaries. See the
+> [adversarial review](./2026-07-24-baton-b1-adversarial-review.md). The
+> measurements and command output below remain historical evidence; the
+> completion verdict does not.
 
 ## Outcome
 
@@ -95,5 +101,6 @@ addition to the initially named checker and fixture paths because leaving their
 executable-facing RC1 promises and deleted-schema references would make the new
 suite misleading and broken.
 
-There are no B1 deviations or blockers. B2 operations/installers and B3
-oracle/board/driver work may consume the frozen API from the contract commit.
+This handoff was withdrawn after independent review. B2 operations/installers
+and B3 oracle/board/driver work MUST NOT treat the named contract commit as the
+frozen B1 API.

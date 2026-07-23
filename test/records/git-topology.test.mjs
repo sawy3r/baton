@@ -7,6 +7,7 @@ import {
   applyExactComposition,
   commitRecordTransition,
   productTreeIdentity,
+  resolveRecordRootAdmission,
   resolveRef,
   verifyReleaseIntegration,
   verifyTrackComposition,
@@ -15,9 +16,14 @@ import {
   assertWorkMayAdvance,
   assemblyProofPath,
   assemblyStatusPath,
+  captureRefSnapshot,
   digestBytes,
+  expectedTrackMaterialization,
   nextWorkForTrack,
   parsePlanBytes,
+  readAuthoritativeRecordSnapshot,
+  resolveStatusEvidence,
+  selectAssemblyFromSnapshot,
   selectAuthoritativeStatus,
   validateAssemblyStatus,
   validateTrackMaterialization,
@@ -26,11 +32,14 @@ import {
   workStatusPath,
 } from '../../reference/records/records.mjs';
 import {
+  validateAssemblyPreparationTransition,
   validateAssemblyMergeTransition,
   validateTrackCompositionTransition,
 } from '../../reference/records/transition.mjs';
 import {
   DIGESTS,
+  APPROVAL_BYTES,
+  DISPATCH_BYTES,
   captainResult,
   clone,
   commitAll,
@@ -63,9 +72,42 @@ function writeStatus(repo, plan, status) {
   write(repo, workStatusPath(plan, status.work_id), `${JSON.stringify(status)}\n`);
 }
 
-function makePassedStatus(plan, workId, trackId) {
-  const initial = bindStatus(initialWorkStatus({ workId, trackId }), plan);
+function makePassedStatus(plan, workId, trackId, materialization) {
+  const initial = bindStatus(initialWorkStatus({ workId, trackId, materialization }), plan);
   return verified(proofReady(captainResult(designReady(initial), 'proceed')), 'pass');
+}
+
+function evidenceFor(status, profile = 'guided') {
+  return resolveStatusEvidence(status, {
+    profile,
+    resolveEvidence: ({ kind }) => ({
+      bytes: kind === 'approval' ? APPROVAL_BYTES : DISPATCH_BYTES,
+      provenance: kind === 'approval'
+        ? {
+          kind,
+          ref: status.plan.approval.ref,
+          protected: true,
+          decision: 'approved',
+          plan_digest: status.plan.digest,
+          authorizer_isolated: true,
+          delivery_writable: false,
+        }
+        : {
+          kind,
+          ref: status.verification.attestation_ref,
+          protected: true,
+          role: 'verifier',
+          fresh_context: true,
+          read_only: true,
+          invocation: status.verification.invocation,
+          plan_digest: status.plan.digest,
+          proof_digest: status.proof.digest,
+          candidate_commit: status.proof.candidate_commit,
+          product_tree: status.proof.product_tree,
+          engine_controlled: true,
+        },
+    }),
+  });
 }
 
 test('owner-aware selection follows baseline, exact track owner, then proven transfer', () => {
@@ -92,29 +134,76 @@ test('owner-aware selection follows baseline, exact track owner, then proven tra
       );
     }
     const releaseBaseline = commitAll(fixture.repo, 'approved baseline');
+    const admission = resolveRecordRootAdmission(fixture.repo);
 
-    const baseline = selectAuthoritativeStatus(fixture.repo, plan, 'W1');
+    const baseline = selectAuthoritativeStatus(
+      fixture.repo,
+      plan,
+      'W1',
+      captureRefSnapshot(fixture.repo, plan),
+      { recordRootAdmission: admission },
+    );
     assert.equal(baseline.source, 'baseline');
     assert.equal(baseline.ref, plan.metadata.release_ref);
 
     git(fixture.repo, 'switch', '-q', '-c', 'foreign-copy', releaseBaseline);
-    const foreign = makePassedStatus(plan, 'W1', 'T1');
+    const T1Materialization = { base_commit: releaseBaseline, dependencies: [] };
+    const foreign = makePassedStatus(plan, 'W1', 'T1', T1Materialization);
     writeStatus(fixture.repo, plan, foreign);
     commitAll(fixture.repo, 'foreign stale copy');
-    assert.equal(selectAuthoritativeStatus(fixture.repo, plan, 'W1').source, 'baseline');
+    assert.equal(selectAuthoritativeStatus(
+      fixture.repo,
+      plan,
+      'W1',
+      captureRefSnapshot(fixture.repo, plan),
+      { recordRootAdmission: admission },
+    ).source, 'baseline');
 
-    git(fixture.repo, 'switch', '-q', '-c', 'track/v1.0.0/T1', releaseBaseline);
-    const passedW1 = makePassedStatus(plan, 'W1', 'T1');
-    const passedW2 = makePassedStatus(plan, 'W2', 'T1');
+    const ownerW1 = bindStatus(initialWorkStatus({
+      workId: 'W1',
+      trackId: 'T1',
+      materialization: T1Materialization,
+    }), plan);
+    const ownerW2 = bindStatus(initialWorkStatus({
+      workId: 'W2',
+      trackId: 'T1',
+      materialization: T1Materialization,
+    }), plan);
+    commitRecordTransition(fixture.repo, {
+      ref: plan.metadata.release_ref,
+      expectedHead: releaseBaseline,
+      message: 'materialize T1 owner marker',
+      admission,
+      changes: {
+        [workStatusPath(plan, 'W1')]: `${JSON.stringify(ownerW1)}\n`,
+        [workStatusPath(plan, 'W2')]: `${JSON.stringify(ownerW2)}\n`,
+      },
+      createRef: { ref: plan.metadata.tracks[0].ref },
+    });
+    git(fixture.repo, 'switch', '-q', 'track/v1.0.0/T1');
+    const passedW1 = makePassedStatus(plan, 'W1', 'T1', T1Materialization);
+    const passedW2 = makePassedStatus(plan, 'W2', 'T1', T1Materialization);
     writeStatus(fixture.repo, plan, passedW1);
     writeStatus(fixture.repo, plan, passedW2);
     let frozenTrack = commitAll(fixture.repo, 'materialise and complete T1 work');
-    assert.equal(selectAuthoritativeStatus(fixture.repo, plan, 'W1').source, 'owner');
+    assert.equal(selectAuthoritativeStatus(
+      fixture.repo,
+      plan,
+      'W1',
+      captureRefSnapshot(fixture.repo, plan),
+      { recordRootAdmission: admission },
+    ).source, 'owner');
 
     write(fixture.repo, workStatusPath(plan, 'W1'), '{"malformed":true}\n');
     commitAll(fixture.repo, 'malformed owner');
     throwsCode(
-      () => selectAuthoritativeStatus(fixture.repo, plan, 'W1'),
+      () => selectAuthoritativeStatus(
+        fixture.repo,
+        plan,
+        'W1',
+        captureRefSnapshot(fixture.repo, plan),
+        { recordRootAdmission: admission },
+      ),
       'UNKNOWN_FIELD',
     );
     writeStatus(fixture.repo, plan, passedW1);
@@ -123,7 +212,13 @@ test('owner-aware selection follows baseline, exact track owner, then proven tra
     rmSync(path.join(fixture.repo, workStatusPath(plan, 'W1')));
     commitAll(fixture.repo, 'missing owner');
     throwsCode(
-      () => selectAuthoritativeStatus(fixture.repo, plan, 'W1'),
+      () => selectAuthoritativeStatus(
+        fixture.repo,
+        plan,
+        'W1',
+        captureRefSnapshot(fixture.repo, plan),
+        { recordRootAdmission: admission },
+      ),
       'AUTHORITATIVE_STATUS_MISSING',
     );
     writeStatus(fixture.repo, plan, passedW1);
@@ -132,14 +227,17 @@ test('owner-aware selection follows baseline, exact track owner, then proven tra
     git(fixture.repo, 'switch', '-q', 'release-wt/v1.0.0');
     write(fixture.repo, workStatusPath(plan, 'W1'), '{"malformed":true}\n');
     commitAll(fixture.repo, 'malformed non-authoritative release copy');
-    assert.equal(selectAuthoritativeStatus(fixture.repo, plan, 'W1').source, 'owner');
-    git(fixture.repo, 'show', `${releaseBaseline}:${workStatusPath(plan, 'W1')}`);
-    const baselineBytes = git(
-      fixture.repo,
-      'show',
-      `${releaseBaseline}:${workStatusPath(plan, 'W1')}`,
+    throwsCode(
+      () => selectAuthoritativeStatus(
+        fixture.repo,
+        plan,
+        'W1',
+        captureRefSnapshot(fixture.repo, plan),
+        { recordRootAdmission: admission },
+      ),
+      'UNKNOWN_FIELD',
     );
-    write(fixture.repo, workStatusPath(plan, 'W1'), `${baselineBytes}\n`);
+    writeStatus(fixture.repo, plan, ownerW1);
     commitAll(fixture.repo, 'restore release baseline');
 
     const expectedRelease = resolveRef(fixture.repo, plan.metadata.release_ref);
@@ -160,21 +258,40 @@ test('owner-aware selection follows baseline, exact track owner, then proven tra
     }
     commitAll(fixture.repo, 'transfer T1 authority');
 
-    const composed = selectAuthoritativeStatus(fixture.repo, plan, 'W1');
+    const composedSnapshot = captureRefSnapshot(fixture.repo, plan);
+    const composed = selectAuthoritativeStatus(
+      fixture.repo,
+      plan,
+      'W1',
+      composedSnapshot,
+      { recordRootAdmission: admission },
+    );
     assert.equal(composed.source, 'composed');
     assert.equal(composed.status.merge.frozen_track_head, frozenTrack);
 
     assert.equal(
-      validateTrackMaterialization(fixture.repo, plan, 'T2', plan.metadata.release_ref),
-      resolveRef(fixture.repo, plan.metadata.release_ref),
+      expectedTrackMaterialization(fixture.repo, plan, 'T2', composedSnapshot).base_commit,
+      composedSnapshot.release.head,
     );
     assert.equal(
-      validateTrackMaterialization(fixture.repo, plan, 'T3', plan.metadata.release_ref),
-      resolveRef(fixture.repo, plan.metadata.release_ref),
+      expectedTrackMaterialization(fixture.repo, plan, 'T3', composedSnapshot).base_commit,
+      composedSnapshot.release.head,
     );
 
-    const completeW1 = selectAuthoritativeStatus(fixture.repo, plan, 'W1').status;
-    const completeW2 = selectAuthoritativeStatus(fixture.repo, plan, 'W2').status;
+    const completeW1 = selectAuthoritativeStatus(
+      fixture.repo,
+      plan,
+      'W1',
+      composedSnapshot,
+      { recordRootAdmission: admission },
+    ).status;
+    const completeW2 = selectAuthoritativeStatus(
+      fixture.repo,
+      plan,
+      'W2',
+      composedSnapshot,
+      { recordRootAdmission: admission },
+    ).status;
     assert.equal(nextWorkForTrack(plan, { W1: completeW1, W2: completeW2 }, 'T1'), null);
   } finally {
     fixture.cleanup();
@@ -187,15 +304,23 @@ test('dependency-gated materialisation rejects a release that lacks its frozen d
     write(fixture.repo, 'README.md', 'base\n');
     const base = commitAll(fixture.repo, 'base');
     const plan = parsePlanBytes(makePlanBytes());
-    git(fixture.repo, 'branch', 'release-wt/v1.0.0', base);
+    git(fixture.repo, 'switch', '-q', '-c', 'release-wt/v1.0.0', base);
+    write(fixture.repo, '.baton/releases/v1.0.0/plan.md', plan.bytes);
+    const releaseBase = commitAll(fixture.repo, 'approved plan');
     git(fixture.repo, 'branch', 'track/v1.0.0/T1', base);
     git(fixture.repo, 'switch', '-q', 'track/v1.0.0/T1');
     write(fixture.repo, 'track.txt', 'frozen dependency\n');
     commitAll(fixture.repo, 'advance dependency');
     throwsCode(
-      () => validateTrackMaterialization(fixture.repo, plan, 'T3', 'refs/heads/release-wt/v1.0.0'),
+      () => expectedTrackMaterialization(
+        fixture.repo,
+        plan,
+        'T3',
+        captureRefSnapshot(fixture.repo, plan),
+      ),
       'UNMET_TRACK_DEPENDENCY',
     );
+    assert.equal(resolveRef(fixture.repo, plan.metadata.release_ref), releaseBase);
   } finally {
     fixture.cleanup();
   }
@@ -208,13 +333,14 @@ test('compare-and-set record commits admit exactly one same-head writer', () => 
     write(fixture.repo, '.baton/releases/v1/status.json', '{"state":0}\n');
     const base = commitAll(fixture.repo, 'base');
     git(fixture.repo, 'branch', 'release-wt/v1.0.0', base);
-    const before = productTreeIdentity(fixture.repo, base, '.baton/releases');
+    const admission = resolveRecordRootAdmission(fixture.repo);
+    const before = productTreeIdentity(fixture.repo, base, admission);
 
     const first = commitRecordTransition(fixture.repo, {
       ref: 'refs/heads/release-wt/v1.0.0',
       expectedHead: base,
       message: 'record transition one',
-      recordRoot: '.baton/releases',
+      admission,
       changes: {
         '.baton/releases/v1/status.json': '{"state":1}\n',
       },
@@ -224,7 +350,7 @@ test('compare-and-set record commits admit exactly one same-head writer', () => 
         ref: 'refs/heads/release-wt/v1.0.0',
         expectedHead: base,
         message: 'record transition two',
-        recordRoot: '.baton/releases',
+        admission,
         changes: {
           '.baton/releases/v1/status.json': '{"state":2}\n',
         },
@@ -233,7 +359,7 @@ test('compare-and-set record commits admit exactly one same-head writer', () => 
     );
     assert.equal(resolveRef(fixture.repo, 'refs/heads/release-wt/v1.0.0'), first);
     assert.equal(
-      productTreeIdentity(fixture.repo, first, '.baton/releases').productTree,
+      productTreeIdentity(fixture.repo, first, admission).productTree,
       before.productTree,
     );
     throwsCode(
@@ -241,7 +367,7 @@ test('compare-and-set record commits admit exactly one same-head writer', () => 
         ref: 'refs/heads/release-wt/v1.0.0',
         expectedHead: first,
         message: 'escape record root',
-        recordRoot: '.baton/releases',
+        admission,
         changes: { 'src/app.txt': 'changed\n' },
       }),
       'NON_RECORD_CHANGE',
@@ -277,10 +403,11 @@ test('Git reads and CAS ignore inherited control environment and replace refs', 
     const base = commitAll(fixture.repo, 'base');
     write(fixture.repo, 'src/app.txt', 'candidate\n');
     const candidate = commitAll(fixture.repo, 'candidate');
+    const admission = resolveRecordRootAdmission(fixture.repo);
     const expectedProduct = productTreeIdentity(
       fixture.repo,
       candidate,
-      '.baton/releases',
+      admission,
     ).productTree;
     git(fixture.repo, 'replace', candidate, base);
     git(fixture.repo, 'branch', 'poison-safe-cas', candidate);
@@ -305,14 +432,14 @@ test('Git reads and CAS ignore inherited control environment and replace refs', 
 
     assert.equal(resolveRef(fixture.repo, 'refs/heads/poison-safe-cas'), candidate);
     assert.equal(
-      productTreeIdentity(fixture.repo, candidate, '.baton/releases').productTree,
+      productTreeIdentity(fixture.repo, candidate, admission).productTree,
       expectedProduct,
     );
     const transitioned = commitRecordTransition(fixture.repo, {
       ref: 'refs/heads/poison-safe-cas',
       expectedHead: candidate,
       message: 'poison-safe transition',
-      recordRoot: '.baton/releases',
+      admission,
       changes: {
         '.baton/releases/status.json': '{"state":1}\n',
       },
@@ -466,29 +593,52 @@ test('assembly admission covers every exact composed track head and product tree
       );
     }
     const approved = commitAll(fixture.repo, 'approved assembly plan');
+    const admission = resolveRecordRootAdmission(fixture.repo);
 
     const composeTrack = (trackId, workId, start, productPath) => {
+      const beforeMaterialization = captureRefSnapshot(fixture.repo, plan);
+      assert.equal(beforeMaterialization.release.head, start);
+      const materialization = expectedTrackMaterialization(
+        fixture.repo,
+        plan,
+        trackId,
+        beforeMaterialization,
+      );
       git(fixture.repo, 'switch', '-q', '-c', `track/v1.0.0/${trackId}`, start);
+      const materialized = bindStatus(
+        initialWorkStatus({ workId, trackId, materialization }),
+        plan,
+      );
+      writeStatus(
+        fixture.repo,
+        plan,
+        materialized,
+      );
+      const marker = commitAll(fixture.repo, `materialize ${trackId}`);
+      git(fixture.repo, 'update-ref', plan.metadata.release_ref, marker, start);
       const designBytes = Buffer.from(`# ${workId} design\n\nImplement the approved ${trackId} slice.\n`);
+      const designed = designReady(materialized, { digest: digestBytes(designBytes) });
       write(fixture.repo, workDesignPath(plan, workId), designBytes);
-      const designHead = commitAll(fixture.repo, `design ${trackId}`);
+      writeStatus(fixture.repo, plan, designed);
+      commitAll(fixture.repo, `design ${trackId}`);
+      const proceeded = captainResult(designed, 'proceed');
+      writeStatus(fixture.repo, plan, proceeded);
+      commitAll(fixture.repo, `Captain PROCEED ${trackId}`);
       write(fixture.repo, productPath, `${trackId} product\n`);
       const candidate = commitAll(fixture.repo, `implement ${trackId}`);
-      const product = productTreeIdentity(fixture.repo, candidate, plan.metadata.record_root);
+      const product = productTreeIdentity(fixture.repo, candidate, admission);
       const proofBytes = Buffer.from(`# ${workId} proof\n\nThe acceptance check passed.\n`);
-      const passed = makePassedStatus(plan, workId, trackId);
-      passed.design.digest = digestBytes(designBytes);
-      passed.captain.design_digest = passed.design.digest;
-      passed.proof.design_digest = passed.design.digest;
-      passed.proof.digest = digestBytes(proofBytes);
-      passed.verification.proof_digest = passed.proof.digest;
-      passed.proof.base_commit = designHead;
-      passed.proof.candidate_commit = candidate;
-      passed.proof.candidate_tree = product.candidateTree;
-      passed.proof.product_tree = product.productTree;
-      passed.verification.candidate_commit = candidate;
-      passed.verification.product_tree = product.productTree;
+      const implemented = proofReady(proceeded, {
+        digest: digestBytes(proofBytes),
+        candidate,
+        candidateTree: product.candidateTree,
+        productTree: product.productTree,
+      });
+      implemented.proof.base_commit = start;
       write(fixture.repo, workProofPath(plan, workId), proofBytes);
+      writeStatus(fixture.repo, plan, implemented);
+      commitAll(fixture.repo, `record proof ${trackId}`);
+      const passed = verified(implemented, 'pass');
       writeStatus(fixture.repo, plan, passed);
       const frozen = commitAll(fixture.repo, `freeze ${trackId}`);
       const expected = git(fixture.repo, 'rev-parse', 'refs/heads/release-wt/v1.0.0');
@@ -515,6 +665,7 @@ test('assembly admission covers every exact composed track head and product tree
       complete.merge.result_commit = composition;
       writeStatus(fixture.repo, plan, complete);
       const transferred = commitAll(fixture.repo, `transfer ${trackId}`);
+      const transferSnapshot = captureRefSnapshot(fixture.repo, plan);
       assert.deepEqual(
         validateTrackCompositionTransition(
           fixture.repo,
@@ -522,6 +673,12 @@ test('assembly admission covers every exact composed track head and product tree
           trackId,
           { [workId]: passed },
           { [workId]: complete },
+          {
+            snapshot: transferSnapshot,
+            recordRootAdmission: admission,
+            evidenceAdmissions: { [workId]: evidenceFor(passed) },
+            profile: 'guided',
+          },
         ),
         {
           track_id: trackId,
@@ -535,11 +692,12 @@ test('assembly admission covers every exact composed track head and product tree
 
     const T1 = composeTrack('T1', 'W1', approved, 'src/alpha/one.mjs');
     const afterT1 = T1.transferred;
-    const T2 = composeTrack('T2', 'W3', approved, 'src/beta/one.mjs');
-    const T3 = composeTrack('T3', 'W4', afterT1, 'src/gamma/one.mjs');
+    const T2 = composeTrack('T2', 'W3', afterT1, 'src/beta/one.mjs');
+    const T3 = composeTrack('T3', 'W4', T2.transferred, 'src/gamma/one.mjs');
 
     const candidate = git(fixture.repo, 'rev-parse', 'refs/heads/release-wt/v1.0.0');
-    const identity = productTreeIdentity(fixture.repo, candidate, plan.metadata.record_root);
+    const beforeAssembly = captureRefSnapshot(fixture.repo, plan);
+    const identity = productTreeIdentity(fixture.repo, candidate, admission);
     const assembly = initialAssemblyStatus();
     assembly.plan.digest = plan.digest;
     assembly.plan.approval.ref = plan.metadata.approval_ref;
@@ -564,23 +722,67 @@ test('assembly admission covers every exact composed track head and product tree
       assemblyStatusPath(plan),
       `${JSON.stringify(assembly)}\n`,
     );
-    commitAll(fixture.repo, 'record assembly proof');
-    assert.equal(validateAssemblyStatus(fixture.repo, plan, assembly), assembly);
+    const preparationCommit = commitAll(fixture.repo, 'record assembly proof');
+    let assemblySnapshot = captureRefSnapshot(fixture.repo, plan);
+    const assemblyOptions = () => ({
+      snapshot: assemblySnapshot,
+      recordRootAdmission: admission,
+    });
+    assert.equal(validateAssemblyStatus(fixture.repo, plan, assembly, assemblyOptions()), assembly);
+    assert.deepEqual(
+      validateAssemblyPreparationTransition(
+        fixture.repo,
+        plan,
+        assembly,
+        {
+          beforeSnapshot: beforeAssembly,
+          afterSnapshot: assemblySnapshot,
+          recordRootAdmission: admission,
+          evidenceAdmission: evidenceFor(assembly),
+          profile: 'guided',
+        },
+      ),
+      {
+        assembly_candidate: candidate,
+        preparation_commit: preparationCommit,
+      },
+    );
+    const projectedAssembly = selectAssemblyFromSnapshot(
+      plan,
+      readAuthoritativeRecordSnapshot(
+        fixture.repo,
+        plan,
+        assemblySnapshot,
+        { recordRootAdmission: admission },
+      ),
+    );
+    assert.equal(projectedAssembly.source, 'release');
+    assert.deepEqual(projectedAssembly.status, assembly);
+    assert.equal(Object.isFrozen(projectedAssembly.status), true);
 
     const missing = clone(assembly);
     missing.proof.components.pop();
-    throwsCode(() => validateAssemblyStatus(fixture.repo, plan, missing), 'INCOMPLETE_ASSEMBLY');
+    throwsCode(
+      () => validateAssemblyStatus(fixture.repo, plan, missing, assemblyOptions()),
+      'INCOMPLETE_ASSEMBLY',
+    );
 
     const reordered = clone(assembly);
     [reordered.proof.components[0], reordered.proof.components[1]] = [
       reordered.proof.components[1],
       reordered.proof.components[0],
     ];
-    throwsCode(() => validateAssemblyStatus(fixture.repo, plan, reordered), 'INCOMPLETE_ASSEMBLY');
+    throwsCode(
+      () => validateAssemblyStatus(fixture.repo, plan, reordered, assemblyOptions()),
+      'INCOMPLETE_ASSEMBLY',
+    );
 
     const staleProduct = clone(assembly);
     staleProduct.proof.product_tree = DIGESTS.p;
-    throwsCode(() => validateAssemblyStatus(fixture.repo, plan, staleProduct), 'STALE_BINDING');
+    throwsCode(
+      () => validateAssemblyStatus(fixture.repo, plan, staleProduct, assemblyOptions()),
+      'STALE_BINDING',
+    );
 
     const passedAssembly = verified(assembly, 'pass');
     write(
@@ -613,12 +815,28 @@ test('assembly admission covers every exact composed track head and product tree
       `${JSON.stringify(completedAssembly)}\n`,
     );
     const finalStatusCommit = commitAll(fixture.repo, 'record release Merge');
+    assemblySnapshot = captureRefSnapshot(fixture.repo, plan);
+    throwsCode(
+      () => validateAssemblyMergeTransition(
+        fixture.repo,
+        plan,
+        passedAssembly,
+        completedAssembly,
+        assemblyOptions(),
+      ),
+      'EVIDENCE_ADMISSION_REQUIRED',
+    );
     assert.deepEqual(
       validateAssemblyMergeTransition(
         fixture.repo,
         plan,
         passedAssembly,
         completedAssembly,
+        {
+          ...assemblyOptions(),
+          evidenceAdmission: evidenceFor(passedAssembly),
+          profile: 'guided',
+        },
       ),
       {
         assembly_candidate: candidate,
@@ -631,12 +849,18 @@ test('assembly admission covers every exact composed track head and product tree
     write(fixture.repo, 'after-release.txt', 'target moved\n');
     commitAll(fixture.repo, 'advance target after release');
     git(fixture.repo, 'switch', '-q', 'release-wt/v1.0.0');
+    assemblySnapshot = captureRefSnapshot(fixture.repo, plan);
     throwsCode(
       () => validateAssemblyMergeTransition(
         fixture.repo,
         plan,
         passedAssembly,
         completedAssembly,
+        {
+          ...assemblyOptions(),
+          evidenceAdmission: evidenceFor(passedAssembly),
+          profile: 'guided',
+        },
       ),
       'MOVED_TARGET',
     );
