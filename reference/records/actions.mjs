@@ -147,8 +147,10 @@ function statusProjection(status) {
 }
 
 function resultMatchesDurableStatus(result, status) {
-  if (result === 'NO_VERDICT') return true;
   const projection = statusProjection(status);
+  if (result === 'NO_VERDICT') {
+    return projection === 'verify/ready/verifier' && status.outcome === 'none';
+  }
   if (result === 'DESIGN_WRITTEN') return projection === 'design/ready/captain' && status.outcome === 'none';
   if (result === 'PROCEED') return projection === 'implement/ready/implementer' && status.outcome === 'proceed';
   if (result === 'REVISE') return projection === 'design/ready/implementer' && status.outcome === 'revise';
@@ -394,6 +396,24 @@ function validateRetryHandoffs(repo, plan, status, head, handoffs) {
   validateStatusHandoffsAtRef(repo, plan, status, head);
 }
 
+function durableTransitionChanges(repo, plan, previous, next, head) {
+  const changes = {
+    [next.kind === 'work'
+      ? workStatusPath(plan, next.work_id)
+      : assemblyStatusPath(plan)]: statusBytes(next),
+  };
+  for (const field of ['design', 'proof']) {
+    if (next[field]?.digest === previous[field]?.digest) continue;
+    const relativePath = field === 'design'
+      ? workDesignPath(plan, next.work_id)
+      : next.kind === 'assembly'
+        ? assemblyProofPath(plan)
+        : workProofPath(plan, next.work_id);
+    changes[relativePath] = readFileAtOID(repo, head, relativePath);
+  }
+  return changes;
+}
+
 /**
  * The sole safe mutation surface. External actors still author plans,
  * statuses, and handoffs; this facade owns every mechanical Git and record
@@ -537,6 +557,26 @@ export function createBatonActions({
     const nextStatuses = baselineStatuses(plan, approvalDigest);
     if (installedPlan.digest === plan.digest) {
       const current = captureRefSnapshot(repo, plan);
+      const parents = commitParents(repo, current.release.head);
+      if (parents.length !== 1) {
+        fail('INVALID_RECONCILIATION', 'rebound retry has no exact previous-plan parent');
+      }
+      const previousSnapshot = deriveProspectiveRefSnapshot(previousPlan, before, [{
+        ref: before.release.ref,
+        head: parents[0],
+      }]);
+      const parentPlan = parsePlanBytes(
+        readFileAtOID(repo, parents[0], releasePlanPath(previousPlan)),
+      );
+      if (parentPlan.digest !== previousPlan.digest) {
+        fail('INVALID_RECONCILIATION', 'rebound retry parent is not the supplied previous plan');
+      }
+      const previousRecords = readAuthoritativeRecordSnapshot(
+        repo,
+        previousPlan,
+        previousSnapshot,
+        { recordRootAdmission: recordPathAdmission },
+      );
       const currentRecords = readAuthoritativeRecordSnapshot(
         repo,
         plan,
@@ -544,14 +584,34 @@ export function createBatonActions({
         { recordRootAdmission: recordPathAdmission },
       );
       for (const { work } of allPlannedWork(plan)) {
+        const previous = selectAuthoritativeStatusFromSnapshot(
+          previousPlan,
+          work.id,
+          previousRecords,
+        );
         const selected = selectAuthoritativeStatusFromSnapshot(plan, work.id, currentRecords);
         if (
-          selected.source !== 'baseline'
+          previous.source !== 'baseline'
+          || selected.source !== 'baseline'
           || !isDeepStrictEqual(selected.status, nextStatuses[work.id])
         ) {
           fail('EXTERNAL_AUTHORITY_REQUIRED', 'rebound plan no longer has exact pristine baselines');
         }
-        admit(selected.status);
+        validateAdmittedTransition(previous.status, selected.status, 'REBOUND', {
+          previousAdmission: admit(previous.status),
+          nextAdmission: admit(selected.status),
+          profile,
+        });
+      }
+      const prepared = unsafePrepareRecordTransition(repo, {
+        expectedHead: parents[0],
+        message: `Rebound pristine Baton plan ${plan.metadata.release}`,
+        recordPathAdmission,
+        productExclusionAdmission,
+        changes: baselineChanges(plan, nextStatuses),
+      });
+      if (prepared.commit !== current.release.head) {
+        fail('INVALID_RECONCILIATION', 'rebound retry does not match the exact Baton effect');
       }
       return receipt('reboundPristinePlan', {
         changed: false,
@@ -680,8 +740,131 @@ export function createBatonActions({
       if (!resultMatchesDurableStatus(result, previous)) {
         fail('INVALID_RECONCILIATION', `${result} does not match the durable post-state`);
       }
-      admit(previous);
+      if (result === 'NO_VERDICT') {
+        let previousWorkStatus = null;
+        if (scope === 'work') {
+          assertWorkMayAdvance(plan, trackStatuses, workContext.track.id, workId);
+          const workIndex = workContext.track.work.findIndex((work) => work.id === workId);
+          previousWorkStatus = workIndex === 0
+            ? null
+            : selectAuthoritativeStatusFromSnapshot(
+              plan,
+              workContext.track.work[workIndex - 1].id,
+              records,
+            ).status;
+        }
+        validateAdmittedTransition(previous, next, result, {
+          previousAdmission: admit(previous),
+          nextAdmission: admit(next),
+          profile,
+        });
+        validateRetryHandoffs(repo, plan, previous, selected.head, handoffs);
+        if (scope === 'work' && previous.proof) {
+          validateWorkCandidateHistory(repo, plan, previous, previousWorkStatus, {
+            authorityHead: selected.head,
+            recordRootAdmission: productExclusionAdmission,
+          });
+        }
+        return receipt('recordTransition', {
+          changed: false,
+          scope,
+          work_id: workId ?? null,
+          result,
+          authority_ref: selected.ref,
+          commit: selected.head,
+          before,
+          after: before,
+        });
+      }
+      const parents = commitParents(repo, selected.head);
+      if (parents.length !== 1) {
+        fail('INVALID_RECONCILIATION', `${result} has no exact record predecessor`);
+      }
+      const predecessorSnapshot = deriveProspectiveRefSnapshot(plan, before, [{
+        ref: selected.ref,
+        head: parents[0],
+      }]);
+      const predecessorRecords = readAuthoritativeRecordSnapshot(
+        repo,
+        plan,
+        predecessorSnapshot,
+        { recordRootAdmission: recordPathAdmission },
+      );
+      let durablePrevious;
+      let previousWorkStatus = null;
+      if (scope === 'work') {
+        const predecessorTrackStatuses = Object.fromEntries(
+          workContext.track.work.map((work) => {
+            const authoritative = selectAuthoritativeStatusFromSnapshot(
+              plan,
+              work.id,
+              predecessorRecords,
+            );
+            if (work.id === workId) durablePrevious = authoritative;
+            return [work.id, authoritative.status];
+          }),
+        );
+        if (
+          durablePrevious?.ref !== selected.ref
+          || durablePrevious.head !== parents[0]
+        ) {
+          fail('INVALID_RECONCILIATION', `${result} predecessor has different authority`);
+        }
+        assertWorkMayAdvance(
+          plan,
+          predecessorTrackStatuses,
+          workContext.track.id,
+          workId,
+        );
+        const workIndex = workContext.track.work.findIndex((work) => work.id === workId);
+        previousWorkStatus = workIndex === 0
+          ? null
+          : selectAuthoritativeStatusFromSnapshot(
+            plan,
+            workContext.track.work[workIndex - 1].id,
+            predecessorRecords,
+          ).status;
+      } else {
+        durablePrevious = selectAssemblyFromSnapshot(plan, predecessorRecords);
+        if (
+          durablePrevious?.ref !== selected.ref
+          || durablePrevious.head !== parents[0]
+        ) {
+          fail('INVALID_RECONCILIATION', `${result} predecessor has different authority`);
+        }
+        validateAssemblyStatus(repo, plan, durablePrevious.status, {
+          snapshot: predecessorSnapshot,
+          recordRootAdmission: productExclusionAdmission,
+        });
+      }
+      validateAdmittedTransition(durablePrevious.status, previous, result, {
+        previousAdmission: admit(durablePrevious.status),
+        nextAdmission: admit(previous),
+        profile,
+      });
       validateRetryHandoffs(repo, plan, previous, selected.head, handoffs);
+      if (scope === 'work' && previous.proof) {
+        validateWorkCandidateHistory(repo, plan, previous, previousWorkStatus, {
+          authorityHead: selected.head,
+          recordRootAdmission: productExclusionAdmission,
+        });
+      }
+      const replay = unsafePrepareRecordTransition(repo, {
+        expectedHead: parents[0],
+        message: `Record ${scope} ${workId ?? plan.metadata.release} ${result}`,
+        recordPathAdmission,
+        productExclusionAdmission,
+        changes: durableTransitionChanges(
+          repo,
+          plan,
+          durablePrevious.status,
+          previous,
+          selected.head,
+        ),
+      });
+      if (replay.commit !== selected.head) {
+        fail('INVALID_RECONCILIATION', `${result} does not match the exact Baton effect`);
+      }
       return receipt('recordTransition', {
         changed: false,
         scope,
@@ -770,46 +953,81 @@ export function createBatonActions({
     const track = findTrack(plan, trackId);
     const before = captureRefSnapshot(repo, plan);
     if (trackRefSnapshot(before, trackId).head !== null) {
+      const ownerHead = trackRefSnapshot(before, trackId).head;
+      if (before.release.head !== ownerHead) {
+        fail('INVALID_RECONCILIATION', `track ${trackId} is no longer at its exact materialization effect`);
+      }
+      const parents = commitParents(repo, ownerHead);
+      if (parents.length !== 1) {
+        fail('INVALID_RECONCILIATION', `track ${trackId} marker has no exact baseline parent`);
+      }
+      const predecessorSnapshot = deriveProspectiveRefSnapshot(plan, before, [
+        { ref: before.release.ref, head: parents[0] },
+        { ref: track.ref, head: null },
+      ]);
+      const predecessorRecords = readAuthoritativeRecordSnapshot(
+        repo,
+        plan,
+        predecessorSnapshot,
+        { recordRootAdmission: recordPathAdmission },
+      );
       const currentRecords = readAuthoritativeRecordSnapshot(
         repo,
         plan,
         before,
         { recordRootAdmission: recordPathAdmission },
       );
+      const previousStatuses = {};
       const currentStatuses = {};
+      const evidenceAdmissions = {};
       for (const work of track.work) {
+        const previous = selectAuthoritativeStatusFromSnapshot(
+          plan,
+          work.id,
+          predecessorRecords,
+        );
         const selected = selectAuthoritativeStatusFromSnapshot(plan, work.id, currentRecords);
-        if (selected.source !== 'owner') {
+        if (
+          previous.source !== 'baseline'
+          || selected.source !== 'owner'
+          || selected.head !== ownerHead
+        ) {
           fail('INVALID_MATERIALIZATION', `track ${trackId} has advanced beyond its marker`);
         }
+        previousStatuses[work.id] = previous.status;
         currentStatuses[work.id] = selected.status;
+        evidenceAdmissions[work.id] = admit(previous.status);
       }
-      const materialization = validateTrackMaterialization(
+      const aggregate = validateTrackMaterializationTransition(
         repo,
         plan,
         trackId,
+        previousStatuses,
         currentStatuses,
+        {
+          beforeSnapshot: predecessorSnapshot,
+          afterSnapshot: before,
+          recordRootAdmission: recordPathAdmission,
+          evidenceAdmissions,
+          profile,
+        },
       );
-      for (const work of track.work) {
-        const current = currentStatuses[work.id];
-        const expected = initialWorkStatus(
-          plan,
-          track,
-          work,
-          current.plan.approval.digest,
-        );
-        expected.authority_ref = track.ref;
-        expected.materialization = structuredClone(materialization);
-        if (!isDeepStrictEqual(current, canonicalStatus(expected, plan))) {
-          fail('INVALID_MATERIALIZATION', `track ${trackId} has advanced beyond its marker`);
-        }
-        admit(current);
+      const replay = unsafePrepareRecordTransition(repo, {
+        expectedHead: parents[0],
+        message: `Materialize Baton track ${trackId}`,
+        recordPathAdmission,
+        productExclusionAdmission,
+        changes: Object.fromEntries(track.work.map((work) => [
+          workStatusPath(plan, work.id),
+          statusBytes(currentStatuses[work.id]),
+        ])),
+      });
+      if (replay.commit !== ownerHead) {
+        fail('INVALID_RECONCILIATION', `track ${trackId} marker is not the exact Baton effect`);
       }
       return receipt('materializeTrack', {
         changed: false,
-        track_id: track.id,
-        base_commit: materialization.base_commit,
-        owner_head: trackRefSnapshot(before, trackId).head,
+        ...aggregate,
         before,
         after: before,
       });

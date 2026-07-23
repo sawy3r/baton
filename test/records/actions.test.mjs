@@ -7,14 +7,20 @@ import {
   readFileAtOID,
   refExists,
   resolveRef,
+  unsafePrepareRecordTransition,
 } from '../../reference/records/git.mjs';
 import {
+  assemblyStatusPath,
   captureRefSnapshot,
   digestBytes,
   parsePlanBytes,
   readAuthoritativeRecordSnapshot,
   releasePlanPath,
   selectAssemblyFromSnapshot,
+  selectAuthoritativeStatusFromSnapshot,
+  workDesignPath,
+  workProofPath,
+  workStatusPath,
 } from '../../reference/records/records.mjs';
 import {
   APPROVAL_BYTES,
@@ -74,6 +80,20 @@ function assertJsonOnly(value, label = 'receipt', seen = new Set()) {
     assertJsonOnly(nested, `${label}.${key}`, seen);
   }
   seen.delete(value);
+}
+
+function prepareRawRecord(repo, plan, expectedHead, message, changes) {
+  return unsafePrepareRecordTransition(repo, {
+    expectedHead,
+    message,
+    recordPathAdmission: testRecordPathAdmission(repo),
+    productExclusionAdmission: testProductExclusionAdmission(repo),
+    changes,
+  }).commit;
+}
+
+function encodedStatus(status) {
+  return Buffer.from(`${JSON.stringify(status)}\n`);
 }
 
 function oneWorkPlanBytes(mutator = () => {}) {
@@ -254,6 +274,45 @@ test('the seven-action facade carries one release through a complete trusted loo
       plan.metadata.tracks[0].ref,
       { base_commit: materialized.base_commit, dependencies: [] },
     );
+    const copiedMarker = prepareRawRecord(
+      fixture.repo,
+      plan,
+      materialized.owner_head,
+      'untrusted copied materialization marker',
+      { [workStatusPath(plan, 'W1')]: encodedStatus(current) },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      copiedMarker,
+      materialized.owner_head,
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.tracks[0].ref,
+      copiedMarker,
+      materialized.owner_head,
+    );
+    throwsCode(
+      () => actions.materializeTrack({ trackId: 'T1' }),
+      'ERASED_OWNER_MARKER',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      materialized.owner_head,
+      copiedMarker,
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.tracks[0].ref,
+      materialized.owner_head,
+      copiedMarker,
+    );
 
     const designBytes = Buffer.from('# W1 design\n');
     current = designReady(current, {
@@ -369,6 +428,42 @@ test('the seven-action facade carries one release through a complete trusted loo
     ));
     assert.equal(composeRetry.changed, false);
     assert.equal(composeRetry.transfer_commit, composed.transfer_commit);
+    const composedSnapshot = captureRefSnapshot(fixture.repo, plan);
+    const composedRecords = readAuthoritativeRecordSnapshot(
+      fixture.repo,
+      plan,
+      composedSnapshot,
+      { recordRootAdmission: testRecordPathAdmission(fixture.repo) },
+    );
+    const copiedComposition = prepareRawRecord(
+      fixture.repo,
+      plan,
+      composedSnapshot.release.head,
+      'untrusted copied composition result',
+      {
+        [workStatusPath(plan, 'W1')]: encodedStatus(
+          selectAuthoritativeStatusFromSnapshot(plan, 'W1', composedRecords).status,
+        ),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      copiedComposition,
+      composedSnapshot.release.head,
+    );
+    throwsCode(
+      () => actions.composeTrack({ trackId: 'T1' }),
+      'UNEXPECTED_RECORD_TRANSITION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      composedSnapshot.release.head,
+      copiedComposition,
+    );
 
     const prepared = actions.prepareAssembly({
       proofBytes: Buffer.from('# Assembly proof\n'),
@@ -383,6 +478,45 @@ test('the seven-action facade carries one release through a complete trusted loo
     ));
     assert.equal(prepareRetry.changed, false);
     assert.equal(prepareRetry.preparation_commit, prepared.preparation_commit);
+    const preparedSnapshot = captureRefSnapshot(fixture.repo, plan);
+    const preparedRecords = readAuthoritativeRecordSnapshot(
+      fixture.repo,
+      plan,
+      preparedSnapshot,
+      { recordRootAdmission: testRecordPathAdmission(fixture.repo) },
+    );
+    const copiedPreparation = prepareRawRecord(
+      fixture.repo,
+      plan,
+      preparedSnapshot.release.head,
+      'untrusted copied assembly preparation',
+      {
+        [assemblyStatusPath(plan)]: encodedStatus(
+          selectAssemblyFromSnapshot(plan, preparedRecords).status,
+        ),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      copiedPreparation,
+      preparedSnapshot.release.head,
+    );
+    throwsCode(
+      () => actions.prepareAssembly({
+        proofBytes: Buffer.from('# Assembly proof\n'),
+        producerInvocation: 'release-merge-assembly',
+      }),
+      'UNEXPECTED_RECORD_TRANSITION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      preparedSnapshot.release.head,
+      copiedPreparation,
+    );
     const assemblySnapshot = captureRefSnapshot(fixture.repo, plan);
     const assemblyRecords = readAuthoritativeRecordSnapshot(
       fixture.repo,
@@ -422,6 +556,42 @@ test('the seven-action facade carries one release through a complete trusted loo
     assert.equal(integrateRetry.changed, false);
     assert.equal(integrateRetry.integration_commit, integrated.integration_commit);
     assert.equal(integrateRetry.status_commit, integrated.status_commit);
+    const integratedSnapshot = captureRefSnapshot(fixture.repo, plan);
+    const integratedRecords = readAuthoritativeRecordSnapshot(
+      fixture.repo,
+      plan,
+      integratedSnapshot,
+      { recordRootAdmission: testRecordPathAdmission(fixture.repo) },
+    );
+    const copiedIntegration = prepareRawRecord(
+      fixture.repo,
+      plan,
+      integratedSnapshot.release.head,
+      'untrusted copied integration result',
+      {
+        [assemblyStatusPath(plan)]: encodedStatus(
+          selectAssemblyFromSnapshot(plan, integratedRecords).status,
+        ),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      copiedIntegration,
+      integratedSnapshot.release.head,
+    );
+    throwsCode(
+      () => actions.integrateRelease(),
+      'TERMINAL_REWRITE',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      integratedSnapshot.release.head,
+      copiedIntegration,
+    );
     for (const actionReceipt of [
       installed,
       installRetry,
@@ -568,6 +738,35 @@ test('install target contention leaves no release and work order fails before a 
     );
     assert.equal(resolveRef(ordered.repo, plan.metadata.tracks[0].ref), ownerHead);
 
+    const hostileW2 = prepareRawRecord(
+      ordered.repo,
+      plan,
+      ownerHead,
+      'hostile out-of-order W2 retry state',
+      {
+        [workDesignPath(plan, 'W2')]: W2DesignBytes,
+        [workStatusPath(plan, 'W2')]: encodedStatus(designedW2),
+      },
+    );
+    git(
+      ordered.repo,
+      'update-ref',
+      plan.metadata.tracks[0].ref,
+      hostileW2,
+      ownerHead,
+    );
+    throwsCode(
+      () => actions.recordTransition({
+        scope: 'work',
+        workId: 'W2',
+        result: 'DESIGN_WRITTEN',
+        nextStatus: designedW2,
+        handoffs: { design: W2DesignBytes },
+      }),
+      'OUT_OF_ORDER_WORK',
+    );
+    assert.equal(resolveRef(ordered.repo, plan.metadata.tracks[0].ref), hostileW2);
+
     throwsCode(
       () => createBatonActions({
         repo: ordered.repo,
@@ -624,6 +823,159 @@ test('materialization contention cannot partially advance the release ref', () =
     assert.equal(resolveRef(fixture.repo, plan.metadata.tracks[0].ref), installedHead);
   } finally {
     fixture.cleanup();
+  }
+});
+
+test('record reconciliation rejects ineligible unchanged and copied durable states', () => {
+  const workFixture = temporaryRepository();
+  try {
+    write(workFixture.repo, 'README.md', 'base product\n');
+    commitAll(workFixture.repo, 'base');
+    const plan = parsePlanBytes(oneWorkPlanBytes());
+    const actions = createBatonActions({
+      repo: workFixture.repo,
+      plan,
+      profile: 'guided',
+      ...trustedResolvers(plan),
+    });
+    actions.installApprovedPlan({ approvalDigest: DIGESTS.b });
+    const materialized = actions.materializeTrack({ trackId: 'T1' });
+    let current = bindInitialStatus(
+      plan,
+      plan.metadata.tracks[0].ref,
+      { base_commit: materialized.base_commit, dependencies: [] },
+    );
+    throwsCode(
+      () => actions.recordTransition({
+        scope: 'work',
+        workId: 'W1',
+        result: 'NO_VERDICT',
+        nextStatus: current,
+      }),
+      'INVALID_RECONCILIATION',
+    );
+
+    git(workFixture.repo, 'switch', '-q', 'track/v1.0.0/T1');
+    write(workFixture.repo, 'src/alpha/one.mjs', 'product before authority\n');
+    const prematureCandidate = commitAll(workFixture.repo, 'premature product candidate');
+    git(workFixture.repo, 'switch', '-q', 'main');
+
+    const designBytes = Buffer.from('# W1 design\n');
+    current = designReady(current, {
+      digest: digestBytes(designBytes),
+      producer: 'late-design',
+    });
+    actions.recordTransition({
+      scope: 'work',
+      workId: 'W1',
+      result: 'DESIGN_WRITTEN',
+      nextStatus: current,
+      handoffs: { design: designBytes },
+    });
+    current = captainResult(current, 'proceed');
+    actions.recordTransition({
+      scope: 'work',
+      workId: 'W1',
+      result: 'PROCEED',
+      nextStatus: current,
+    });
+
+    const identity = productTreeIdentity(
+      workFixture.repo,
+      prematureCandidate,
+      testProductExclusionAdmission(workFixture.repo),
+    );
+    const proofBytes = Buffer.from('# Premature proof\n');
+    current = proofReady(current, {
+      digest: digestBytes(proofBytes),
+      producer: 'untrusted-retry-state',
+      candidate: prematureCandidate,
+      candidateTree: identity.candidateTree,
+      productTree: identity.productTree,
+    });
+    current.proof.base_commit = materialized.base_commit;
+    const beforeRawProof = resolveRef(workFixture.repo, plan.metadata.tracks[0].ref);
+    const rawProofCommit = prepareRawRecord(
+      workFixture.repo,
+      plan,
+      beforeRawProof,
+      'untrusted copied implemented state',
+      {
+        [workProofPath(plan, 'W1')]: proofBytes,
+        [workStatusPath(plan, 'W1')]: encodedStatus(current),
+      },
+    );
+    git(
+      workFixture.repo,
+      'update-ref',
+      plan.metadata.tracks[0].ref,
+      rawProofCommit,
+      beforeRawProof,
+    );
+    throwsCode(
+      () => actions.recordTransition({
+        scope: 'work',
+        workId: 'W1',
+        result: 'IMPLEMENTED',
+        nextStatus: current,
+        handoffs: { proof: proofBytes },
+      }),
+      'PRODUCT_BEFORE_PROCEED',
+    );
+    assert.equal(
+      resolveRef(workFixture.repo, plan.metadata.tracks[0].ref),
+      rawProofCommit,
+    );
+  } finally {
+    workFixture.cleanup();
+  }
+
+  const assemblyFixture = temporaryRepository();
+  try {
+    write(assemblyFixture.repo, 'README.md', 'base product\n');
+    commitAll(assemblyFixture.repo, 'base');
+    const plan = parsePlanBytes(oneWorkPlanBytes());
+    const dispatchStatuses = new Map();
+    const actions = createBatonActions({
+      repo: assemblyFixture.repo,
+      plan,
+      profile: 'autonomous',
+      ...trustedResolvers(plan, dispatchStatuses),
+    });
+    driveOneWorkToPassedAssembly(assemblyFixture, plan, actions, dispatchStatuses);
+    const snapshot = captureRefSnapshot(assemblyFixture.repo, plan);
+    const records = readAuthoritativeRecordSnapshot(
+      assemblyFixture.repo,
+      plan,
+      snapshot,
+      { recordRootAdmission: testRecordPathAdmission(assemblyFixture.repo) },
+    );
+    const passed = selectAssemblyFromSnapshot(plan, records).status;
+    const copied = prepareRawRecord(
+      assemblyFixture.repo,
+      plan,
+      snapshot.release.head,
+      'untrusted copied assembly PASS',
+      { [assemblyStatusPath(plan)]: encodedStatus(passed) },
+    );
+    git(
+      assemblyFixture.repo,
+      'update-ref',
+      plan.metadata.release_ref,
+      copied,
+      snapshot.release.head,
+    );
+    throwsCode(
+      () => actions.recordTransition({
+        scope: 'assembly',
+        result: 'PASS',
+        nextStatus: passed,
+      }),
+      'INVALID_TRANSITION',
+    );
+    assert.equal(resolveRef(assemblyFixture.repo, plan.metadata.release_ref), copied);
+  } finally {
+    assemblyFixture.cleanup();
   }
 });
 
@@ -725,6 +1077,45 @@ test('pristine plans rebound only across an identical topology', () => {
       ),
     );
     assert.equal(installed.digest, nextPlan.digest);
+    const currentSnapshot = captureRefSnapshot(fixture.repo, nextPlan);
+    const currentRecords = readAuthoritativeRecordSnapshot(
+      fixture.repo,
+      nextPlan,
+      currentSnapshot,
+      { recordRootAdmission: testRecordPathAdmission(fixture.repo) },
+    );
+    const copiedRebound = prepareRawRecord(
+      fixture.repo,
+      nextPlan,
+      currentSnapshot.release.head,
+      'untrusted copied rebound state',
+      {
+        [workStatusPath(nextPlan, 'W1')]: encodedStatus(
+          selectAuthoritativeStatusFromSnapshot(nextPlan, 'W1', currentRecords).status,
+        ),
+      },
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      nextPlan.metadata.release_ref,
+      copiedRebound,
+      currentSnapshot.release.head,
+    );
+    throwsCode(
+      () => nextActions.reboundPristinePlan({
+        previousPlan,
+        approvalDigest: DIGESTS.b,
+      }),
+      'INVALID_RECONCILIATION',
+    );
+    git(
+      fixture.repo,
+      'update-ref',
+      nextPlan.metadata.release_ref,
+      currentSnapshot.release.head,
+      copiedRebound,
+    );
 
     const incompatiblePlan = parsePlanBytes(oneWorkPlanBytes((metadata) => {
       metadata.target_ref = 'refs/heads/production';

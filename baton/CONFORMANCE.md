@@ -37,8 +37,10 @@ Every implementation MUST:
 14. validate each prepared immutable result against a prospective plan-bound
     snapshot before applying one exact ref transaction, then recheck the
     installed heads;
-15. reconcile an exact retry without another commit or ref movement, while a
-    stale or divergent retry fails; and
+15. reconcile an exact retry without another commit or ref movement only after
+    replaying its predecessor, lifecycle eligibility, candidate or assembly
+    history, and exact action effect; a stale, copied, or divergent retry
+    fails; and
 16. require Merge-prepared proof and fresh verification of the complete
     assembled release before final Merge.
 
