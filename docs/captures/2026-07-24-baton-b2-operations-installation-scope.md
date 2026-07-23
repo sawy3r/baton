@@ -84,9 +84,14 @@ memory product, host UI, positional shell argument, or duplicated rationale.
 - `baton-verify` has explicit `work` and `assembly` scopes, requires fresh
   read-only context, and records only `PASS`, `FAIL`, or `BLOCKED`. Operational
   failure records no verdict.
-- `baton-merge` has explicit `track` and `release` scopes and is deterministic.
-  It refuses conflict, stale heads, changed candidates, absent PASS, moved
-  target, or unexpected topology without partial success.
+- `baton-merge` has explicit `track`, `assembly`, and `release` scopes and is
+  deterministic. Track scope composes and collectively transfers one frozen
+  track. Assembly scope mechanically records the exact assembled candidate,
+  components, proof, and initial Verifier handoff in one record-only
+  compare-and-set after every track transfer. Release scope integrates only the
+  assembly candidate covered by PASS. Every scope refuses conflict, stale
+  heads, changed candidates, absent prerequisites, moved targets, or unexpected
+  topology without partial success.
 
 There is no `mark-shipped` v1 operation. Deployment state is outside Baton
 delivery.
@@ -275,4 +280,3 @@ mark-shipped                  -> retired
 B2 produces one exact operations/adapters/install commit and a concise outcome
 capture containing word budgets, generation parity, isolated install evidence,
 legacy migration/rollback evidence, and any deviation.
-

@@ -88,7 +88,9 @@ The compact deterministic projection contains:
   composition, and frozen head;
 - ordered work with stage, durable status, next role, outcome, blocker, and
   selected source mode/ref/head;
-- assembly as a distinct release-owned item; and
+- assembly as a distinct release-owned item;
+- one deterministic `baton-merge / assembly` next operation when every track
+  is transferred but the assembly proof and status do not yet exist; and
 - structured next-operation descriptors.
 
 Next operations identify operation, scope, release, track, and work. They are
@@ -277,4 +279,3 @@ Baton board.
 B3 produces one exact board/driver commit and a concise outcome capture with
 oracle selection, renderer parity, WebUI security, fake-driver, and performance
 evidence.
-
