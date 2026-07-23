@@ -1,4 +1,4 @@
-# Baton B1 F15-F18 action-boundary correction
+# Baton B1 F15-F19 action-boundary correction
 
 Date: 2026-07-24
 Status: bounded correction frozen; independent verdict pending
@@ -6,9 +6,11 @@ Track: `track/v1.0.0/B1-contract-records`
 F15 rejected head: `a30a06740a3434d8f5ba85d659fd4ecaaeb2a498`
 F16-F17 rejected head: `de67556789fe023ea62c1580b7f21d9938503890`
 F18 rejected head: `bcebb9770517138d7fe86d752be0b6f567bc0b12`
+F19 rejected head: `2113d57ba2b9cc7cc6184715fe79f3a9339bff55`
 F15 implementation: `b0f33e24e5e2167fe2484b06b97f363ea8975a7e`
 F16-F17 implementation: `6c25a33021ab1eb28657a3ebf023dcd595da4007`
 F18 implementation: `c5ea71923a35ac3dad2057d51b1aa751eb6509bd`
+F19 implementation: `46507f59d0101935803a9faabf858e512f0cd27b`
 
 ## Finding F15
 
@@ -44,6 +46,14 @@ message, allow the ref transaction to complete, and only then fail receipt
 validation. An already-frozen caller object could also retain mutable children
 because recursive freezing stopped at its frozen parent.
 
+## Finding F19
+
+`exactOptions` validated descriptors but returned caller storage. A stateful
+JavaScript Proxy could expose an enumerable data `workId` during validation,
+return a non-string during destructuring, then hide the property from the later
+presence check. That recreated F18's post-effect receipt failure despite the
+plain-descriptor checks.
+
 ## Bounded correction
 
 - `NO_VERDICT` is unchanged only at `verify / ready / verifier`; work still
@@ -70,6 +80,13 @@ because recursive freezing stopped at its frozen parent.
   preparation.
 - Receipts contain no caller-owned objects, admit only JSON data, and recurse
   through already-frozen parents so every nested engine-owned object is frozen.
+- The generic option boundary rejects Proxies and snapshots each validated
+  enumerable value descriptor exactly once into engine-owned storage. Symbols,
+  accessors, and non-enumerable fields fail; getters and Proxy traps are not
+  evaluated.
+- `recordTransition` copies and validates handoffs and canonicalises the
+  authored next status before repository snapshot capture, eliminating later
+  reads from caller-controlled option storage.
 
 Durable negatives cover copied W2 state, design-stage `NO_VERDICT`, a
 product-before-`PROCEED` proof retry, copied assembly `PASS`, a forged rebound,
@@ -80,7 +97,10 @@ leave refs and commit inventory unchanged. Exact successful retries still prove
 no ref movement and no new commit object. F18 adds Date, frozen-nested-object,
 plain-object, `null`, `false`, `0`, and `undefined` assembly identities,
 non-string and missing work identities, and non-plain method options; every
-case proves zero ref and commit-object movement.
+case proves zero ref and commit-object movement. F19 adds the stateful assembly
+Proxy that reproduced the bypass shape, a second action-method Proxy, a nested
+handoff Proxy, and accessor/symbol/non-enumerable option records. Each rejects
+without evaluating dynamic traps or changing refs or commit objects.
 
 ## Correction evidence
 
