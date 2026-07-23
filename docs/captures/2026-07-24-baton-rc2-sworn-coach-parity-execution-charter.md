@@ -273,9 +273,13 @@ its Bash scaling limits or accumulated Baton overhead.
 - Codex CLI execution uses the verified non-interactive, unrestricted-workspace,
   and ephemeral/no-memory flags required by the role, especially Verifier;
 - Claude Code and Codex retain their own tool-use and provider evolution;
-- OpenAI-compatible, DeepSeek, Gemini, and Bedrock integrations expose their
-  capabilities honestly rather than causing Sworn to grow an implicit,
-  provider-specific coding runtime;
+- OpenAI-compatible, DeepSeek, Gemini, and Bedrock integrations support all
+  model-performed Baton roles, including workspace-mutating implementation,
+  through one shared, auditable driver-side tool protocol rather than separate
+  provider- or role-specific agent loops;
+- provider adapters translate authentication, messages, tool calls, structured
+  output, usage, cancellation, and errors, while the shared driver-side tool
+  runtime owns the small allowlisted workspace interaction contract;
 - every driver reports a common identity, configured model, transport outcome,
   usage when available, structured-output support, context-freshness behavior,
   and workspace-mutation capability;
@@ -297,7 +301,8 @@ its Bash scaling limits or accumulated Baton overhead.
 - one shared conformance corpus runs through every driver adapter, with
   credential-gated live smoke tests in addition to deterministic fake-server
   tests; and
-- no managed inference, provider marketplace, or in-engine coding runtime.
+- no hosted managed-inference product, provider marketplace, or
+  provider-specific tool runtime in Sworn's orchestration core.
 
 ## Stage S3 — Operator surfaces and release cockpit
 
