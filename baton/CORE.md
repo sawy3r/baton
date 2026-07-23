@@ -1,82 +1,96 @@
 # Baton Core 1.0
 
-Baton is a protocol for autonomous software delivery whose completion claims can
-be trusted. It specifies the facts that must cross between a delivery engine, a
-builder, a verifier, and an authorizer. It does not prescribe prompts, Git
-commands, model providers, user interfaces, or project-management ceremony.
+Baton is a small protocol for delivering software autonomously without treating
+an agent's confidence as proof. It keeps five trust boundaries stable while
+leaving tools, models, prompts, storage, and scheduling to the people and
+systems using it.
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 
-## B1 — Bounded Authority
+## B1 — Stay inside the agreed work
 
-Autonomy operates inside an approved delivery plan. The plan MUST state the
-desired outcome, included and excluded scope, acceptance criteria, allowed
-effects, assurance requirements, and integration authority.
-Approval MUST be authenticated by an authorizer capability or trust root that is
-unavailable to the autonomous caller, builder, and verifier. An identity claim
-or policy file they can forge or replace is not authority.
+Autonomy begins with an exact plan approved by an external authorizer. The plan
+states the outcome, included and excluded scope, acceptance criteria,
+dependencies, required checks, constraints, target, and integration authority.
 
-An actor MUST NOT silently widen the outcome, scope, or effects it is authorized
-to change. An engine-discovered authority failure MUST stop for authorizer
-attention without inventing a verdict; a verifier-discovered authority or
-contract failure is `SPEC_BLOCK`. A changed contract creates new work; it does
-not retroactively authorize an attempt.
+The Planner may propose or revise that plan but cannot approve it. An
+Implementer, Captain, Verifier, Merge invocation, or autonomous engine MUST NOT
+silently widen the approved work. A material change to scope, contract,
+constraints, checks, ownership, or authority requires a newly approved plan
+revision.
 
-## B2 — Durable Truth
+Approval evidence MUST bind the exact plan bytes and be protected from the
+delivery actors that rely on it. A caller-controlled label or an agent's claim
+that approval happened is not approval.
 
-Claims that affect delivery MUST survive the session that made them. The plan,
-submission, verdict, authority references, and relevant evidence MUST be stored
-as validated records or independently addressable artifacts.
+## B2 — Keep durable facts
 
-Chat transcripts, mutable labels, and an actor's recollection are not delivery
-truth. A board is a projection of durable records and repository facts; it MUST
-NOT be an independent state writer. Deferrals and exceptions are valid only
-when the approved plan bounds them or a new authority record accepts them.
-Completed effects remain historical truth after later authority or policy
-changes; their receipts MUST preserve the facts and authorization used at the
-time of the effect.
+Facts that decide what happens next MUST survive the conversation that produced
+them. Baton carries an approved plan, an Implementer design, candidate proof,
+and one validated status projection. Git supplies their history and the
+repository facts they name.
 
-## B3 — Real Evidence
+Chat transcripts, mutable dashboards, timestamps, and recollection are not
+delivery truth. A board is a read-only projection of committed records and Git;
+editing it cannot advance work.
 
-A submission MUST identify the exact candidate and provide falsifiable evidence
-for every acceptance criterion. Evidence MUST come from an engine-registered
-producer over the live candidate and MUST state the boundary and environment it
-exercised. A builder's unsupported assertion is not evidence.
+Runtime facts such as workers, retries, leases, tokens, and cost may be stored by
+an autonomous engine. They do not become a second Baton lifecycle.
 
-A leaf test cannot prove an assembled behavior. A mock cannot prove a real
-integration. The strength of the evidence MUST match the claim. Missing,
-stale, fabricated, or unreachable evidence cannot support `PASS`.
+## B3 — Prove the real result
 
-## B4 — Independent Verification
+Proof identifies the exact candidate and links every acceptance claim to
+falsifiable evidence. The evidence MUST exercise the boundary named by the
+claim. A leaf test cannot prove an assembled journey, a mock cannot prove a real
+integration, and an Implementer's unsupported statement is not evidence.
 
-No actor may certify its own work. A `PASS` verdict MUST come from a verifier
-run with fresh context, no inherited implementation transcript, and no authority
-to alter the candidate it reviews.
+Repository identity, base, candidate, tree, changed product, required checks,
+and evidence references are independently observable facts. Missing, stale,
+fabricated, or unreachable evidence cannot support completion.
 
-Verifier instructions, configuration, and capabilities MUST come from an
-engine-controlled context. Candidate-local agent instructions, plugins, hooks,
-or tool configuration MUST NOT become verifier control input.
+## B4 — Use a fresh independent Verifier
 
-The verdict MUST bind the immutable submission, contract, policy, and exact
-candidate. The verifier SHOULD actively try to disprove completion and MAY
-raise the assurance level. It MUST NOT lower approved assurance requirements.
+No Implementer certifies its own work. Verification runs in a clean context
+with no inherited implementation conversation, no authority to change the
+candidate, and read-only access to the exact candidate and its handoffs.
 
-## B5 — Safe Composition
+The Verifier tries to disprove completion and returns exactly `PASS`, `FAIL`, or
+`BLOCKED`. A runner crash, timeout, cancellation, or malformed response creates
+no Baton verdict.
 
-Only the exact candidate covered by a valid `PASS` may be integrated. A change
-to candidate bytes, base revision, contract, or assurance policy invalidates the
-verdict.
+`PASS` binds the approved plan, Captain-reviewed design, proof, and exact
+candidate. Changing any of them invalidates it.
 
-Integration MUST use an expected target revision and fail closed when the target
-has moved. If independently verified work is composed into a new candidate, the
-composition MUST itself be checked and verified before it is represented as
-delivered. Predicted touchpoints are scheduling hints; actual repository facts
-decide composition safety.
+## B5 — Merge only what passed
 
-## The trust kernel
+Merge is a named, normally mechanical responsibility. It rechecks current
+authority and integrates only the exact candidate covered by `PASS`, against an
+expected target head.
 
-A conforming delivery therefore has one short causal chain:
+A moved target, changed candidate, unexpected history or merge tree, conflict,
+or persistence failure stops without claiming success. A track becomes eligible
+only when every ordered work item has its own `PASS`; its final passed candidate
+and later record-only commits define the frozen head. Eligible tracks may be
+composed only through the approved release topology. Their assembled result
+requires a separate fresh verification before release Merge.
 
-> approved plan -> exact candidate -> real evidence -> fresh verdict -> safe integration
+## The useful minimum
 
-Everything else is an implementation choice or a risk-selected assurance pack.
+The normal chain is:
+
+```text
+approved plan
+  -> Implementer design
+  -> Captain decision
+  -> Implementer candidate and proof
+  -> fresh Verifier
+  -> exact Merge
+```
+
+Independent tracks may run that chain concurrently. Work remains serial inside
+each track: one work's `PASS` admits the next, but does not compose the track.
+After all work passes, the exact frozen track heads rejoin for assembly
+verification.
+
+Everything beyond these five boundaries must earn its cost as a deterministic
+check, project policy, engine mechanism, or optional heightened review.

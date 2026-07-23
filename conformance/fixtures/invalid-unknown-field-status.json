@@ -1,0 +1,23 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/work-status-v1.json",
+  "schema_version": "baton.work-status/v1",
+  "kind": "work",
+  "release": "1.0.0",
+  "work_id": "W1",
+  "track_id": "T1",
+  "owner_ref": "refs/heads/track/1.0.0/T1",
+  "authority_ref": "refs/heads/release-wt/1.0.0",
+  "target_ref": "refs/heads/main",
+  "plan": {
+    "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "approval": {
+      "ref": "approval://release/1.0.0",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  },
+  "stage": "design",
+  "status": "ready",
+  "next_role": "implementer",
+  "outcome": "none",
+  "activity_log": []
+}

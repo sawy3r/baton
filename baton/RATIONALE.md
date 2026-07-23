@@ -1,37 +1,60 @@
-# Why Baton became smaller
+# Why Baton has this shape
 
-Baton 0.x grew from real failures. Each addition was locally reasonable, but
-the combined protocol made every model repeatedly learn incident-specific
-procedures. Baton 1.0 preserves the trust properties and retires the universal
+Baton began as a working Bash Coach loop: plan a release, run ordered slices in
+parallel-safe tracks, review design with a Captain, verify from fresh context,
+and merge through a release worktree. It proved that a useful autonomous loop
+did not require a large framework.
+
+The protocol later accumulated twelve rules, many schemas, repeated role
+manuals, copied platform prompts, universal model reviews, and incident-specific
+artefacts. Each addition addressed a real failure, but every future invocation
+paid for all of them. Token cost and procedural churn rose while attention to
+the load-bearing boundaries fell.
+
+The first Baton 1.0 release candidate compressed too far in the other direction.
+It preserved a strong trust kernel but removed the portable five-responsibility
+workflow, installers, and board that made Baton immediately usable.
+
+RC2 restores the useful operating model without restoring the accumulated
 ceremony.
 
-| Baton 0.x concern | Baton 1.0 home |
-|---|---|
-| Reachability gate | B3 Real Evidence; evidence declares its exercised boundary |
-| No silent deferrals | B1 Bounded Authority + B2 Durable Truth |
-| Session discipline | B2; only durable records carry authority or completion |
-| Capture discipline | B2; records and addressable evidence, not prescribed prose |
-| Commit messages as capture | Optional implementation choice, not protocol |
-| Proof bundle | Submission record under B2/B3 |
-| Adversarial verification | B4 Independent Verification |
-| Requirements fidelity | B1 bounded acceptance; deeper analysis is an assurance pack |
-| Design fidelity | B1 authority; irreversible choices use `design-decision` |
-| Customer journeys | B3; critical journeys use `system-journey` |
-| Process-global mutation | B1 allowed effects + `production` pack + B5 |
-| Guard fidelity | B3 evidence scope must match the claim |
-| Track/worktree mechanics | Engine implementation of B5, not agent instructions |
-| Capability/model policy | Engine configuration outside Baton; assurance policy binds delivery checks and packs only |
+## Archaeological basis
 
-The old rules, prompts, commands, templates, and schemas remain available at the
-immutable `v0.16.0` tag. They are historical rationale, not a compatibility
-surface for Baton 1.x.
+The recovery lineage is recorded in Fired:
 
-The compression is deliberate:
+- `e984d658` — earliest complete recoverable responsibility loop and board;
+- `5d836ed6` — fresh inline dispatch without tmux;
+- `2c8ce241` — authored plan separated from derived board state;
+- `0c7b1460` — calibrated Captain triage; and
+- `b7654a30` — one role-independent runtime-driver boundary.
 
-- roles define authority and outputs, not personalities or handbooks;
-- schemas carry facts, not a second workflow engine;
-- deterministic mechanics live in Sworn;
-- fresh verification remains universal;
-- heavy review is selected by risk; and
-- failure routes to repair, re-authorization, or re-verification instead of
-  accumulating more prompt clauses.
+The later `124265bd` checkpoint preserves broad provider compatibility
+requirements but also shows why provider code, model rotation, worker controls,
+and active mission control belong in Sworn rather than Baton.
+
+The immutable `v0.16.0` tag remains the complete 0.x archaeology point.
+`v1.0.0-rc.1` remains the trust-kernel experiment. Neither is silently migrated
+or reinterpreted.
+
+## The boundary
+
+Baton owns five principles, five responsibilities, four concise handoff forms,
+one status schema, deterministic reference validation, and a read-only board.
+
+Sworn owns autonomous scheduling, leases, retries, cancellation, crash recovery,
+process and credential isolation, concrete provider drivers, runtime events,
+evaluation, cost, alerts, and hosted operations.
+
+That separation keeps manual Baton useful, lets Sworn automate the same
+contract, and prevents another provider-specific orchestration stack from
+growing inside the protocol.
+
+## How the protocol grows
+
+New incident knowledge should normally become a deterministic check, negative
+fixture, clearer existing field, project policy, or engine invariant. A new
+universal instruction is justified only when its absence breaks trust for
+nearly every delivery and no smaller mechanism can enforce it.
+
+The goal is not the fewest possible files. It is the smallest causal chain that
+still makes autonomous completion believable.
