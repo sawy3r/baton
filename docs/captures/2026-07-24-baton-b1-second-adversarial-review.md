@@ -39,6 +39,48 @@ load-bearing regressions, but neither appeared in `conformance/check.py`
 `node --test test/records/*.test.mjs` ran them, while portable conformance could
 still pass if either suite disappeared.
 
+### F9 — Parsed plan authority remained mutable and forgeable
+
+`parsePlanBytes` returned a normal mutable object. After its raw digest was
+computed, a caller could change work scope, track touch surfaces, dependencies,
+or other metadata while retaining the original digest. Snapshot and aggregate
+validators accepted caller-shaped plan objects rather than an opaque admission
+minted from the exact raw bytes.
+
+The contract therefore did not prove that later Git and lifecycle admission
+used the same plan that the external authorizer approved.
+
+### F10 — Record-root exclusion did not prove behavioral inertness
+
+The protocol said product-tree exclusion fails automatically when build, test,
+package, deploy, hook, or runtime behavior consumes `.baton/releases`.
+`resolveRecordRootAdmission` proved only the root's canonical repository shape;
+it did not resolve trusted evidence that the root was behaviorally inert.
+
+A caller could therefore obtain product-tree exclusion without satisfying the
+normative policy gate.
+
+### F11 — Aggregate Merge validators lacked before/after ref binding
+
+Track composition and assembly Merge validation consumed only a post-operation
+snapshot. A self-recorded stale `expected_target` could pass post-hoc if a
+caller force-installed the corresponding result and status refs before
+validation. The validators did not prove that the exact observed pre-head was
+the recorded expected target, that unrelated refs stayed still, or that the
+post-head was the one authorized result/transfer.
+
+### F12 — Product-tree CLI bypassed its own capability contract
+
+The product-tree CLI passed a raw record-root string to the opaque capability
+API. The normal command path therefore failed even though the underlying API
+correctly rejected raw-root claims.
+
+The same audit also flagged exported low-level mutation primitives as an
+attractive unsafe path. Their boundary must be made internal or explicitly
+unsafe, while ordinary callers receive evidence- and snapshot-gated high-level
+actions. Final detail from that API audit was still running when this finding
+was recorded.
+
 ## Bounded correction
 
 B1 reopens only to:
@@ -48,10 +90,18 @@ B1 reopens only to:
    verification binds the Merge-prepared proof and exact components; and
 2. add both hardening suites to the executable and published conformance
    inventories, with a regression proving their absence fails portable
-   conformance.
+   conformance;
+3. return a deeply frozen, opaque parsed-plan admission bound to exact raw bytes
+   and reject mutated or caller-forged plan objects in snapshots and aggregate
+   validators;
+4. require explicit trusted behavioral-inertness evidence before product-tree
+   exclusion and any action that relies on it;
+5. bind track composition and assembly Merge to exact before and after
+   snapshots, including unchanged unrelated refs and exact pre/post heads; and
+6. repair the product-tree CLI and close or clearly mark low-level mutation
+   primitives so the safe high-level action path is the attractive path.
 
-The correction does not reopen lifecycle, schema, Git topology, evidence,
-provider, scheduling, board, or operations design. No new completion claim is
-valid until the bounded correction and any still-running safe-API audit result
-are frozen on a new immutable head and independently reviewed.
-
+The correction does not reopen lifecycle, schema, provider, scheduling, board,
+or role design. No new completion claim is valid until the bounded correction
+and final safe-API audit result are frozen on a new immutable head and
+independently reviewed.
