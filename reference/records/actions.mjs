@@ -77,10 +77,27 @@ function fail(code, message, cause) {
 
 function exactOptions(value, required, optional, label) {
   if (value === undefined && required.length === 0) return {};
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (
+    value === null
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+  ) {
     fail('INVALID_ACTION_INPUT', `${label} requires one options object`);
   }
-  const keys = Object.keys(value).sort();
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => {
+    if (typeof key !== 'string') return true;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return (
+      !descriptor
+      || descriptor.enumerable !== true
+      || !Object.hasOwn(descriptor, 'value')
+    );
+  })) {
+    fail('INVALID_ACTION_INPUT', `${label} options must be plain enumerable data`);
+  }
+  const keys = ownKeys.sort();
   const admitted = [...required, ...optional].sort();
   if (keys.some((key) => !admitted.includes(key))) {
     fail('INVALID_ACTION_INPUT', `${label} received an unknown option`);
@@ -93,10 +110,11 @@ function exactOptions(value, required, optional, label) {
   return value;
 }
 
-function frozen(value) {
-  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  for (const nested of Object.values(value)) frozen(nested);
-  return Object.freeze(value);
+function frozen(value, seen = new WeakSet()) {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return value;
+  seen.add(value);
+  for (const nested of Object.values(value)) frozen(nested, seen);
+  return Object.isFrozen(value) ? value : Object.freeze(value);
 }
 
 function assertReceiptData(value, label = 'receipt', seen = new Set()) {
@@ -710,23 +728,31 @@ export function createBatonActions({
   }
 
   function recordTransition(options) {
+    const admittedOptions = exactOptions(
+      options,
+      ['scope', 'result', 'nextStatus'],
+      ['workId', 'handoffs'],
+      'recordTransition',
+    );
     const {
       scope,
       workId,
       result,
       nextStatus,
       handoffs,
-    } = exactOptions(
-      options,
-      ['scope', 'result', 'nextStatus'],
-      ['workId', 'handoffs'],
-      'recordTransition',
-    );
+    } = admittedOptions;
     if (!['work', 'assembly'].includes(scope) || !ORDINARY_RESULTS.has(result)) {
       fail('INVALID_ACTION_INPUT', 'recordTransition accepts only ordinary work/assembly results');
     }
-    if ((scope === 'work') !== (typeof workId === 'string')) {
-      fail('INVALID_ACTION_INPUT', 'work transitions require workId; assembly transitions forbid it');
+    const hasWorkId = Object.hasOwn(admittedOptions, 'workId');
+    if (
+      (scope === 'work' && (!hasWorkId || typeof workId !== 'string'))
+      || (scope === 'assembly' && hasWorkId)
+    ) {
+      fail(
+        'INVALID_ACTION_INPUT',
+        'work transitions require one string workId; assembly transitions forbid workId',
+      );
     }
     const before = captureRefSnapshot(repo, plan);
     const records = readAuthoritativeRecordSnapshot(

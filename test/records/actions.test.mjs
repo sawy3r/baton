@@ -89,6 +89,15 @@ function assertJsonOnly(value, label = 'receipt', seen = new Set()) {
   seen.delete(value);
 }
 
+function assertDeepFrozen(value, label = 'receipt', seen = new Set()) {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return;
+  assert.equal(Object.isFrozen(value), true, `${label} is not frozen`);
+  seen.add(value);
+  for (const [key, nested] of Object.entries(value)) {
+    assertDeepFrozen(nested, `${label}.${key}`, seen);
+  }
+}
+
 function prepareRawRecord(repo, plan, expectedHead, message, changes) {
   return unsafePrepareRecordTransition(repo, {
     expectedHead,
@@ -380,6 +389,29 @@ test('the seven-action facade carries one release through a complete trusted loo
       digest: digestBytes(designBytes),
       producer: 'w1-design',
     });
+    for (const invalidWorkId of [null, false, 0, {}, new Date(0)]) {
+      rejectedWithoutMovement(
+        fixture.repo,
+        () => actions.recordTransition({
+          scope: 'work',
+          workId: invalidWorkId,
+          result: 'DESIGN_WRITTEN',
+          nextStatus: current,
+          handoffs: { design: designBytes },
+        }),
+        'INVALID_ACTION_INPUT',
+      );
+    }
+    rejectedWithoutMovement(
+      fixture.repo,
+      () => actions.recordTransition({
+        scope: 'work',
+        result: 'DESIGN_WRITTEN',
+        nextStatus: current,
+        handoffs: { design: designBytes },
+      }),
+      'INVALID_ACTION_INPUT',
+    );
     const designed = actions.recordTransition({
       scope: 'work',
       workId: 'W1',
@@ -706,6 +738,30 @@ test('the seven-action facade carries one release through a complete trusted loo
       passedAssembly.verification.attestation_ref,
       clone(passedAssembly),
     );
+    const frozenNestedWorkId = Object.freeze({
+      nested: { remains_caller_owned: true },
+    });
+    for (const invalidAssemblyWorkId of [
+      new Date(0),
+      frozenNestedWorkId,
+      {},
+      null,
+      false,
+      0,
+      undefined,
+    ]) {
+      rejectedWithoutMovement(
+        fixture.repo,
+        () => actions.recordTransition({
+          scope: 'assembly',
+          workId: invalidAssemblyWorkId,
+          result: 'PASS',
+          nextStatus: passedAssembly,
+        }),
+        'INVALID_ACTION_INPUT',
+      );
+    }
+    assert.equal(Object.isFrozen(frozenNestedWorkId.nested), false);
     const assemblyPassed = actions.recordTransition({
       scope: 'assembly',
       result: 'PASS',
@@ -723,6 +779,11 @@ test('the seven-action facade carries one release through a complete trusted loo
 
     write(fixture.repo, 'target-note.txt', 'independent target advance\n');
     const targetAdvance = commitAll(fixture.repo, 'advance target before integration');
+    rejectedWithoutMovement(
+      fixture.repo,
+      () => actions.integrateRelease(new Date(0)),
+      'INVALID_ACTION_INPUT',
+    );
     const integrated = actions.integrateRelease();
     assert.equal(integrated.before.target.head, targetAdvance);
     assert.equal(integrated.integration_commit, integrated.after.target.head);
@@ -872,6 +933,7 @@ test('the seven-action facade carries one release through a complete trusted loo
       integrateRetry,
     ]) {
       assertJsonOnly(actionReceipt);
+      assertDeepFrozen(actionReceipt);
     }
   } finally {
     fixture.cleanup();
