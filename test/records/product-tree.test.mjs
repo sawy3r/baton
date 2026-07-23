@@ -5,12 +5,11 @@ import test from 'node:test';
 import {
   assertCandidate,
   assertCanonicalRecordRoot,
-  assertRecordOnlyTransition,
+  assertStructuralRecordOnlyTransition,
   assertRecordRootAtRef,
-  commitRecordTransition,
+  unsafeCommitRecordTransition,
   productTreeIdentity,
-  readFileAtRef,
-  resolveRecordRootAdmission,
+  readFileAtOID,
   resolveRef,
 } from '../../reference/records/git.mjs';
 import { validateProofGitIdentity } from '../../reference/records/records.mjs';
@@ -20,6 +19,7 @@ import {
   designReady,
   git,
   proofReady,
+  testProductExclusionAdmission,
   temporaryRepository,
   write,
 } from './helpers.mjs';
@@ -34,7 +34,7 @@ test('record-only commits preserve product identity while product edits invalida
     write(fixture.repo, 'src/app.txt', 'product-v1\n');
     write(fixture.repo, '.baton/releases/v1.0.0/plan.md', 'record-v1\n');
     const base = commitAll(fixture.repo, 'base product and record');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     const baseline = productTreeIdentity(fixture.repo, base, admission);
 
     write(fixture.repo, '.baton/releases/v1.0.0/plan.md', 'record-v2\n');
@@ -68,7 +68,7 @@ test('a raw record-root claim cannot obtain product-tree exclusion', () => {
     const commit = commitAll(fixture.repo, 'base');
     throwsCode(
       () => productTreeIdentity(fixture.repo, commit, '.baton/releases'),
-      'RECORD_ROOT_ADMISSION_REQUIRED',
+      'PRODUCT_EXCLUSION_ADMISSION_REQUIRED',
     );
   } finally {
     fixture.cleanup();
@@ -80,7 +80,7 @@ test('candidate ancestry is independent of product-tree equality', () => {
   try {
     write(fixture.repo, 'src/app.txt', 'base\n');
     const base = commitAll(fixture.repo, 'base');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     git(fixture.repo, 'switch', '-q', '-c', 'other');
     write(fixture.repo, '.baton/releases/v1/status.json', '{}\n');
     const descendant = commitAll(fixture.repo, 'record descendant');
@@ -104,7 +104,7 @@ test('Git blob reads preserve exact bytes', () => {
     const bytes = Buffer.from([0x00, 0x0a, 0xff, 0x41]);
     write(fixture.repo, 'binary.dat', bytes);
     const commit = commitAll(fixture.repo, 'binary');
-    const observed = readFileAtRef(fixture.repo, commit, 'binary.dat');
+    const observed = readFileAtOID(fixture.repo, commit, 'binary.dat');
     assert.ok(Buffer.isBuffer(observed));
     assert.deepEqual(observed, bytes);
   } finally {
@@ -117,7 +117,7 @@ test('a captured ref cannot hide a symlinked record root behind a safe launch wo
   try {
     write(fixture.repo, 'README.md', 'safe worktree\n');
     const safe = commitAll(fixture.repo, 'safe');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     symlinkSync('elsewhere', `${fixture.repo}/.baton`);
     const captured = commitAll(fixture.repo, 'captured symlink');
     git(fixture.repo, 'switch', '-q', '--detach', safe);
@@ -141,7 +141,7 @@ test('a passed candidate must be reachable from its authoritative track head', (
     write(fixture.repo, 'src/app.txt', 'base\n');
     write(fixture.repo, '.baton/releases/keep', 'record root\n');
     const base = commitAll(fixture.repo, 'base');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
 
     git(fixture.repo, 'switch', '-q', '-c', 'track-head', base);
     write(fixture.repo, 'src/app.txt', 'on track\n');
@@ -182,7 +182,7 @@ test('captured-object validation ignores an unsafe launch worktree', () => {
     const base = commitAll(fixture.repo, 'base product');
     write(fixture.repo, '.baton/releases/keep', 'safe captured records\n');
     const captured = commitAll(fixture.repo, 'safe captured root');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     const identity = productTreeIdentity(fixture.repo, captured, admission);
 
     rmSync(`${fixture.repo}/.baton`, { recursive: true });
@@ -197,7 +197,7 @@ test('captured-object validation ignores an unsafe launch worktree', () => {
       identity.productTree,
     );
     assert.deepEqual(
-      assertRecordOnlyTransition(
+      assertStructuralRecordOnlyTransition(
         fixture.repo,
         base,
         captured,
@@ -207,11 +207,12 @@ test('captured-object validation ignores an unsafe launch worktree', () => {
       ['.baton/releases/keep'],
     );
     git(fixture.repo, 'branch', 'safe-record-transition', captured);
-    const transitioned = commitRecordTransition(fixture.repo, {
+    const transitioned = unsafeCommitRecordTransition(fixture.repo, {
       ref: 'refs/heads/safe-record-transition',
       expectedHead: captured,
       message: 'safe captured record transition',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: {
         '.baton/releases/keep': 'updated captured record\n',
       },

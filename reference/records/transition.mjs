@@ -8,6 +8,7 @@ import {
   assertWorkMayAdvance,
   findTrack,
   parseStatusBytes,
+  requirePlanAdmission,
   requireEvidenceAdmission,
   trackRefSnapshot,
   validateAssemblyStatus,
@@ -20,9 +21,9 @@ import {
   workStatusPath,
 } from './records.mjs';
 import {
-  assertRecordOnlyTransition,
+  assertStructuralRecordOnlyTransition,
   commitParents,
-  readFileAtRef,
+  readFileAtOID,
   verifyTrackComposition,
   verifyReleaseIntegration,
 } from './git.mjs';
@@ -289,7 +290,7 @@ function validateRebound(previous, next) {
   );
 }
 
-export function validateTransition(previous, next, result) {
+export function unsafeValidateTransition(previous, next, result) {
   if (!TRANSITION_RESULTS.includes(result)) {
     fail('UNKNOWN_TRANSITION_RESULT', `unknown responsibility result ${String(result)}`);
   }
@@ -343,7 +344,7 @@ export function validateAdmittedTransition(
     profile,
   } = {},
 ) {
-  validateTransition(previous, next, result);
+  unsafeValidateTransition(previous, next, result);
   requireEvidenceAdmission(previous, previousAdmission, profile);
   requireEvidenceAdmission(next, nextAdmission, profile);
   return next;
@@ -359,13 +360,13 @@ function validateRecordedCandidateTransitions(admission) {
   ));
   for (const recorded of admission.record_transitions) {
     if (recorded.collective_materialization) {
-      validateTransition(recorded.before, recorded.after, 'MATERIALIZE');
+      unsafeValidateTransition(recorded.before, recorded.after, 'MATERIALIZE');
       continue;
     }
     const accepted = [];
     for (const result of ordinaryResults) {
       try {
-        validateTransition(recorded.before, recorded.after, result);
+        unsafeValidateTransition(recorded.before, recorded.after, result);
         accepted.push(result);
       } catch (error) {
         if (!(error instanceof RecordError)) throw error;
@@ -422,15 +423,29 @@ export function validateTrackCompositionTransition(
   previousStatuses,
   nextStatuses,
   {
-    snapshot,
+    beforeSnapshot,
+    afterSnapshot,
     recordRootAdmission,
     evidenceAdmissions: admittedStatuses,
     profile,
   } = {},
 ) {
-  validateRefSnapshot(plan, snapshot);
+  requirePlanAdmission(plan);
+  validateRefSnapshot(plan, beforeSnapshot);
+  validateRefSnapshot(plan, afterSnapshot);
+  if (beforeSnapshot.target.head !== afterSnapshot.target.head) {
+    fail('MOVED_TARGET', 'track composition cannot move the release target');
+  }
   const track = assertTrackReadyForComposition(plan, previousStatuses, trackId);
-  const frozenTrackHead = trackRefSnapshot(snapshot, track.id).head;
+  for (const plannedTrack of plan.metadata.tracks) {
+    if (
+      trackRefSnapshot(beforeSnapshot, plannedTrack.id).head
+      !== trackRefSnapshot(afterSnapshot, plannedTrack.id).head
+    ) {
+      fail('MOVED_OWNER', `track composition moved owner ${plannedTrack.id}`);
+    }
+  }
+  const frozenTrackHead = trackRefSnapshot(beforeSnapshot, track.id).head;
   if (frozenTrackHead === null) fail('AUTHORITATIVE_STATUS_MISSING', `track ${trackId} has no captured owner head`);
   validateTrackMaterialization(repo, plan, trackId, previousStatuses);
   let previousPassedStatus;
@@ -444,7 +459,7 @@ export function validateTrackCompositionTransition(
     requireEvidenceAdmission(previous, statusFor(admittedStatuses ?? {}, work.id), profile);
 
     const recordedOwner = parseStatusBytes(
-      readFileAtRef(repo, frozenTrackHead, workStatusPath(plan, work.id)),
+      readFileAtOID(repo, frozenTrackHead, workStatusPath(plan, work.id)),
       { planDigest: plan.digest },
     );
     same(recordedOwner, previous, `frozen owner status for ${work.id}`);
@@ -457,7 +472,7 @@ export function validateTrackCompositionTransition(
     validateCandidateTemporalOrder(plan, candidateAdmission);
     previousPassedStatus = previous;
 
-    validateTransition(previous, next, 'MERGED');
+    unsafeValidateTransition(previous, next, 'MERGED');
     if (next.merge.frozen_track_head !== frozenTrackHead) {
       fail('STALE_BINDING', `work ${work.id} does not bind the exact frozen track head`);
     }
@@ -469,6 +484,9 @@ export function validateTrackCompositionTransition(
     };
     if (binding.expected_target !== binding.observed_target) {
       fail('MOVED_TARGET', `work ${work.id} observed a target other than its expected head`);
+    }
+    if (binding.expected_target !== beforeSnapshot.release.head) {
+      fail('STALE_BINDING', `work ${work.id} does not bind the captured pre-composition release head`);
     }
     if (sharedMerge === undefined) sharedMerge = binding;
     else same(sharedMerge, binding, `shared track Merge binding for ${work.id}`);
@@ -488,8 +506,11 @@ export function validateTrackCompositionTransition(
     frozenTrackHead,
     sharedMerge.result_commit,
   );
-  const releaseHead = snapshot.release.head;
-  assertRecordOnlyTransition(
+  const releaseHead = afterSnapshot.release.head;
+  if (releaseHead === beforeSnapshot.release.head) {
+    fail('INVALID_COMPOSITION', 'track composition must advance the release ref');
+  }
+  assertStructuralRecordOnlyTransition(
     repo,
     sharedMerge.result_commit,
     releaseHead,
@@ -499,7 +520,7 @@ export function validateTrackCompositionTransition(
   for (const work of track.work) {
     const next = statusFor(nextStatuses, work.id);
     const recordedRelease = parseStatusBytes(
-      readFileAtRef(repo, releaseHead, workStatusPath(plan, work.id)),
+      readFileAtOID(repo, releaseHead, workStatusPath(plan, work.id)),
       { planDigest: plan.digest },
     );
     same(recordedRelease, next, `release transfer status for ${work.id}`);
@@ -526,6 +547,7 @@ export function validateTrackMaterializationTransition(
     profile,
   } = {},
 ) {
+  requirePlanAdmission(plan);
   validateRefSnapshot(plan, beforeSnapshot);
   validateRefSnapshot(plan, afterSnapshot);
   const track = findTrack(plan, trackId);
@@ -569,19 +591,19 @@ export function validateTrackMaterializationTransition(
       profile,
     );
     const recordedPrevious = parseStatusBytes(
-      readFileAtRef(repo, beforeSnapshot.release.head, workStatusPath(plan, work.id)),
+      readFileAtOID(repo, beforeSnapshot.release.head, workStatusPath(plan, work.id)),
       { planDigest: plan.digest },
     );
     const recordedNext = parseStatusBytes(
-      readFileAtRef(repo, ownerHead, workStatusPath(plan, work.id)),
+      readFileAtOID(repo, ownerHead, workStatusPath(plan, work.id)),
       { planDigest: plan.digest },
     );
     same(recordedPrevious, previous, `materialization baseline for ${work.id}`);
     same(recordedNext, next, `materialized owner status for ${work.id}`);
-    validateTransition(previous, next, 'MATERIALIZE');
+    unsafeValidateTransition(previous, next, 'MATERIALIZE');
     statusPaths.push(workStatusPath(plan, work.id));
   }
-  assertRecordOnlyTransition(
+  assertStructuralRecordOnlyTransition(
     repo,
     beforeSnapshot.release.head,
     ownerHead,
@@ -607,6 +629,7 @@ export function validateAssemblyPreparationTransition(
     profile,
   } = {},
 ) {
+  requirePlanAdmission(plan);
   validateRefSnapshot(plan, beforeSnapshot);
   validateRefSnapshot(plan, afterSnapshot);
   requireEvidenceAdmission(status, evidenceAdmission, profile);
@@ -626,7 +649,7 @@ export function validateAssemblyPreparationTransition(
   for (const relativePath of [statusPath, proofPath]) {
     let exists = true;
     try {
-      readFileAtRef(repo, beforeSnapshot.release.head, relativePath);
+      readFileAtOID(repo, beforeSnapshot.release.head, relativePath);
     } catch (error) {
       if (error?.code !== 'RECORD_NOT_FOUND') throw error;
       exists = false;
@@ -640,7 +663,7 @@ export function validateAssemblyPreparationTransition(
     snapshot: afterSnapshot,
     recordRootAdmission,
   });
-  assertRecordOnlyTransition(
+  assertStructuralRecordOnlyTransition(
     repo,
     beforeSnapshot.release.head,
     afterSnapshot.release.head,
@@ -648,7 +671,7 @@ export function validateAssemblyPreparationTransition(
     [proofPath, statusPath],
   );
   const recorded = parseStatusBytes(
-    readFileAtRef(repo, afterSnapshot.release.head, statusPath),
+    readFileAtOID(repo, afterSnapshot.release.head, statusPath),
     { planDigest: plan.digest },
   );
   same(recorded, status, 'prepared assembly status');
@@ -664,20 +687,33 @@ export function validateAssemblyMergeTransition(
   previous,
   next,
   {
-    snapshot,
+    beforeSnapshot,
+    afterSnapshot,
     recordRootAdmission,
     evidenceAdmission,
     profile,
   } = {},
 ) {
+  requirePlanAdmission(plan);
+  validateRefSnapshot(plan, beforeSnapshot);
+  validateRefSnapshot(plan, afterSnapshot);
   requireEvidenceAdmission(previous, evidenceAdmission, profile);
-  validateAssemblyStatus(repo, plan, previous, { snapshot, recordRootAdmission });
-  validateAssemblyStatus(repo, plan, next, { snapshot, recordRootAdmission });
-  validateTransition(previous, next, 'MERGED');
+  validateAssemblyStatus(repo, plan, previous, {
+    snapshot: beforeSnapshot,
+    recordRootAdmission,
+  });
+  validateAssemblyStatus(repo, plan, next, {
+    snapshot: afterSnapshot,
+    recordRootAdmission,
+  });
+  unsafeValidateTransition(previous, next, 'MERGED');
 
   const binding = next.merge;
   if (binding.expected_target !== binding.observed_target) {
     fail('MOVED_TARGET', 'release Merge did not observe its expected target');
+  }
+  if (binding.expected_target !== beforeSnapshot.target.head) {
+    fail('STALE_BINDING', 'release Merge does not bind the captured pre-integration target');
   }
   verifyReleaseIntegration(
     repo,
@@ -685,22 +721,29 @@ export function validateAssemblyMergeTransition(
     previous.proof.candidate_commit,
     binding.result_commit,
   );
-  const actualTarget = snapshot.target.head;
+  const actualTarget = afterSnapshot.target.head;
   if (actualTarget !== binding.result_commit) {
     fail(
       'MOVED_TARGET',
       `release target is ${actualTarget}, not recorded result ${binding.result_commit}`,
     );
   }
-
-  const releaseHead = snapshot.release.head;
-  const parents = commitParents(repo, releaseHead);
-  if (parents.length !== 1) {
-    fail('UNEXPECTED_RECORD_TRANSITION', 'final assembly status must be one record-only commit');
+  for (const track of plan.metadata.tracks) {
+    if (
+      trackRefSnapshot(beforeSnapshot, track.id).head
+      !== trackRefSnapshot(afterSnapshot, track.id).head
+    ) {
+      fail('MOVED_OWNER', `release integration moved owner ${track.id}`);
+    }
   }
-  const previousReleaseHead = parents[0];
+
+  const previousReleaseHead = beforeSnapshot.release.head;
+  const releaseHead = afterSnapshot.release.head;
+  if (releaseHead === previousReleaseHead) {
+    fail('UNEXPECTED_RECORD_TRANSITION', 'release integration must record one final assembly status commit');
+  }
   const statusPath = assemblyStatusPath(plan);
-  assertRecordOnlyTransition(
+  assertStructuralRecordOnlyTransition(
     repo,
     previousReleaseHead,
     releaseHead,
@@ -708,11 +751,11 @@ export function validateAssemblyMergeTransition(
     [statusPath],
   );
   const recordedPrevious = parseStatusBytes(
-    readFileAtRef(repo, previousReleaseHead, statusPath),
+    readFileAtOID(repo, previousReleaseHead, statusPath),
     { planDigest: plan.digest },
   );
   const recordedNext = parseStatusBytes(
-    readFileAtRef(repo, releaseHead, statusPath),
+    readFileAtOID(repo, releaseHead, statusPath),
     { planDigest: plan.digest },
   );
   same(recordedPrevious, previous, 'pre-Merge assembly status');

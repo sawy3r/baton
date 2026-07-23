@@ -32,7 +32,8 @@ const MAX_RECORD_CHANGES = 1024;
 const MAX_RECORD_VALUE_BYTES = 262_144;
 const MAX_RECORD_TOTAL_BYTES = 64 * 1024 * 1024;
 const MAX_RECORD_MESSAGE_BYTES = 1000;
-const recordRootAdmissions = new WeakMap();
+const recordPathAdmissions = new WeakMap();
+const productExclusionAdmissions = new WeakMap();
 let configuredGitExecutable;
 
 function defaultGitCandidates() {
@@ -80,8 +81,15 @@ function validateGitExecutable(executable) {
  * Pin Git explicitly for platforms or installations outside the trusted
  * built-in locations. The caller establishes trust; PATH is never searched.
  */
-export function configureGitExecutable(executable) {
-  configuredGitExecutable = validateGitExecutable(executable);
+export function configureEngineGitExecutable(executable) {
+  const resolved = validateGitExecutable(executable);
+  if (configuredGitExecutable && configuredGitExecutable !== resolved) {
+    throw new GitRecordError(
+      'GIT_EXECUTABLE_ALREADY_CONFIGURED',
+      `trusted Git is already fixed to ${configuredGitExecutable}`,
+    );
+  }
+  configuredGitExecutable = resolved;
   return configuredGitExecutable;
 }
 
@@ -94,7 +102,7 @@ export function gitExecutablePath() {
   }
   throw new GitRecordError(
     'GIT_EXECUTABLE_NOT_FOUND',
-    'no trusted Git executable was found; call configureGitExecutable with an absolute path',
+    'no trusted Git executable was found; call configureEngineGitExecutable with an absolute path',
   );
 }
 
@@ -173,8 +181,12 @@ function executeGit(repo, args, options = {}, internal = {}) {
   }
 }
 
-export function runGit(repo, args, options = {}) {
+function runGit(repo, args, options = {}) {
   return executeGit(repo, args, options);
+}
+
+export function unsafeRunGit(repo, args, options = {}) {
+  return runGit(repo, args, options);
 }
 
 export function repositoryRoot(repo = process.cwd()) {
@@ -287,6 +299,86 @@ export function captureHeadRefs(repo, refs) {
   })));
 }
 
+function assertObjectId(value, label) {
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(value)) {
+    throw new GitRecordError('INVALID_REF_OID', `${label} must be a full commit OID`);
+  }
+  return value;
+}
+
+/**
+ * Raw exact ref transaction primitive. Safe callers should use
+ * createBatonActions; this exists for the engine implementation and
+ * adversarial conformance fixtures.
+ */
+export function unsafeAtomicUpdateRefs(repo, operations) {
+  if (!Array.isArray(operations) || operations.length === 0 || operations.length > MAX_HEAD_REFS) {
+    throw new GitRecordError(
+      'INVALID_REF_TRANSACTION',
+      `ref transaction requires between 1 and ${MAX_HEAD_REFS} operations`,
+    );
+  }
+  const refs = new Set();
+  const lines = ['start'];
+  for (const [index, operation] of operations.entries()) {
+    if (
+      operation === null
+      || typeof operation !== 'object'
+      || Array.isArray(operation)
+      || !['create', 'update', 'verify'].includes(operation.kind)
+    ) {
+      throw new GitRecordError(
+        'INVALID_REF_TRANSACTION',
+        `ref transaction operation ${index} is malformed`,
+      );
+    }
+    const ref = assertExactHeadRef(operation.ref);
+    if (refs.has(ref)) {
+      throw new GitRecordError('DUPLICATE_REF', `ref transaction repeats ${ref}`);
+    }
+    refs.add(ref);
+    if (operation.kind === 'create') {
+      if (Object.keys(operation).sort().join(',') !== 'kind,newHead,ref') {
+        throw new GitRecordError('INVALID_REF_TRANSACTION', `create operation ${index} has unknown fields`);
+      }
+      lines.push(`create ${ref} ${assertObjectId(operation.newHead, 'new ref head')}`);
+      continue;
+    }
+    if (operation.kind === 'verify') {
+      if (Object.keys(operation).sort().join(',') !== 'expectedHead,kind,ref') {
+        throw new GitRecordError('INVALID_REF_TRANSACTION', `verify operation ${index} has unknown fields`);
+      }
+      lines.push(`verify ${ref} ${assertObjectId(operation.expectedHead, 'expected ref head')}`);
+      continue;
+    }
+    if (Object.keys(operation).sort().join(',') !== 'expectedHead,kind,newHead,ref') {
+      throw new GitRecordError('INVALID_REF_TRANSACTION', `update operation ${index} has unknown fields`);
+    }
+    lines.push(
+      `update ${ref} ${assertObjectId(operation.newHead, 'new ref head')} `
+      + `${assertObjectId(operation.expectedHead, 'expected ref head')}`,
+    );
+  }
+  lines.push('prepare', 'commit', '');
+  try {
+    runGit(repo, ['update-ref', '--stdin'], {
+      input: lines.join('\n'),
+      code: 'ATOMIC_REF_UPDATE_FAILED',
+      label: 'apply exact Baton ref transaction',
+    });
+  } catch (error) {
+    if (error instanceof GitRecordError) {
+      throw new GitRecordError(
+        'ATOMIC_REF_UPDATE_FAILED',
+        'exact Baton ref transaction lost without partial advancement',
+        error,
+      );
+    }
+    throw error;
+  }
+  return Object.freeze(operations.map((operation) => Object.freeze({ ...operation })));
+}
+
 export function isAncestor(repo, ancestor, descendant) {
   try {
     runGit(repo, ['merge-base', '--is-ancestor', ancestor, descendant], {
@@ -302,8 +394,14 @@ export function isAncestor(repo, ancestor, descendant) {
   }
 }
 
-export function readFileAtRef(repo, ref, relativePath) {
+export function readFileAtOID(repo, ref, relativePath) {
   assertRepositoryPath(relativePath);
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(ref)) {
+    throw new GitRecordError(
+      'INVALID_REF_OID',
+      'singular file reads require a full captured commit OID',
+    );
+  }
   try {
     return runGit(repo, ['show', `${ref}:${relativePath}`], {
       encoding: null,
@@ -321,7 +419,7 @@ export function readFileAtRef(repo, ref, relativePath) {
  * Each frozen entry contains exact bytes, or null fields when the path is
  * absent. Individual files and aggregate output are bounded.
  */
-export function readFilesAtRef(repo, refOID, paths) {
+export function readFilesAtOID(repo, refOID, paths) {
   if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(refOID)) {
     throw new GitRecordError(
       'INVALID_REF_OID',
@@ -465,41 +563,151 @@ export function assertCanonicalRecordRoot(repo, root) {
 }
 
 /**
- * Admit the sole v1 record root for product-tree exclusion. The returned
- * object is an opaque capability bound to the resolved repository; callers
- * cannot forge one with a boolean or object literal.
+ * Admit the fixed v1 record path for structural reads and changed-path checks.
+ * This capability says nothing about whether record bytes affect product
+ * behavior and therefore cannot authorize product-tree exclusion.
  */
-export function resolveRecordRootAdmission(repo, root = RECORD_ROOT_V1) {
-  if (root !== RECORD_ROOT_V1) {
-    throw new GitRecordError(
-      'RECORD_ROOT_NOT_ADMITTED',
-      `Baton v1 admits only ${RECORD_ROOT_V1} as its record root`,
-    );
-  }
+export function resolveRecordPathAdmission(repo) {
   const repository = realpathSync(repositoryRoot(repo));
-  assertCanonicalRecordRoot(repository, root);
+  assertCanonicalRecordRoot(repository, RECORD_ROOT_V1);
   const admission = Object.freeze(Object.create(null));
-  recordRootAdmissions.set(admission, { repository, root });
+  recordPathAdmissions.set(admission, {
+    repository,
+    root: RECORD_ROOT_V1,
+  });
   return admission;
 }
 
-function requireRecordRootAdmission(repo, admission) {
-  const admitted = (
+function recordPathAdmissionData(admission) {
+  const direct = (
     admission !== null
     && typeof admission === 'object'
-    && recordRootAdmissions.get(admission)
+    && recordPathAdmissions.get(admission)
   );
+  if (direct) return direct;
+  const product = (
+    admission !== null
+    && typeof admission === 'object'
+    && productExclusionAdmissions.get(admission)
+  );
+  return product?.recordPath ?? null;
+}
+
+function requireRecordPathAdmission(repo, admission) {
+  const admitted = recordPathAdmissionData(admission);
   if (!admitted) {
     throw new GitRecordError(
-      'RECORD_ROOT_ADMISSION_REQUIRED',
-      'product-tree exclusion requires a record-root admission capability',
+      'RECORD_PATH_ADMISSION_REQUIRED',
+      'structural record access requires a fixed record-path admission',
     );
   }
   const repository = realpathSync(repositoryRoot(repo));
   if (repository !== admitted.repository) {
     throw new GitRecordError(
       'RECORD_ROOT_ADMISSION_MISMATCH',
-      'the record-root admission belongs to a different repository',
+      'the record-path admission belongs to a different repository',
+    );
+  }
+  return admitted.root;
+}
+
+/**
+ * Bind product-tree exclusion to one trusted host policy resolver. The
+ * resolver is evaluated independently for each exact immutable commit OID.
+ */
+export function resolveProductExclusionAdmission(
+  repo,
+  {
+    recordPathAdmission,
+    resolveBehavioralInertness,
+  } = {},
+) {
+  const root = requireRecordPathAdmission(repo, recordPathAdmission);
+  if (typeof resolveBehavioralInertness !== 'function') {
+    throw new GitRecordError(
+      'RECORD_ROOT_POLICY_REQUIRED',
+      'product-tree exclusion requires a trusted behavioral-inertness resolver',
+    );
+  }
+  const repository = realpathSync(repositoryRoot(repo));
+  const admission = Object.freeze(Object.create(null));
+  productExclusionAdmissions.set(admission, {
+    repository,
+    root,
+    recordPath: recordPathAdmissionData(recordPathAdmission),
+    resolveBehavioralInertness,
+    decisions: new Map(),
+  });
+  return admission;
+}
+
+function requireProductExclusionAdmission(repo, admission, commit) {
+  const admitted = (
+    admission !== null
+    && typeof admission === 'object'
+    && productExclusionAdmissions.get(admission)
+  );
+  if (!admitted) {
+    throw new GitRecordError(
+      'PRODUCT_EXCLUSION_ADMISSION_REQUIRED',
+      'product-tree exclusion requires a policy-bound admission',
+    );
+  }
+  const repository = realpathSync(repositoryRoot(repo));
+  if (repository !== admitted.repository) {
+    throw new GitRecordError(
+      'RECORD_ROOT_ADMISSION_MISMATCH',
+      'the product-exclusion admission belongs to a different repository',
+    );
+  }
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit)) {
+    throw new GitRecordError(
+      'INVALID_REF_OID',
+      'product exclusion requires one exact commit OID',
+    );
+  }
+  let decision = admitted.decisions.get(commit);
+  if (!decision) {
+    const request = Object.freeze({
+      kind: 'baton.record-root-inertness/v1',
+      repository,
+      record_root: admitted.root,
+      commit,
+    });
+    try {
+      decision = admitted.resolveBehavioralInertness(request);
+    } catch (error) {
+      throw new GitRecordError(
+        'RECORD_ROOT_POLICY_UNAVAILABLE',
+        `behavioral-inertness policy failed for ${commit}`,
+        error,
+      );
+    }
+    const expectedKeys = ['commit', 'decision', 'kind', 'record_root', 'repository'];
+    if (
+      !decision
+      || typeof decision !== 'object'
+      || Array.isArray(decision)
+      || typeof decision.then === 'function'
+      || JSON.stringify(Object.keys(decision).sort()) !== JSON.stringify(expectedKeys)
+      || decision.kind !== request.kind
+      || decision.repository !== repository
+      || decision.record_root !== admitted.root
+      || decision.commit !== commit
+      || !['inert', 'consumed'].includes(decision.decision)
+    ) {
+      throw new GitRecordError(
+        'UNTRUSTED_RECORD_ROOT_POLICY',
+        `behavioral-inertness policy did not bind ${commit} exactly`,
+      );
+    }
+    decision = Object.freeze({ ...decision });
+    admitted.decisions.set(commit, decision);
+  }
+  if (decision.decision !== 'inert') {
+    throw new GitRecordError(
+      'RECORD_ROOT_CONSUMED',
+      `record root ${admitted.root} affects product behavior at ${commit}`,
     );
   }
   return admitted.root;
@@ -565,8 +773,8 @@ export function assertRecordRootAtRef(repo, ref, recordRoot, options = {}) {
 }
 
 export function productTreeIdentity(repo, commit, admission) {
-  const root = requireRecordRootAdmission(repo, admission);
   const candidate = resolveRef(repo, commit);
+  const root = requireProductExclusionAdmission(repo, admission, candidate);
   assertRecordRootAtRef(repo, candidate, root, { allowMissing: true });
   const candidateTree = runGit(repo, ['rev-parse', `${candidate}^{tree}`], {
     label: `resolve candidate tree ${candidate}`,
@@ -937,10 +1145,11 @@ function deterministicCompositionCommit(context, repo, targetRef, expected, cand
   ).trim();
 }
 
-export function applyExactComposition(repo, {
+export function unsafePrepareExactComposition(repo, {
   targetRef,
   expectedHead,
   candidate,
+  productExclusionAdmission,
 }) {
   runGit(repo, ['check-ref-format', targetRef], {
     code: 'INVALID_TARGET_REF',
@@ -951,6 +1160,8 @@ export function applyExactComposition(repo, {
   }
   const expected = resolveRef(repo, expectedHead);
   const passed = resolveRef(repo, candidate);
+  productTreeIdentity(repo, expected, productExclusionAdmission);
+  productTreeIdentity(repo, passed, productExclusionAdmission);
   let mode;
   let result;
   if (isAncestor(repo, expected, passed)) {
@@ -980,11 +1191,36 @@ export function applyExactComposition(repo, {
       );
     });
   }
+  productTreeIdentity(repo, result, productExclusionAdmission);
+  verifyExactComposition(repo, expected, passed, result, 'composition');
+  return Object.freeze({
+    mode,
+    expected,
+    candidate: passed,
+    result,
+  });
+}
 
+export function unsafeApplyExactComposition(repo, options) {
+  const prepared = unsafePrepareExactComposition(repo, options);
+  const {
+    targetRef,
+  } = options;
+  const {
+    mode,
+    expected,
+    candidate: passed,
+    result,
+  } = prepared;
   const current = resolveRef(repo, targetRef);
   if (current === result) {
-    verifyExactComposition(repo, expected, passed, result, 'composition');
-    return { mode, expected, candidate: passed, result, changed: false };
+    return Object.freeze({
+      mode,
+      expected,
+      candidate: passed,
+      result,
+      changed: false,
+    });
   }
   if (current !== expected) {
     throw new GitRecordError(
@@ -992,26 +1228,29 @@ export function applyExactComposition(repo, {
       `expected ${targetRef} at ${expected}, observed ${current}`,
     );
   }
-  try {
-    runGit(repo, ['update-ref', targetRef, result, expected], {
-      code: 'STALE_TARGET',
-      label: `compare-and-set ${targetRef}`,
-    });
-  } catch (error) {
-    if (
-      error instanceof GitRecordError
-      && resolveRef(repo, targetRef) === result
-    ) {
-      return { mode, expected, candidate: passed, result, changed: false };
-    }
-    throw error;
-  }
-  verifyExactComposition(repo, expected, passed, result, 'composition');
-  return { mode, expected, candidate: passed, result, changed: true };
+  unsafeAtomicUpdateRefs(repo, [{
+    kind: 'update',
+    ref: targetRef,
+    newHead: result,
+    expectedHead: expected,
+  }]);
+  return Object.freeze({
+    mode,
+    expected,
+    candidate: passed,
+    result,
+    changed: true,
+  });
 }
 
-export function assertRecordOnlyTransition(repo, before, after, admission, expectedPaths = []) {
-  const root = requireRecordRootAdmission(repo, admission);
+export function assertStructuralRecordOnlyTransition(
+  repo,
+  before,
+  after,
+  admission,
+  expectedPaths = [],
+) {
+  const root = requireRecordPathAdmission(repo, admission);
   const exactBefore = resolveRef(repo, before);
   const exactAfter = resolveRef(repo, after);
   const parents = commitParents(repo, exactAfter);
@@ -1039,14 +1278,6 @@ export function assertRecordOnlyTransition(repo, before, after, admission, expec
       );
     }
     throw error;
-  }
-  const beforeIdentity = productTreeIdentity(repo, exactBefore, admission);
-  const afterIdentity = productTreeIdentity(repo, exactAfter, admission);
-  if (beforeIdentity.productTree !== afterIdentity.productTree) {
-    throw new GitRecordError(
-      'PRODUCT_CHANGED_DURING_RECORD_TRANSITION',
-      'record transition changed product identity',
-    );
   }
   const paths = changedPathsBetween(repo, exactBefore, exactAfter);
   if (paths.some((changedPath) => !recordPathAllowed(changedPath, root))) {
@@ -1099,47 +1330,17 @@ function assertRecordRootPreservedInTree(repo, tree, root) {
   }
 }
 
-export function commitRecordTransition(repo, {
-  ref,
+export function unsafePrepareRecordTransition(repo, {
   expectedHead,
   message,
-  admission,
+  recordPathAdmission,
+  productExclusionAdmission,
   changes,
-  createRef,
 }) {
-  const root = requireRecordRootAdmission(repo, admission);
-  assertExactHeadRef(ref);
-  let ownerRef;
-  if (createRef !== undefined) {
-    if (
-      createRef === null
-      || typeof createRef !== 'object'
-      || Array.isArray(createRef)
-      || Object.keys(createRef).length !== 1
-      || typeof createRef.ref !== 'string'
-    ) {
-      throw new GitRecordError(
-        'INVALID_CREATE_REF',
-        'createRef must be exactly { ref: \"refs/heads/...\" }',
-      );
-    }
-    ownerRef = assertExactHeadRef(createRef.ref);
-    if (ownerRef === ref) {
-      throw new GitRecordError(
-        'INVALID_CREATE_REF',
-        'createRef must differ from the updated record ref',
-      );
-    }
-  }
+  const root = requireRecordPathAdmission(repo, recordPathAdmission);
   const expected = resolveRef(repo, expectedHead);
+  const expectedProduct = productTreeIdentity(repo, expected, productExclusionAdmission);
   assertRecordRootAtRef(repo, expected, root, { allowMissing: true });
-  const current = resolveRef(repo, ref);
-  if (current !== expected) {
-    throw new GitRecordError(
-      'STALE_WRITER',
-      `expected ${ref} at ${expected}, observed ${current}`,
-    );
-  }
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
     throw new GitRecordError('EMPTY_RECORD_TRANSITION', 'a record transition requires at least one path change');
   }
@@ -1233,46 +1434,97 @@ export function commitRecordTransition(repo, {
     }
     const tree = runGit(repo, ['write-tree'], { env, label: 'write record transition tree' }).trim();
     assertRecordRootPreservedInTree(repo, tree, root);
+    const date = `@${commitTimestamp(repo, expected) + 1} +0000`;
     const commit = runGit(repo, ['commit-tree', tree, '-p', expected], {
       input: `${commitMessage}\n`,
       env: {
         GIT_AUTHOR_NAME: 'Baton Records',
         GIT_AUTHOR_EMAIL: 'records@baton.invalid',
+        GIT_AUTHOR_DATE: date,
         GIT_COMMITTER_NAME: 'Baton Records',
         GIT_COMMITTER_EMAIL: 'records@baton.invalid',
+        GIT_COMMITTER_DATE: date,
       },
       label: 'create record transition commit',
     }).trim();
-    try {
-      if (ownerRef) {
-        const transaction = [
-          'start',
-          `update ${ref} ${commit} ${expected}`,
-          `create ${ownerRef} ${commit}`,
-          'prepare',
-          'commit',
-          '',
-        ].join('\n');
-        runGit(repo, ['update-ref', '--stdin'], {
-          input: transaction,
-          code: 'ATOMIC_REF_UPDATE_FAILED',
-          label: `atomically update ${ref} and create ${ownerRef}`,
-        });
-      } else {
-        runGit(repo, ['update-ref', ref, commit, expected], {
-          code: 'STALE_WRITER',
-          label: `compare-and-set ${ref}`,
-        });
-      }
-    } catch (error) {
-      if (error instanceof GitRecordError) {
-        const code = ownerRef ? 'ATOMIC_REF_UPDATE_FAILED' : 'STALE_WRITER';
-        throw new GitRecordError(code, `record ref transaction lost for ${ref}`, error);
-      }
-      throw error;
+    const nextProduct = productTreeIdentity(repo, commit, productExclusionAdmission);
+    if (nextProduct.productTree !== expectedProduct.productTree) {
+      throw new GitRecordError(
+        'PRODUCT_CHANGED_DURING_RECORD_TRANSITION',
+        'record transition changed product identity',
+      );
     }
-    return commit;
+    return Object.freeze({
+      expected,
+      commit,
+      paths: Object.freeze(preparedChanges.map(([relativePath]) => relativePath).sort()),
+    });
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
+}
+
+export function unsafeCommitRecordTransition(repo, {
+  ref,
+  expectedHead,
+  message,
+  recordPathAdmission,
+  productExclusionAdmission,
+  changes,
+  createRef,
+}) {
+  const exactRef = assertExactHeadRef(ref);
+  let ownerRef;
+  if (createRef !== undefined) {
+    if (
+      createRef === null
+      || typeof createRef !== 'object'
+      || Array.isArray(createRef)
+      || Object.keys(createRef).length !== 1
+      || typeof createRef.ref !== 'string'
+    ) {
+      throw new GitRecordError(
+        'INVALID_CREATE_REF',
+        'createRef must be exactly { ref: \"refs/heads/...\" }',
+      );
+    }
+    ownerRef = assertExactHeadRef(createRef.ref);
+    if (ownerRef === exactRef) {
+      throw new GitRecordError(
+        'INVALID_CREATE_REF',
+        'createRef must differ from the updated record ref',
+      );
+    }
+  }
+  const expected = resolveRef(repo, expectedHead);
+  const current = resolveRef(repo, exactRef);
+  if (current !== expected) {
+    throw new GitRecordError(
+      'STALE_WRITER',
+      `expected ${exactRef} at ${expected}, observed ${current}`,
+    );
+  }
+  const prepared = unsafePrepareRecordTransition(repo, {
+    expectedHead: expected,
+    message,
+    recordPathAdmission,
+    productExclusionAdmission,
+    changes,
+  });
+  const operations = [{
+    kind: 'update',
+    ref: exactRef,
+    newHead: prepared.commit,
+    expectedHead: expected,
+  }];
+  if (ownerRef) {
+    operations.push({ kind: 'create', ref: ownerRef, newHead: prepared.commit });
+  }
+  try {
+    unsafeAtomicUpdateRefs(repo, operations);
+  } catch (error) {
+    const code = ownerRef ? 'ATOMIC_REF_UPDATE_FAILED' : 'STALE_WRITER';
+    throw new GitRecordError(code, `record ref transaction lost for ${exactRef}`, error);
+  }
+  return prepared.commit;
 }

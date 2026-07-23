@@ -41,9 +41,12 @@ The Captain does not become another Planner, Implementer, or Verifier.
 
 ### Verifier
 
-The Verifier receives the approved plan, current Captain-reviewed design, exact
-candidate, and proof in a clean context. It inherits no implementation
-conversation, cannot alter the candidate, and returns one outcome:
+For work, the Verifier receives the approved plan, current Captain-reviewed
+design, exact candidate, and Implementer proof. For assembly, it receives the
+approved plan, exact assembled candidate and component heads, and
+Merge-prepared proof; assembly has no Implementer design or Captain binding.
+Either review runs in a clean context, cannot alter the candidate, and returns
+one outcome:
 
 - `PASS` — the exact candidate satisfies the approved contract;
 - `FAIL` — the contract is adequate but implementation or evidence is wrong;
@@ -170,8 +173,8 @@ cannot authorize the revision.
 
 ### Proof
 
-`proof.md` names the delivered outcome and links each acceptance criterion to
-observable evidence. Its status binding records the exact repository, base,
+Work `proof.md` names the delivered outcome and links each acceptance criterion
+to observable evidence. Its status binding records the exact repository, base,
 candidate commit, normal Git tree, product-tree digest, required checks, and
 Implementer invocation.
 
@@ -183,9 +186,10 @@ composition.
 ### Status
 
 `status.json`, validated by `work-status-v1`, is the sole machine-authoritative
-current projection. It binds the plan and approval, current responsibility,
-design and Captain decision, candidate and proof, Verifier result, and Merge
-result.
+current projection. Every status binds the plan, approval, current
+responsibility, proof, Verifier result, and Merge result when present. Work also
+binds its design and Captain decision; assembly instead binds its exact
+components in the Merge-prepared proof.
 
 Its durable vocabulary is exactly:
 
@@ -251,10 +255,13 @@ approved work and release identity; there is no in-place assembly repair or
 - Captain invocation differs from the design producer and binds the current
   plan and design digests.
 - Implementation requires a current `PROCEED`.
-- Proof binds the current plan, approval, design, Captain invocation, repository,
-  base, candidate, candidate tree, and product tree.
-- Verifier invocation differs from the design producer, proof producer, and
-  Captain. Its trusted dispatch evidence resolves outside the candidate and
+- Work proof binds the current plan, approval, design, Captain invocation,
+  repository, base, candidate, candidate tree, and product tree.
+- Assembly proof binds the current plan, approval, repository, base, assembled
+  candidate, candidate tree, product tree, and exact ordered component heads.
+- For work, the Verifier invocation differs from the design producer, proof
+  producer, and Captain. For assembly, it differs from the Merge proof
+  producer. Its trusted dispatch evidence resolves outside the candidate and
   attests clean context and read-only candidate access.
 - Verification binds the current proof, candidate, and product tree.
 - Each Work Merge binds its own passed candidate plus the shared frozen track

@@ -54,6 +54,8 @@ REFERENCE_SUITES = (
     "test/records/transition.test.mjs",
     "test/records/git-topology.test.mjs",
     "test/records/product-tree.test.mjs",
+    "test/records/hardening.test.mjs",
+    "test/records/git-trust-adversarial.test.mjs",
 )
 
 

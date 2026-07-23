@@ -10,6 +10,11 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import {
+  resolveProductExclusionAdmission,
+  resolveRecordPathAdmission,
+} from '../../reference/records/git.mjs';
+
 export const APPROVAL_BYTES = Buffer.from('Baton test approval\n');
 export const DISPATCH_BYTES = Buffer.from('Baton test Verifier dispatch\n');
 
@@ -30,6 +35,23 @@ export const OIDS = Object.freeze(
 
 export function clone(value) {
   return structuredClone(value);
+}
+
+export function testRecordPathAdmission(repo) {
+  return resolveRecordPathAdmission(repo);
+}
+
+export function testProductExclusionAdmission(repo, decide = () => 'inert') {
+  const recordPathAdmission = resolveRecordPathAdmission(repo);
+  return resolveProductExclusionAdmission(repo, {
+    recordPathAdmission,
+    resolveBehavioralInertness(request) {
+      return {
+        ...request,
+        decision: decide(request),
+      };
+    },
+  });
 }
 
 export function makePlanMetadata() {

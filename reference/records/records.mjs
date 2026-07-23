@@ -9,17 +9,17 @@ import {
   GitRecordError,
   assertCandidate,
   assertCanonicalRecordRoot,
-  assertRecordOnlyTransition,
+  assertStructuralRecordOnlyTransition,
   assertRecordRootAtRef,
   commitParents,
   isAncestor,
   productTreeIdentity,
-  readFileAtRef,
+  readFileAtOID,
   resolveRef,
   changedPathsBetween,
   captureHeadRefs,
-  readFilesAtRef,
-  runGit,
+  readFilesAtOID,
+  unsafeRunGit as runGit,
 } from './git.mjs';
 
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
@@ -43,8 +43,9 @@ const IDENTITY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const INVOCATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
 const PLAN_OPEN = '```baton-plan-v1\n';
 const PLAN_CLOSE = '\n```\n';
-const refSnapshots = new WeakSet();
-const recordSnapshots = new WeakSet();
+const planAdmissions = new WeakMap();
+const refSnapshots = new WeakMap();
+const recordSnapshots = new WeakMap();
 const evidenceAdmissions = new WeakSet();
 
 export class RecordError extends Error {
@@ -623,7 +624,7 @@ export function validatePlanMetadata(value) {
 }
 
 export function parsePlanBytes(bytes) {
-  const raw = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  const raw = Buffer.from(bytes);
   if (raw.byteLength > RECORD_LIMITS.plan_bytes) {
     fail('RESOURCE_LIMIT', `plan.md exceeds maximum size ${RECORD_LIMITS.plan_bytes} bytes`);
   }
@@ -638,12 +639,43 @@ export function parsePlanBytes(bytes) {
   const metadata = validatePlanMetadata(strictParseJSON(metadataText, 'plan metadata', {
     maxBytes: RECORD_LIMITS.plan_bytes,
   }));
-  return {
-    metadata,
-    digest: digestBytes(raw),
+  const digest = digestBytes(raw);
+  const plan = {
+    metadata: freezeNested(metadata),
+    digest,
     markdown: text.slice(close + PLAN_CLOSE.length),
-    bytes: raw,
   };
+  Object.defineProperty(plan, 'bytes', {
+    enumerable: true,
+    get() {
+      return Buffer.from(raw);
+    },
+  });
+  Object.freeze(plan);
+  planAdmissions.set(plan, Object.freeze({
+    digest,
+    bytes: Buffer.from(raw),
+  }));
+  return plan;
+}
+
+export function requirePlanAdmission(plan) {
+  const admission = (
+    plan !== null
+    && typeof plan === 'object'
+    && planAdmissions.get(plan)
+  );
+  if (
+    !admission
+    || plan.digest !== admission.digest
+    || digestBytes(admission.bytes) !== admission.digest
+  ) {
+    fail(
+      'PLAN_ADMISSION_REQUIRED',
+      'operation requires the immutable parsed plan bound to its exact raw digest',
+    );
+  }
+  return admission;
 }
 
 function artifactRef(value, label) {
@@ -1234,18 +1266,21 @@ function validateDispatchProvenance(provenance, status, profile) {
   digest(provenance.product_tree, 'Verifier dispatch provenance.product_tree');
 }
 
-function frozenCopy(value) {
-  const copy = structuredClone(value);
+function freezeNested(value) {
   const seen = new WeakSet();
-  function freezeNested(item, depth = 0) {
+  function freezeValue(item, depth = 0) {
     if (item === null || typeof item !== 'object' || Object.isFrozen(item)) return item;
     if (depth > RECORD_LIMITS.json_depth) fail('RESOURCE_LIMIT', 'trusted object exceeds maximum depth');
     if (seen.has(item)) return item;
     seen.add(item);
-    for (const nested of Object.values(item)) freezeNested(nested, depth + 1);
+    for (const nested of Object.values(item)) freezeValue(nested, depth + 1);
     return Object.freeze(item);
   }
-  return freezeNested(copy);
+  return freezeValue(value);
+}
+
+function frozenCopy(value) {
+  return freezeNested(structuredClone(value));
 }
 
 /**
@@ -1345,7 +1380,7 @@ export function releasePlanPath(plan) {
 export function validateHandoffDigestAtRef(repo, ref, relativePath, expectedDigest) {
   repositoryPath(relativePath, 'handoff path', { allowRoot: false });
   digest(expectedDigest, 'handoff digest');
-  const bytes = readFileAtRef(repo, ref, relativePath);
+  const bytes = readFileAtOID(repo, ref, relativePath);
   const observed = digestBytes(bytes);
   if (observed !== expectedDigest) {
     fail('STALE_BINDING', `${relativePath} digest is ${observed}, expected ${expectedDigest}`);
@@ -1402,7 +1437,7 @@ function readBoundStatus(repo, ref, relativePath, plan, track, work) {
   let bytes;
   try {
     assertRecordRootAtRef(repo, ref, plan.metadata.record_root);
-    bytes = readFileAtRef(repo, ref, relativePath);
+    bytes = readFileAtOID(repo, ref, relativePath);
   } catch (error) {
     if (error instanceof GitRecordError) {
       throw new RecordError('AUTHORITATIVE_STATUS_MISSING', `missing ${relativePath} at ${ref}`, error);
@@ -1415,7 +1450,7 @@ function readBoundStatus(repo, ref, relativePath, plan, track, work) {
 }
 
 export function captureRefSnapshot(repo, plan) {
-  validatePlanMetadata(plan.metadata);
+  requirePlanAdmission(plan);
   const requested = [
     plan.metadata.target_ref,
     plan.metadata.release_ref,
@@ -1435,14 +1470,15 @@ export function captureRefSnapshot(repo, plan) {
       head: capturedTracks[index].head,
     }))),
   });
-  refSnapshots.add(snapshot);
+  refSnapshots.set(snapshot, plan.digest);
   return snapshot;
 }
 
 export function validateRefSnapshot(plan, snapshot) {
+  requirePlanAdmission(plan);
   if (
     !snapshot
-    || !refSnapshots.has(snapshot)
+    || refSnapshots.get(snapshot) !== plan.digest
     || snapshot.release?.ref !== plan.metadata.release_ref
     || snapshot.target?.ref !== plan.metadata.target_ref
     || !Array.isArray(snapshot.tracks)
@@ -1487,7 +1523,7 @@ function parsedStatusBatch(repo, plan, head, plannedWork) {
     plan,
     head,
     plannedWork,
-    readFilesAtRef(repo, head, paths),
+    readFilesAtOID(repo, head, paths),
   );
 }
 
@@ -1496,7 +1532,7 @@ function parsedReleaseBatch(repo, plan, head, plannedWork) {
     ...plannedWork.map(({ work }) => workStatusPath(plan, work.id)),
     assemblyStatusPath(plan),
   ];
-  const files = readFilesAtRef(repo, head, paths);
+  const files = readFilesAtOID(repo, head, paths);
   const assemblyFile = files.at(-1);
   let assembly = null;
   if (assemblyFile.bytes !== null) {
@@ -1555,7 +1591,7 @@ function validateOwnerMarker(
   }
   const marker = history[0].commit;
   const statusPaths = track.work.map((work) => workStatusPath(plan, work.id));
-  assertRecordOnlyTransition(
+  assertStructuralRecordOnlyTransition(
     repo,
     materialization.base_commit,
     marker,
@@ -1690,14 +1726,15 @@ export function readAuthoritativeRecordSnapshot(
     ref_snapshot: snapshot,
     refs: Object.freeze(refs.map((entry) => Object.freeze(entry))),
   });
-  recordSnapshots.add(result);
+  recordSnapshots.set(result, plan.digest);
   return result;
 }
 
 export function selectAuthoritativeStatusFromSnapshot(plan, workId, records) {
+  requirePlanAdmission(plan);
   if (
     !records
-    || !recordSnapshots.has(records)
+    || recordSnapshots.get(records) !== plan.digest
     || records.plan_digest !== plan.digest
     || records.kind !== 'baton.structural-authority-snapshot/v1'
   ) {
@@ -1750,9 +1787,10 @@ export function selectAuthoritativeStatusFromSnapshot(plan, workId, records) {
 }
 
 export function selectAssemblyFromSnapshot(plan, records) {
+  requirePlanAdmission(plan);
   if (
     !records
-    || !recordSnapshots.has(records)
+    || recordSnapshots.get(records) !== plan.digest
     || records.plan_digest !== plan.digest
     || records.kind !== 'baton.structural-authority-snapshot/v1'
   ) {
@@ -1810,7 +1848,7 @@ export function expectedTrackMaterialization(repo, plan, trackId, snapshot) {
   validateRefSnapshot(plan, snapshot);
   const track = findTrack(plan, trackId);
   const exactReleaseHead = snapshot.release.head;
-  const capturedPlan = parsePlanBytes(readFileAtRef(repo, exactReleaseHead, releasePlanPath(plan)));
+  const capturedPlan = parsePlanBytes(readFileAtOID(repo, exactReleaseHead, releasePlanPath(plan)));
   if (capturedPlan.digest !== plan.digest) {
     fail('STALE_BINDING', 'materialization base does not contain the exact approved plan');
   }
@@ -1851,10 +1889,11 @@ export function expectedTrackMaterialization(repo, plan, trackId, snapshot) {
 }
 
 export function validateMaterializationEvidence(repo, plan, trackId, materialization) {
+  requirePlanAdmission(plan);
   const track = findTrack(plan, trackId);
   validateMaterialization(materialization);
   const capturedPlan = parsePlanBytes(
-    readFileAtRef(repo, materialization.base_commit, releasePlanPath(plan)),
+    readFileAtOID(repo, materialization.base_commit, releasePlanPath(plan)),
   );
   if (capturedPlan.digest !== plan.digest) {
     fail('STALE_BINDING', 'materialization base does not contain the exact approved plan');
@@ -1900,6 +1939,7 @@ export function validateMaterializationEvidence(repo, plan, trackId, materializa
 }
 
 export function validateTrackMaterialization(repo, plan, trackId, statuses, snapshot = null) {
+  requirePlanAdmission(plan);
   const track = findTrack(plan, trackId);
   const firstStatus = statuses instanceof Map
     ? statuses.get(track.work[0].id)
@@ -1928,6 +1968,7 @@ export function validateTrackMaterialization(repo, plan, trackId, statuses, snap
 }
 
 export function nextWorkForTrack(plan, statuses, trackId) {
+  requirePlanAdmission(plan);
   const track = findTrack(plan, trackId);
   const observed = [];
   for (const work of track.work) {
@@ -1957,6 +1998,7 @@ export function nextWorkForTrack(plan, statuses, trackId) {
 }
 
 export function assertWorkMayAdvance(plan, statuses, trackId, workId) {
+  requirePlanAdmission(plan);
   const expected = nextWorkForTrack(plan, statuses, trackId);
   if (expected === null) fail('TRACK_WORK_COMPLETE', `track ${trackId} has no remaining work to implement`);
   if (expected !== workId) {
@@ -1966,6 +2008,7 @@ export function assertWorkMayAdvance(plan, statuses, trackId, workId) {
 }
 
 export function assertTrackReadyForComposition(plan, statuses, trackId) {
+  requirePlanAdmission(plan);
   const track = findTrack(plan, trackId);
   for (const work of track.work) {
     const status = statuses instanceof Map ? statuses.get(work.id) : statuses[work.id];
@@ -2073,6 +2116,7 @@ export function validateWorkCandidate(
   previousStatus,
   { authorityHead, recordRootAdmission } = {},
 ) {
+  requirePlanAdmission(plan);
   const { track, work } = findWork(plan, status.work_id);
   validateWorkStatusIdentity(status, plan, track, work);
   if (!status.proof) fail('MISSING_PROOF', `work ${work.id} has no candidate proof`);
@@ -2129,7 +2173,7 @@ export function validateWorkCandidate(
   const initialStatuses = {};
   for (const plannedWork of track.work) {
     const initial = parseStatusBytes(
-      readFileAtRef(repo, expectedBase, workStatusPath(plan, plannedWork.id)),
+      readFileAtOID(repo, expectedBase, workStatusPath(plan, plannedWork.id)),
       {
         planDigest: plan.digest,
         approvalRef: plan.metadata.approval_ref,
@@ -2158,7 +2202,7 @@ export function validateWorkCandidate(
       if (entry.parents.length !== 1) {
         fail('INVALID_RECORD_MUTATION', `record commit ${entry.commit} must have one parent`);
       }
-      assertRecordOnlyTransition(repo, parent, entry.commit, recordRootAdmission);
+      assertStructuralRecordOnlyTransition(repo, parent, entry.commit, recordRootAdmission);
       const observedRecordPaths = new Set(recordPaths);
       const collectiveMaterialization = (
         workIndex === 0
@@ -2194,11 +2238,11 @@ export function validateWorkCandidate(
         }
         assertRegularRecordFile(repo, entry.commit, changedPath);
         if (changedPath.endsWith('/status.json')) {
-          const before = parseStatusBytes(readFileAtRef(repo, parent, changedPath), {
+          const before = parseStatusBytes(readFileAtOID(repo, parent, changedPath), {
             planDigest: plan.digest,
             approvalRef: plan.metadata.approval_ref,
           });
-          const after = parseStatusBytes(readFileAtRef(repo, entry.commit, changedPath), {
+          const after = parseStatusBytes(readFileAtOID(repo, entry.commit, changedPath), {
             planDigest: plan.digest,
             approvalRef: plan.metadata.approval_ref,
           });
@@ -2265,6 +2309,7 @@ export function validateWorkRecordTail(
   authorityHead,
   recordRootAdmission,
 ) {
+  requirePlanAdmission(plan);
   const { track, work } = findWork(plan, status.work_id);
   validateWorkStatusIdentity(status, plan, track, work);
   if (!status.proof) fail('MISSING_PROOF', `work ${work.id} has no candidate proof`);
@@ -2291,7 +2336,7 @@ export function validateWorkRecordTail(
     ))) {
       fail('PRODUCT_AFTER_CANDIDATE', `work ${work.id} changed product after its candidate`);
     }
-    assertRecordOnlyTransition(repo, parent, entry.commit, recordRootAdmission);
+    assertStructuralRecordOnlyTransition(repo, parent, entry.commit, recordRootAdmission);
     for (const changedPath of paths) {
       if (!allowedRecords.has(changedPath)) {
         fail('INVALID_RECORD_MUTATION', `post-candidate history changed unadmitted record ${changedPath}`);
@@ -2301,11 +2346,11 @@ export function validateWorkRecordTail(
         recordTransitions.push({
           commit: entry.commit,
           path: changedPath,
-          before: parseStatusBytes(readFileAtRef(repo, parent, changedPath), {
+          before: parseStatusBytes(readFileAtOID(repo, parent, changedPath), {
             planDigest: plan.digest,
             approvalRef: plan.metadata.approval_ref,
           }),
-          after: parseStatusBytes(readFileAtRef(repo, entry.commit, changedPath), {
+          after: parseStatusBytes(readFileAtOID(repo, entry.commit, changedPath), {
             planDigest: plan.digest,
             approvalRef: plan.metadata.approval_ref,
           }),
@@ -2318,6 +2363,7 @@ export function validateWorkRecordTail(
 }
 
 export function validateAssemblyStatus(repo, plan, status, options = {}) {
+  requirePlanAdmission(plan);
   const snapshot = validateRefSnapshot(plan, options.snapshot);
   validateStatusSemantics(status, {
     planDigest: plan.digest,
@@ -2396,7 +2442,6 @@ function usage() {
     '  node reference/records/records.mjs plan <plan.md>',
     '  node reference/records/records.mjs status <status.json>',
     '  node reference/records/records.mjs digest <file>',
-    '  node reference/records/records.mjs product-tree <repo> <commit> <record-root>',
   ].join('\n');
 }
 
@@ -2414,10 +2459,6 @@ async function main(argv) {
   }
   if (command === 'digest' && args.length === 1) {
     process.stdout.write(`${digestBytes(readFileSync(args[0]))}\n`);
-    return;
-  }
-  if (command === 'product-tree' && args.length === 3) {
-    process.stdout.write(`${JSON.stringify(productTreeIdentity(args[0], args[1], args[2]))}\n`);
     return;
   }
   process.stderr.write(`${usage()}\n`);

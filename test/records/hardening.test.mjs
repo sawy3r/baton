@@ -2,10 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  applyExactComposition,
-  commitRecordTransition,
+  unsafeApplyExactComposition,
+  unsafeCommitRecordTransition,
   productTreeIdentity,
-  resolveRecordRootAdmission,
 } from '../../reference/records/git.mjs';
 import {
   RECORD_LIMITS,
@@ -21,6 +20,7 @@ import {
   strictParseJSON,
   validateHeadRef,
   validatePlanMetadata,
+  validateRefSnapshot,
   validateWorkCandidate,
   workDesignPath,
   workProofPath,
@@ -47,6 +47,7 @@ import {
   mergedWork,
   proofReady,
   temporaryRepository,
+  testProductExclusionAdmission,
   verified,
   write,
 } from './helpers.mjs';
@@ -99,6 +100,54 @@ function evidenceFor(status, profile = 'guided') {
   });
 }
 
+test('only an admitted immutable plan can mint or consume trusted snapshots', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    const base = commitAll(fixture.repo, 'base');
+    git(fixture.repo, 'branch', 'release-wt/v1.0.0', base);
+    const bytes = makePlanBytes();
+    const plan = parsePlanBytes(bytes);
+    const snapshot = captureRefSnapshot(fixture.repo, plan);
+
+    const frozenClone = Object.freeze({
+      ...plan,
+      metadata: structuredClone(plan.metadata),
+    });
+    throwsCode(() => captureRefSnapshot(fixture.repo, frozenClone), 'PLAN_ADMISSION_REQUIRED');
+
+    const widened = structuredClone(plan);
+    widened.metadata.tracks[0].work[0].scope.include = ['.'];
+    Object.freeze(widened);
+    throwsCode(() => captureRefSnapshot(fixture.repo, widened), 'PLAN_ADMISSION_REQUIRED');
+    throwsCode(
+      () => readAuthoritativeRecordSnapshot(fixture.repo, widened, snapshot),
+      'PLAN_ADMISSION_REQUIRED',
+    );
+    throwsCode(
+      () => validateTrackMaterializationTransition(
+        fixture.repo,
+        widened,
+        'T1',
+        {},
+        {},
+        {},
+      ),
+      'PLAN_ADMISSION_REQUIRED',
+    );
+
+    const differentMetadata = makePlanMetadata();
+    differentMetadata.tracks[0].work[0].outcome = 'A different approved outcome';
+    const different = parsePlanBytes(makePlanBytes(differentMetadata));
+    throwsCode(() => validateRefSnapshot(different, snapshot), 'INVALID_SNAPSHOT');
+
+    const reparsed = parsePlanBytes(bytes);
+    assert.equal(validateRefSnapshot(reparsed, snapshot), snapshot);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 function materializedSerialFixture() {
   const fixture = temporaryRepository();
   write(fixture.repo, 'README.md', 'product\n');
@@ -117,7 +166,7 @@ function materializedSerialFixture() {
     writeStatus(fixture.repo, plan, status);
   }
   const approved = commitAll(fixture.repo, 'approved baseline');
-  const admission = resolveRecordRootAdmission(fixture.repo);
+  const admission = testProductExclusionAdmission(fixture.repo);
   const materialization = expectedTrackMaterialization(
     fixture.repo,
     plan,
@@ -134,11 +183,12 @@ function materializedSerialFixture() {
     changes[workStatusPath(plan, workId)] = `${JSON.stringify(owner)}\n`;
   }
   git(fixture.repo, 'switch', '-q', 'main');
-  commitRecordTransition(fixture.repo, {
+  unsafeCommitRecordTransition(fixture.repo, {
     ref: plan.metadata.release_ref,
     expectedHead: approved,
     message: 'materialize serial T1',
-    admission,
+    recordPathAdmission: admission,
+    productExclusionAdmission: admission,
     changes,
     createRef: { ref: plan.metadata.tracks[0].ref },
   });
@@ -425,7 +475,7 @@ test('atomic materialization leaves a dual-ref marker and batched projection fai
       writeStatus(fixture.repo, plan, status);
     }
     const approved = commitAll(fixture.repo, 'approved baseline');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     const before = captureRefSnapshot(fixture.repo, plan);
     const materialization = expectedTrackMaterialization(fixture.repo, plan, 'T1', before);
     const owners = {};
@@ -437,11 +487,12 @@ test('atomic materialization leaves a dual-ref marker and batched projection fai
       owners[workId] = owner;
       changes[workStatusPath(plan, workId)] = `${JSON.stringify(owner)}\n`;
     }
-    const marker = commitRecordTransition(fixture.repo, {
+    const marker = unsafeCommitRecordTransition(fixture.repo, {
       ref: plan.metadata.release_ref,
       expectedHead: approved,
       message: 'materialize T1',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes,
       createRef: { ref: plan.metadata.tracks[0].ref },
     });
@@ -492,11 +543,12 @@ test('atomic materialization leaves a dual-ref marker and batched projection fai
     assert.equal(Object.isFrozen(structural.refs), true);
     assert.equal(Object.isFrozen(structural.refs[0].statuses[0].status), true);
 
-    commitRecordTransition(fixture.repo, {
+    unsafeCommitRecordTransition(fixture.repo, {
       ref: plan.metadata.release_ref,
       expectedHead: marker,
       message: 'move release after captured snapshot',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: {
         [workStatusPath(plan, 'W3')]: JSON.stringify(baselines.W3),
       },
@@ -524,11 +576,12 @@ test('atomic materialization leaves a dual-ref marker and batched projection fai
       verified(proofReady(captainResult(designReady(materializedW3), 'proceed')), 'pass'),
     );
     const releaseHead = captureRefSnapshot(fixture.repo, plan).release.head;
-    commitRecordTransition(fixture.repo, {
+    unsafeCommitRecordTransition(fixture.repo, {
       ref: plan.metadata.release_ref,
       expectedHead: releaseHead,
       message: 'fabricate terminal release copy',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: {
         [workStatusPath(plan, 'W3')]: `${JSON.stringify(terminalW3)}\n`,
       },
@@ -548,11 +601,12 @@ test('atomic materialization leaves a dual-ref marker and batched projection fai
       'INVALID_BASELINE',
     );
 
-    commitRecordTransition(fixture.repo, {
+    unsafeCommitRecordTransition(fixture.repo, {
       ref: plan.metadata.release_ref,
       expectedHead: fabricated.release.head,
       message: 'erase T1 materialization records',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: {
         [workStatusPath(plan, 'W1')]: `${JSON.stringify(baselines.W1)}\n`,
         [workStatusPath(plan, 'W2')]: `${JSON.stringify(baselines.W2)}\n`,
@@ -611,6 +665,11 @@ test('candidate replay rejects a product commit before Captain PROCEED', () => {
     const nextW2 = mergedWork(syntheticW2);
     nextW1.merge.frozen_track_head = authorityHead;
     nextW2.merge.frozen_track_head = authorityHead;
+    const attemptedSnapshot = captureRefSnapshot(fixture.repo, plan);
+    for (const next of [nextW1, nextW2]) {
+      next.merge.expected_target = attemptedSnapshot.release.head;
+      next.merge.observed_target = attemptedSnapshot.release.head;
+    }
     throwsCode(
       () => validateTrackCompositionTransition(
         fixture.repo,
@@ -619,7 +678,8 @@ test('candidate replay rejects a product commit before Captain PROCEED', () => {
         { W1: passed, W2: syntheticW2 },
         { W1: nextW1, W2: nextW2 },
         {
-          snapshot: captureRefSnapshot(fixture.repo, plan),
+          beforeSnapshot: attemptedSnapshot,
+          afterSnapshot: attemptedSnapshot,
           recordRootAdmission: admission,
           evidenceAdmissions: { W1: evidenceFor(passed) },
           profile: 'guided',
@@ -686,6 +746,11 @@ test('candidate replay rejects W2 design before W1 PASS', () => {
     const nextW2 = mergedWork(W2Passed);
     nextW1.merge.frozen_track_head = authorityHead;
     nextW2.merge.frozen_track_head = authorityHead;
+    const attemptedSnapshot = captureRefSnapshot(fixture.repo, plan);
+    for (const next of [nextW1, nextW2]) {
+      next.merge.expected_target = attemptedSnapshot.release.head;
+      next.merge.observed_target = attemptedSnapshot.release.head;
+    }
     throwsCode(
       () => validateTrackCompositionTransition(
         fixture.repo,
@@ -694,7 +759,8 @@ test('candidate replay rejects W2 design before W1 PASS', () => {
         { W1: W1Passed, W2: W2Passed },
         { W1: nextW1, W2: nextW2 },
         {
-          snapshot: captureRefSnapshot(fixture.repo, plan),
+          beforeSnapshot: attemptedSnapshot,
+          afterSnapshot: attemptedSnapshot,
           recordRootAdmission: admission,
           evidenceAdmissions: {
             W1: evidenceFor(W1Passed),
@@ -793,7 +859,7 @@ test('multi-work track replays collective materialization, serial gates, candida
       writeStatus(fixture.repo, plan, status);
     }
     const approved = commitAll(fixture.repo, 'approved baseline');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     const before = captureRefSnapshot(fixture.repo, plan);
     const materialization = expectedTrackMaterialization(fixture.repo, plan, 'T1', before);
     const initialOwners = {};
@@ -806,11 +872,12 @@ test('multi-work track replays collective materialization, serial gates, candida
       markerChanges[workStatusPath(plan, workId)] = `${JSON.stringify(status)}\n`;
     }
     git(fixture.repo, 'switch', '-q', 'main');
-    const marker = commitRecordTransition(fixture.repo, {
+    const marker = unsafeCommitRecordTransition(fixture.repo, {
       ref: plan.metadata.release_ref,
       expectedHead: approved,
       message: 'materialize serial T1',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: markerChanges,
       createRef: { ref: plan.metadata.tracks[0].ref },
     });
@@ -875,11 +942,13 @@ test('multi-work track replays collective materialization, serial gates, candida
     const W2 = advance(initialOwners.W2, W1.candidate, 'src/alpha/two.mjs', 'W2');
     const frozen = W2.head;
     const expectedRelease = marker;
+    const beforeComposition = captureRefSnapshot(fixture.repo, plan);
     git(fixture.repo, 'switch', '-q', 'main');
-    const composition = applyExactComposition(fixture.repo, {
+    const composition = unsafeApplyExactComposition(fixture.repo, {
       targetRef: plan.metadata.release_ref,
       expectedHead: expectedRelease,
       candidate: frozen,
+      productExclusionAdmission: admission,
     }).result;
     const completed = {};
     for (const [workId, passed] of [['W1', W1.passed], ['W2', W2.passed]]) {
@@ -890,11 +959,12 @@ test('multi-work track replays collective materialization, serial gates, candida
       status.merge.result_commit = composition;
       completed[workId] = status;
     }
-    const transfer = commitRecordTransition(fixture.repo, {
+    const transfer = unsafeCommitRecordTransition(fixture.repo, {
       ref: plan.metadata.release_ref,
       expectedHead: composition,
       message: 'transfer serial T1',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: Object.fromEntries(['W1', 'W2'].map((workId) => [
         workStatusPath(plan, workId),
         `${JSON.stringify(completed[workId])}\n`,
@@ -908,7 +978,12 @@ test('multi-work track replays collective materialization, serial gates, candida
         'T1',
         { W1: W1.passed, W2: W2.passed },
         completed,
-        { snapshot: transferSnapshot, recordRootAdmission: admission, profile: 'guided' },
+        {
+          beforeSnapshot: beforeComposition,
+          afterSnapshot: transferSnapshot,
+          recordRootAdmission: admission,
+          profile: 'guided',
+        },
       ),
       'EVIDENCE_ADMISSION_REQUIRED',
     );
@@ -920,7 +995,8 @@ test('multi-work track replays collective materialization, serial gates, candida
         { W1: W1.passed, W2: W2.passed },
         completed,
         {
-          snapshot: transferSnapshot,
+          beforeSnapshot: beforeComposition,
+          afterSnapshot: transferSnapshot,
           recordRootAdmission: admission,
           evidenceAdmissions: {
             W1: evidenceFor(W1.passed),

@@ -92,6 +92,45 @@ test('plan identity is the raw complete file and the format is singular and clos
   throwsCode(() => validatePlanMetadata(unknown), 'UNKNOWN_FIELD');
 });
 
+test('parsed plan authority is deeply immutable and keeps its raw bytes private', () => {
+  const source = makePlanBytes();
+  const expected = Buffer.from(source);
+  const parsed = parsePlanBytes(source);
+  const track = parsed.metadata.tracks[0];
+  const work = track.work[0];
+
+  for (const value of [
+    parsed,
+    parsed.metadata,
+    parsed.metadata.tracks,
+    track,
+    track.depends_on,
+    track.touch_surfaces,
+    track.work,
+    work,
+    work.scope,
+    work.scope.include,
+    work.scope.exclude,
+    work.acceptance,
+    work.acceptance[0],
+    work.checks,
+    work.constraints,
+    work.depends_on,
+  ]) {
+    assert.equal(Object.isFrozen(value), true);
+  }
+
+  source.fill(0);
+  assert.deepEqual(parsed.bytes, expected);
+  const exposed = parsed.bytes;
+  exposed.fill(0);
+  assert.deepEqual(parsed.bytes, expected);
+  assert.equal(parsed.digest, parsePlanBytes(expected).digest);
+  assert.throws(() => {
+    work.scope.include[0] = '.';
+  }, TypeError);
+});
+
 test('plan rejects invalid refs, escaping paths, dependency cycles, and parallel touch conflicts', () => {
   throwsCode(() => validateHeadRef('refs/heads/topic/../main'), 'INVALID_REF');
   throwsCode(() => validateHeadRef('main'), 'INVALID_REF');

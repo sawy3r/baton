@@ -26,8 +26,9 @@ that approval happened is not approval.
 ## B2 — Keep durable facts
 
 Facts that decide what happens next MUST survive the conversation that produced
-them. Baton carries an approved plan, an Implementer design, candidate proof,
-and one validated status projection. Git supplies their history and the
+them. Baton carries an approved plan and one validated status projection. Work
+adds an Implementer design and candidate proof. Assembly adds a Merge-prepared
+proof naming the exact component heads. Git supplies their history and the
 repository facts they name.
 
 Chat transcripts, mutable dashboards, timestamps, and recollection are not
@@ -58,8 +59,10 @@ The Verifier tries to disprove completion and returns exactly `PASS`, `FAIL`, or
 `BLOCKED`. A runner crash, timeout, cancellation, or malformed response creates
 no Baton verdict.
 
-`PASS` binds the approved plan, Captain-reviewed design, proof, and exact
-candidate. Changing any of them invalidates it.
+A work `PASS` binds the approved plan, Captain-reviewed design, Implementer
+proof, and exact candidate. An assembly `PASS` binds the approved plan,
+Merge-prepared proof, exact component heads, and assembled candidate. Changing
+any bound fact invalidates the corresponding `PASS`.
 
 ## B5 — Merge only what passed
 
@@ -76,7 +79,7 @@ requires a separate fresh verification before release Merge.
 
 ## The useful minimum
 
-The normal chain is:
+The normal work chain is:
 
 ```text
 approved plan
@@ -89,8 +92,8 @@ approved plan
 
 Independent tracks may run that chain concurrently. Work remains serial inside
 each track: one work's `PASS` admits the next, but does not compose the track.
-After all work passes, the exact frozen track heads rejoin for assembly
-verification.
+After all work passes, Merge prepares proof over the exact frozen track heads
+and assembled candidate for separate assembly verification.
 
 Everything beyond these five boundaries must earn its cost as a deterministic
 check, project policy, engine mechanism, or optional heightened review.

@@ -4,10 +4,9 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
-  applyExactComposition,
-  commitRecordTransition,
+  unsafeApplyExactComposition,
+  unsafeCommitRecordTransition,
   productTreeIdentity,
-  resolveRecordRootAdmission,
   resolveRef,
   verifyReleaseIntegration,
   verifyTrackComposition,
@@ -53,6 +52,7 @@ import {
   mergedWork,
   proofReady,
   temporaryRepository,
+  testProductExclusionAdmission,
   verified,
   write,
 } from './helpers.mjs';
@@ -134,7 +134,7 @@ test('owner-aware selection follows baseline, exact track owner, then proven tra
       );
     }
     const releaseBaseline = commitAll(fixture.repo, 'approved baseline');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
 
     const baseline = selectAuthoritativeStatus(
       fixture.repo,
@@ -169,11 +169,12 @@ test('owner-aware selection follows baseline, exact track owner, then proven tra
       trackId: 'T1',
       materialization: T1Materialization,
     }), plan);
-    commitRecordTransition(fixture.repo, {
+    unsafeCommitRecordTransition(fixture.repo, {
       ref: plan.metadata.release_ref,
       expectedHead: releaseBaseline,
       message: 'materialize T1 owner marker',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: {
         [workStatusPath(plan, 'W1')]: `${JSON.stringify(ownerW1)}\n`,
         [workStatusPath(plan, 'W2')]: `${JSON.stringify(ownerW2)}\n`,
@@ -333,24 +334,26 @@ test('compare-and-set record commits admit exactly one same-head writer', () => 
     write(fixture.repo, '.baton/releases/v1/status.json', '{"state":0}\n');
     const base = commitAll(fixture.repo, 'base');
     git(fixture.repo, 'branch', 'release-wt/v1.0.0', base);
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     const before = productTreeIdentity(fixture.repo, base, admission);
 
-    const first = commitRecordTransition(fixture.repo, {
+    const first = unsafeCommitRecordTransition(fixture.repo, {
       ref: 'refs/heads/release-wt/v1.0.0',
       expectedHead: base,
       message: 'record transition one',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: {
         '.baton/releases/v1/status.json': '{"state":1}\n',
       },
     });
     throwsCode(
-      () => commitRecordTransition(fixture.repo, {
+      () => unsafeCommitRecordTransition(fixture.repo, {
         ref: 'refs/heads/release-wt/v1.0.0',
         expectedHead: base,
         message: 'record transition two',
-        admission,
+        recordPathAdmission: admission,
+        productExclusionAdmission: admission,
         changes: {
           '.baton/releases/v1/status.json': '{"state":2}\n',
         },
@@ -363,11 +366,12 @@ test('compare-and-set record commits admit exactly one same-head writer', () => 
       before.productTree,
     );
     throwsCode(
-      () => commitRecordTransition(fixture.repo, {
+      () => unsafeCommitRecordTransition(fixture.repo, {
         ref: 'refs/heads/release-wt/v1.0.0',
         expectedHead: first,
         message: 'escape record root',
-        admission,
+        recordPathAdmission: admission,
+        productExclusionAdmission: admission,
         changes: { 'src/app.txt': 'changed\n' },
       }),
       'NON_RECORD_CHANGE',
@@ -403,7 +407,7 @@ test('Git reads and CAS ignore inherited control environment and replace refs', 
     const base = commitAll(fixture.repo, 'base');
     write(fixture.repo, 'src/app.txt', 'candidate\n');
     const candidate = commitAll(fixture.repo, 'candidate');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
     const expectedProduct = productTreeIdentity(
       fixture.repo,
       candidate,
@@ -435,11 +439,12 @@ test('Git reads and CAS ignore inherited control environment and replace refs', 
       productTreeIdentity(fixture.repo, candidate, admission).productTree,
       expectedProduct,
     );
-    const transitioned = commitRecordTransition(fixture.repo, {
+    const transitioned = unsafeCommitRecordTransition(fixture.repo, {
       ref: 'refs/heads/poison-safe-cas',
       expectedHead: candidate,
       message: 'poison-safe transition',
-      admission,
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
       changes: {
         '.baton/releases/status.json': '{"state":1}\n',
       },
@@ -498,15 +503,17 @@ test('track and release composition admit only exact fast-forward or ordered two
 
     assert.equal(verifyReleaseIntegration(fixture.repo, base, candidate, candidate).mode, 'fast-forward');
     git(fixture.repo, 'branch', 'target-moved', unexpected);
+    const admission = testProductExclusionAdmission(fixture.repo);
     throwsCode(
       () => verifyReleaseIntegration(fixture.repo, 'refs/heads/target-moved', candidate, candidate),
       'UNEXPECTED_COMPOSITION_TOPOLOGY',
     );
     throwsCode(
-      () => applyExactComposition(fixture.repo, {
+      () => unsafeApplyExactComposition(fixture.repo, {
         targetRef: 'refs/heads/target-moved',
         expectedHead: base,
         candidate,
+        productExclusionAdmission: admission,
       }),
       'STALE_TARGET',
     );
@@ -526,11 +533,13 @@ test('a conflicting composition leaves the target ref untouched', () => {
     git(fixture.repo, 'switch', '-q', '-c', 'conflict-release', base);
     write(fixture.repo, 'shared.txt', 'release\n');
     const expected = commitAll(fixture.repo, 'release edit');
+    const admission = testProductExclusionAdmission(fixture.repo);
     throwsCode(
-      () => applyExactComposition(fixture.repo, {
+      () => unsafeApplyExactComposition(fixture.repo, {
         targetRef: 'refs/heads/conflict-release',
         expectedHead: expected,
         candidate: 'refs/heads/conflict-track',
+        productExclusionAdmission: admission,
       }),
       'COMPOSITION_CONFLICT',
     );
@@ -593,7 +602,7 @@ test('assembly admission covers every exact composed track head and product tree
       );
     }
     const approved = commitAll(fixture.repo, 'approved assembly plan');
-    const admission = resolveRecordRootAdmission(fixture.repo);
+    const admission = testProductExclusionAdmission(fixture.repo);
 
     const composeTrack = (trackId, workId, start, productPath) => {
       const beforeMaterialization = captureRefSnapshot(fixture.repo, plan);
@@ -641,17 +650,20 @@ test('assembly admission covers every exact composed track head and product tree
       const passed = verified(implemented, 'pass');
       writeStatus(fixture.repo, plan, passed);
       const frozen = commitAll(fixture.repo, `freeze ${trackId}`);
+      const beforeComposition = captureRefSnapshot(fixture.repo, plan);
       const expected = git(fixture.repo, 'rev-parse', 'refs/heads/release-wt/v1.0.0');
       git(fixture.repo, 'switch', '-q', 'main');
-      const applied = applyExactComposition(fixture.repo, {
+      const applied = unsafeApplyExactComposition(fixture.repo, {
         targetRef: 'refs/heads/release-wt/v1.0.0',
         expectedHead: expected,
         candidate: frozen,
+        productExclusionAdmission: admission,
       });
-      const replay = applyExactComposition(fixture.repo, {
+      const replay = unsafeApplyExactComposition(fixture.repo, {
         targetRef: 'refs/heads/release-wt/v1.0.0',
         expectedHead: expected,
         candidate: frozen,
+        productExclusionAdmission: admission,
       });
       assert.equal(applied.changed, true);
       assert.equal(replay.changed, false);
@@ -674,7 +686,8 @@ test('assembly admission covers every exact composed track head and product tree
           { [workId]: passed },
           { [workId]: complete },
           {
-            snapshot: transferSnapshot,
+            beforeSnapshot: beforeComposition,
+            afterSnapshot: transferSnapshot,
             recordRootAdmission: admission,
             evidenceAdmissions: { [workId]: evidenceFor(passed) },
             profile: 'guided',
@@ -791,16 +804,19 @@ test('assembly admission covers every exact composed track head and product tree
       `${JSON.stringify(passedAssembly)}\n`,
     );
     commitAll(fixture.repo, 'record assembly PASS');
+    const beforeIntegration = captureRefSnapshot(fixture.repo, plan);
 
-    const integration = applyExactComposition(fixture.repo, {
+    const integration = unsafeApplyExactComposition(fixture.repo, {
       targetRef: plan.metadata.target_ref,
       expectedHead: base,
       candidate,
+      productExclusionAdmission: admission,
     });
-    const integrationReplay = applyExactComposition(fixture.repo, {
+    const integrationReplay = unsafeApplyExactComposition(fixture.repo, {
       targetRef: plan.metadata.target_ref,
       expectedHead: base,
       candidate,
+      productExclusionAdmission: admission,
     });
     assert.equal(integration.changed, true);
     assert.equal(integrationReplay.changed, false);
@@ -822,7 +838,11 @@ test('assembly admission covers every exact composed track head and product tree
         plan,
         passedAssembly,
         completedAssembly,
-        assemblyOptions(),
+        {
+          beforeSnapshot: beforeIntegration,
+          afterSnapshot: assemblySnapshot,
+          recordRootAdmission: admission,
+        },
       ),
       'EVIDENCE_ADMISSION_REQUIRED',
     );
@@ -833,7 +853,9 @@ test('assembly admission covers every exact composed track head and product tree
         passedAssembly,
         completedAssembly,
         {
-          ...assemblyOptions(),
+          beforeSnapshot: beforeIntegration,
+          afterSnapshot: assemblySnapshot,
+          recordRootAdmission: admission,
           evidenceAdmission: evidenceFor(passedAssembly),
           profile: 'guided',
         },
@@ -857,7 +879,9 @@ test('assembly admission covers every exact composed track head and product tree
         passedAssembly,
         completedAssembly,
         {
-          ...assemblyOptions(),
+          beforeSnapshot: beforeIntegration,
+          afterSnapshot: assemblySnapshot,
+          recordRootAdmission: admission,
           evidenceAdmission: evidenceFor(passedAssembly),
           profile: 'guided',
         },
