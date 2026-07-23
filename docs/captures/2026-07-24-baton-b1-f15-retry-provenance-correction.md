@@ -1,10 +1,12 @@
-# Baton B1 F15 retry-provenance correction
+# Baton B1 F15-F17 retry-provenance correction
 
 Date: 2026-07-24
 Status: bounded correction frozen; independent verdict pending
 Track: `track/v1.0.0/B1-contract-records`
-Rejected head: `a30a06740a3434d8f5ba85d659fd4ecaaeb2a498`
-Correction implementation: `b0f33e24e5e2167fe2484b06b97f363ea8975a7e`
+F15 rejected head: `a30a06740a3434d8f5ba85d659fd4ecaaeb2a498`
+F16-F17 rejected head: `de67556789fe023ea62c1580b7f21d9938503890`
+F15 implementation: `b0f33e24e5e2167fe2484b06b97f363ea8975a7e`
+F16-F17 implementation: `6c25a33021ab1eb28657a3ebf023dcd595da4007`
 
 ## Finding F15
 
@@ -16,6 +18,21 @@ could therefore be legitimised as `changed: false`.
 The same review found analogous risk in pristine rebound and materialisation:
 their retry branches checked the visible end state without proving it was the
 exact original action effect.
+
+## Finding F16
+
+Pristine rebound projected only plan and baseline statuses. It did not
+inventory the complete release namespace, so stale design, proof, assembly, or
+unknown record files could survive rebound without a binding in the new plan.
+Installation and retry needed the same exact-namespace rule.
+
+## Finding F17
+
+Composition, assembly-preparation, and integration retries replayed structural
+topology, trees, paths, and record bytes but did not reproduce the canonical
+deterministic commit OIDs. A sibling commit with the exact admitted structure
+but a different message could therefore be accepted as the engine's own
+effect.
 
 ## Bounded correction
 
@@ -31,15 +48,20 @@ exact original action effect.
   the direct parent, then reproduce the exact rebound commit.
 - Materialisation retries reconstruct the absent-owner predecessor and run the
   complete collective transition validator before reproducing the exact marker.
-- Existing composition, assembly-preparation, and integration aggregate replay
-  remains authoritative; copied-result regressions now pin those fail-closed
-  paths.
+- A bounded, plan-admitted tree inventory requires installation to begin with
+  an absent release namespace and rebound predecessor/result trees to contain
+  exactly `plan.md` plus every planned baseline status.
+- Composition, assembly preparation, and integration retain their full
+  aggregate replay and additionally reconstruct their canonical composition
+  and record commits; structural sibling OIDs are rejected.
 
 Durable negatives cover copied W2 state, design-stage `NO_VERDICT`, a
 product-before-`PROCEED` proof retry, copied assembly `PASS`, a forged rebound,
-a later same-status owner marker, and copied composition, preparation, and
-integration results. Exact successful retries still prove no ref movement and
-no new commit object.
+a later same-status owner marker, stale design/proof/assembly/unknown namespace
+files, copied action results, direct sibling status commits, and structurally
+valid noncanonical two-parent composition and integration commits. Rejections
+leave refs and commit inventory unchanged. Exact successful retries still prove
+no ref movement and no new commit object.
 
 ## Correction evidence
 
