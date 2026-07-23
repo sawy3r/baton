@@ -78,8 +78,22 @@ correctly rejected raw-root claims.
 The same audit also flagged exported low-level mutation primitives as an
 attractive unsafe path. Their boundary must be made internal or explicitly
 unsafe, while ordinary callers receive evidence- and snapshot-gated high-level
-actions. Final detail from that API audit was still running when this finding
-was recorded.
+actions.
+
+### F13 — Singular blob reads could recapture a moving ref
+
+The bounded batch reader required one full captured commit OID, but
+`readFileAtRef` still accepted a branch name and resolved it at call time. A
+caller using the singular helper could therefore mix state across ref movement
+despite the snapshot contract.
+
+### F14 — Trusted Git executable selection was replaceable process state
+
+`configureGitExecutable` accepted a later absolute executable after the trusted
+binary had already been selected. One component could therefore replace the
+Git program used by later operations in the same engine process. The trusted
+binary must be engine-scoped and set once, with only idempotent reselection of
+the same real path allowed.
 
 ## Bounded correction
 
@@ -99,7 +113,10 @@ B1 reopens only to:
 5. bind track composition and assembly Merge to exact before and after
    snapshots, including unchanged unrelated refs and exact pre/post heads; and
 6. repair the product-tree CLI and close or clearly mark low-level mutation
-   primitives so the safe high-level action path is the attractive path.
+   primitives so the safe high-level action path is the attractive path;
+7. require full captured object IDs for singular as well as batched blob reads;
+   and
+8. make trusted Git executable configuration set-once within an engine process.
 
 The correction does not reopen lifecycle, schema, provider, scheduling, board,
 or role design. No new completion claim is valid until the bounded correction
