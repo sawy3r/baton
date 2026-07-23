@@ -1,12 +1,14 @@
-# Baton B1 F15-F17 retry-provenance correction
+# Baton B1 F15-F18 action-boundary correction
 
 Date: 2026-07-24
 Status: bounded correction frozen; independent verdict pending
 Track: `track/v1.0.0/B1-contract-records`
 F15 rejected head: `a30a06740a3434d8f5ba85d659fd4ecaaeb2a498`
 F16-F17 rejected head: `de67556789fe023ea62c1580b7f21d9938503890`
+F18 rejected head: `bcebb9770517138d7fe86d752be0b6f567bc0b12`
 F15 implementation: `b0f33e24e5e2167fe2484b06b97f363ea8975a7e`
 F16-F17 implementation: `6c25a33021ab1eb28657a3ebf023dcd595da4007`
+F18 implementation: `c5ea71923a35ac3dad2057d51b1aa751eb6509bd`
 
 ## Finding F15
 
@@ -34,6 +36,14 @@ deterministic commit OIDs. A sibling commit with the exact admitted structure
 but a different message could therefore be accepted as the engine's own
 effect.
 
+## Finding F18
+
+Assembly `recordTransition` rejected a string `workId` but permitted any
+present non-string value. Such a value could influence the prepared commit
+message, allow the ref transaction to complete, and only then fail receipt
+validation. An already-frozen caller object could also retain mutable children
+because recursive freezing stopped at its frozen parent.
+
 ## Bounded correction
 
 - `NO_VERDICT` is unchanged only at `verify / ready / verifier`; work still
@@ -54,6 +64,12 @@ effect.
 - Composition, assembly preparation, and integration retain their full
   aggregate replay and additionally reconstruct their canonical composition
   and record commits; structural sibling OIDs are rejected.
+- Action methods accept only plain enumerable data options. Work transitions
+  require an own primitive string `workId`; assembly transitions require the
+  property to be absent. These checks happen before snapshot capture or Git
+  preparation.
+- Receipts contain no caller-owned objects, admit only JSON data, and recurse
+  through already-frozen parents so every nested engine-owned object is frozen.
 
 Durable negatives cover copied W2 state, design-stage `NO_VERDICT`, a
 product-before-`PROCEED` proof retry, copied assembly `PASS`, a forged rebound,
@@ -61,7 +77,10 @@ a later same-status owner marker, stale design/proof/assembly/unknown namespace
 files, copied action results, direct sibling status commits, and structurally
 valid noncanonical two-parent composition and integration commits. Rejections
 leave refs and commit inventory unchanged. Exact successful retries still prove
-no ref movement and no new commit object.
+no ref movement and no new commit object. F18 adds Date, frozen-nested-object,
+plain-object, `null`, `false`, `0`, and `undefined` assembly identities,
+non-string and missing work identities, and non-plain method options; every
+case proves zero ref and commit-object movement.
 
 ## Correction evidence
 
