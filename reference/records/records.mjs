@@ -1297,6 +1297,7 @@ export function resolveStatusEvidence(status, { profile, resolveEvidence } = {})
     kind: 'approval',
     ref: status.plan.approval.ref,
     digest: status.plan.approval.digest,
+    plan_digest: status.plan.digest,
   });
   validateApprovalProvenance(approval, status, profile);
 
@@ -1306,6 +1307,11 @@ export function resolveStatusEvidence(status, { profile, resolveEvidence } = {})
       kind: 'verifier_dispatch',
       ref: status.verification.attestation_ref,
       digest: status.verification.attestation_digest,
+      invocation: status.verification.invocation,
+      plan_digest: status.plan.digest,
+      proof_digest: status.proof.digest,
+      candidate_commit: status.proof.candidate_commit,
+      product_tree: status.proof.product_tree,
     });
     validateDispatchProvenance(verification, status, profile);
   }
@@ -1496,6 +1502,52 @@ export function validateRefSnapshot(plan, snapshot) {
   return snapshot;
 }
 
+/**
+ * Mint a plan-bound prospective snapshot from one admitted captured snapshot.
+ * This is used only to validate prepared immutable commit OIDs before a ref
+ * transaction. It does not claim that any ref has moved.
+ */
+export function deriveProspectiveRefSnapshot(plan, snapshot, overrides) {
+  validateRefSnapshot(plan, snapshot);
+  if (!Array.isArray(overrides) || overrides.length === 0) {
+    fail('INVALID_SNAPSHOT', 'prospective snapshot requires at least one exact head override');
+  }
+  const admittedRefs = new Set([
+    plan.metadata.target_ref,
+    plan.metadata.release_ref,
+    ...plan.metadata.tracks.map((track) => track.ref),
+  ]);
+  const heads = new Map();
+  for (const [index, override] of overrides.entries()) {
+    if (
+      override === null
+      || typeof override !== 'object'
+      || Array.isArray(override)
+      || !isDeepStrictEqual(Object.keys(override).sort(), ['head', 'ref'])
+      || !admittedRefs.has(override.ref)
+      || (override.head !== null && !OBJECT_PATTERN.test(override.head))
+      || heads.has(override.ref)
+    ) {
+      fail('INVALID_SNAPSHOT', `prospective snapshot override ${index} is not one exact plan ref`);
+    }
+    heads.set(override.ref, override.head);
+  }
+  const replace = (entry) => Object.freeze({
+    ref: entry.ref,
+    head: heads.has(entry.ref) ? heads.get(entry.ref) : entry.head,
+  });
+  const prospective = Object.freeze({
+    release: replace(snapshot.release),
+    target: replace(snapshot.target),
+    tracks: Object.freeze(plan.metadata.tracks.map((track, index) => Object.freeze({
+      id: track.id,
+      ...replace(snapshot.tracks[index]),
+    }))),
+  });
+  refSnapshots.set(prospective, plan.digest);
+  return prospective;
+}
+
 export function trackRefSnapshot(snapshot, trackId) {
   const entry = snapshot?.tracks?.find((track) => track.id === trackId);
   if (!entry) fail('INVALID_SNAPSHOT', `snapshot does not bind track ${trackId}`);
@@ -1648,7 +1700,13 @@ function assertNoErasedOwnerMarker(repo, plan, track, releaseHead) {
         track.work.map((work) => ({ track, work })),
       );
     } catch (error) {
-      if (error instanceof RecordError && error.code === 'AUTHORITATIVE_STATUS_MISSING') continue;
+      if (
+        error instanceof RecordError
+        && ['AUTHORITATIVE_STATUS_MISSING', 'STALE_BINDING', 'STATUS_IDENTITY_MISMATCH']
+          .includes(error.code)
+      ) {
+        continue;
+      }
       throw error;
     }
     const materialization = statuses[0]?.status.materialization;

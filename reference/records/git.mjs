@@ -28,7 +28,7 @@ const MAX_HEAD_REFS = 128;
 const MAX_BATCH_PATHS = 1025;
 const MAX_BATCH_FILE_BYTES = 262_144;
 const MAX_BATCH_TOTAL_BYTES = MAX_BATCH_PATHS * MAX_BATCH_FILE_BYTES;
-const MAX_RECORD_CHANGES = 1024;
+const MAX_RECORD_CHANGES = 1025;
 const MAX_RECORD_VALUE_BYTES = 262_144;
 const MAX_RECORD_TOTAL_BYTES = 64 * 1024 * 1024;
 const MAX_RECORD_MESSAGE_BYTES = 1000;
@@ -320,6 +320,13 @@ export function unsafeAtomicUpdateRefs(repo, operations) {
   }
   const refs = new Set();
   const lines = ['start'];
+  const objectFormat = runGit(repo, ['rev-parse', '--show-object-format'], {
+    label: 'resolve ref transaction object format',
+  }).trim();
+  if (!['sha1', 'sha256'].includes(objectFormat)) {
+    throw new GitRecordError('UNSUPPORTED_OBJECT_FORMAT', `unsupported Git object format ${objectFormat}`);
+  }
+  const nullObjectId = '0'.repeat(objectFormat === 'sha256' ? 64 : 40);
   for (const [index, operation] of operations.entries()) {
     if (
       operation === null
@@ -348,7 +355,10 @@ export function unsafeAtomicUpdateRefs(repo, operations) {
       if (Object.keys(operation).sort().join(',') !== 'expectedHead,kind,ref') {
         throw new GitRecordError('INVALID_REF_TRANSACTION', `verify operation ${index} has unknown fields`);
       }
-      lines.push(`verify ${ref} ${assertObjectId(operation.expectedHead, 'expected ref head')}`);
+      const expectedHead = operation.expectedHead === null
+        ? nullObjectId
+        : assertObjectId(operation.expectedHead, 'expected ref head');
+      lines.push(`verify ${ref} ${expectedHead}`);
       continue;
     }
     if (Object.keys(operation).sort().join(',') !== 'expectedHead,kind,newHead,ref') {

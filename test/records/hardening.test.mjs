@@ -306,15 +306,35 @@ test('trusted admission resolves exact protected approval and Verifier dispatch 
     product_tree: status.proof.product_tree,
     engine_controlled: true,
   };
-  const resolver = ({ kind }) => (
-    kind === 'approval'
+  const requests = [];
+  const resolver = (request) => {
+    requests.push(structuredClone(request));
+    return request.kind === 'approval'
       ? { bytes: approvalBytes, provenance: approvalProvenance }
-      : { bytes: dispatchBytes, provenance: dispatchProvenance }
-  );
+      : { bytes: dispatchBytes, provenance: dispatchProvenance };
+  };
   const admission = resolveStatusEvidence(status, { profile: 'autonomous', resolveEvidence: resolver });
   assert.equal(requireEvidenceAdmission(status, admission, 'autonomous'), admission);
   assert.equal(Object.isFrozen(admission.status.proof), true);
   assert.equal(Object.isFrozen(admission.verification), true);
+  assert.deepEqual(requests, [
+    {
+      kind: 'approval',
+      ref: status.plan.approval.ref,
+      digest: status.plan.approval.digest,
+      plan_digest: status.plan.digest,
+    },
+    {
+      kind: 'verifier_dispatch',
+      ref: status.verification.attestation_ref,
+      digest: status.verification.attestation_digest,
+      invocation: status.verification.invocation,
+      plan_digest: status.plan.digest,
+      proof_digest: status.proof.digest,
+      candidate_commit: status.proof.candidate_commit,
+      product_tree: status.proof.product_tree,
+    },
+  ]);
 
   status.plan.digest = DIGESTS.p;
   approvalBytes.fill(0x78);

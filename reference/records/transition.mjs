@@ -464,12 +464,10 @@ export function validateTrackCompositionTransition(
     );
     same(recordedOwner, previous, `frozen owner status for ${work.id}`);
     validateStatusHandoffsAtRef(repo, plan, previous, frozenTrackHead);
-    const candidateAdmission = validateWorkCandidate(repo, plan, previous, previousPassedStatus, {
+    const candidateAdmission = validateWorkCandidateHistory(repo, plan, previous, previousPassedStatus, {
       authorityHead: frozenTrackHead,
       recordRootAdmission,
     });
-    validateRecordedCandidateTransitions(candidateAdmission);
-    validateCandidateTemporalOrder(plan, candidateAdmission);
     previousPassedStatus = previous;
 
     unsafeValidateTransition(previous, next, 'MERGED');
@@ -531,6 +529,20 @@ export function validateTrackCompositionTransition(
     composition_commit: sharedMerge.result_commit,
     transfer_commit: releaseHead,
   };
+}
+
+export function validateWorkCandidateHistory(
+  repo,
+  plan,
+  status,
+  previousStatus,
+  options,
+) {
+  requirePlanAdmission(plan);
+  const admission = validateWorkCandidate(repo, plan, status, previousStatus, options);
+  validateRecordedCandidateTransitions(admission);
+  validateCandidateTemporalOrder(plan, admission);
+  return admission;
 }
 
 export function validateTrackMaterializationTransition(
@@ -656,8 +668,14 @@ export function validateAssemblyPreparationTransition(
     }
     if (exists) fail('ASSEMBLY_ALREADY_PREPARED', `${relativePath} already exists before preparation`);
   }
-  if (status.proof?.candidate_commit !== beforeSnapshot.release.head) {
-    fail('STALE_BINDING', 'assembly proof candidate must equal the exact pre-preparation release head');
+  if (
+    status.proof?.base_commit !== beforeSnapshot.release.head
+    || status.proof?.candidate_commit !== beforeSnapshot.release.head
+  ) {
+    fail(
+      'STALE_BINDING',
+      'assembly proof base and candidate must both equal the exact pre-preparation release head',
+    );
   }
   validateAssemblyStatus(repo, plan, status, {
     snapshot: afterSnapshot,

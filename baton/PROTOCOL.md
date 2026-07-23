@@ -117,6 +117,23 @@ the existing identity. The Planner creates a newly approved work and release
 identity; the old lineage remains durable archaeology. `REBOUND` is limited to
 a pristine, unmaterialised release baseline whose plan or approval changes.
 
+### Mechanical action surface
+
+An engine exposes one safe mutation surface over an admitted plan:
+
+```text
+installApprovedPlan   reboundPristinePlan   recordTransition
+materializeTrack      composeTrack          prepareAssembly
+integrateRelease
+```
+
+Actors author plans, statuses, designs, and proofs. They do not supply arbitrary
+refs, paths, Git commands, admission capabilities, commit messages, or merge
+targets. The action surface derives those from the admitted plan, validates the
+prospective immutable commits before any ref moves, and then applies one exact
+ref transaction. Retrying an already completed exact action returns the same
+durable result without another commit. A divergent state or stale ref stops.
+
 ## 3. Durable handoffs
 
 The standard release root is:
@@ -180,7 +197,8 @@ Implementer invocation.
 
 Assembly proof is prepared by Merge after every exact track transfer. It names
 every composed track and frozen head and binds the pre-preparation release head
-as its candidate. Per-work verification is not authority to ship an unverified
+as both its base and candidate because assembly verifies the complete product,
+not a work delta. Per-work verification is not authority to ship an unverified
 composition.
 
 ### Status

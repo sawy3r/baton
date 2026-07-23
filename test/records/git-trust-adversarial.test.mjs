@@ -15,6 +15,7 @@ import {
   captureHeadRefs,
   changedPathsBetween,
   unsafeCommitRecordTransition,
+  unsafePrepareRecordTransition,
   configureEngineGitExecutable,
   gitExecutablePath,
   productTreeIdentity,
@@ -454,11 +455,22 @@ test('record transition allocations are bounded before any record object is writ
       changes,
     });
 
+    const exactBoundary = unsafePrepareRecordTransition(fixture.repo, {
+      expectedHead: base,
+      message: 'exact 1025-path install boundary',
+      recordPathAdmission: admission,
+      productExclusionAdmission: admission,
+      changes: Object.fromEntries(Array.from(
+        { length: 1025 },
+        (_, index) => [`.baton/releases/exact/${index}`, null],
+      )),
+    });
+    assert.equal(exactBoundary.paths.length, 1025);
     throwsCode(
       () => invocation(
         'too many paths',
         Object.fromEntries(Array.from(
-          { length: 1025 },
+          { length: 1026 },
           (_, index) => [`.baton/releases/many/${index}`, null],
         )),
       ),

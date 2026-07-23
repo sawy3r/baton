@@ -30,8 +30,16 @@ Every implementation MUST:
     copy, and reject an erased materialisation marker;
 12. treat structural board projection as syntax and authority only, never as
     trusted action admission;
-13. update a ref only when its exact expected head still matches; and
-14. require Merge-prepared proof and fresh verification of the complete
+13. expose one admission-gated action surface for plan installation, pristine
+    rebound, ordinary transition, materialisation, track composition, assembly
+    preparation, and release integration; raw Git or record primitives are not
+    the normal caller path;
+14. validate each prepared immutable result against a prospective plan-bound
+    snapshot before applying one exact ref transaction, then recheck the
+    installed heads;
+15. reconcile an exact retry without another commit or ref movement, while a
+    stale or divergent retry fails; and
+16. require Merge-prepared proof and fresh verification of the complete
     assembled release before final Merge.
 
 The only authored JSON Schema is `work-status-v1`. Plan metadata has a closed
@@ -88,7 +96,7 @@ boundaries:
 - materialisation creates the release and owner marker in one ref transaction,
   and the release permanently retains that marker ancestry;
 - assembly preparation changes only the proof and status records over the exact
-  pre-preparation release head;
+  pre-preparation release head, which is both assembly proof base and candidate;
 - and replay produces the same Baton projection from the same durable facts.
 
 Provider names, model names, prompt bytes, token counts, and internal engine

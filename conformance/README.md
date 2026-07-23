@@ -23,7 +23,9 @@ node --test test/records/*.test.mjs
 
 Those tests use temporary real Git repositories to exercise plan and status
 parsing, transitions, ownership, serial work, dependency materialisation,
-product identity, exact composition, assembly, conflicts, and compare-and-set.
+product identity, exact composition, assembly, conflicts, compare-and-set, and
+the seven-method safe action facade including exact retries and multi-ref
+contention.
 
 This portable suite establishes Baton record conformance. Autonomous-engine
 conformance additionally requires the real process, persistence, isolation,

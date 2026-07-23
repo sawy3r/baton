@@ -716,7 +716,7 @@ test('assembly admission covers every exact composed track head and product tree
     assembly.plan.approval.ref = plan.metadata.approval_ref;
     assembly.proof.plan_digest = plan.digest;
     assembly.proof.approval_digest = assembly.plan.approval.digest;
-    assembly.proof.base_commit = approved;
+    assembly.proof.base_commit = candidate;
     assembly.proof.candidate_commit = candidate;
     assembly.proof.candidate_tree = identity.candidateTree;
     assembly.proof.product_tree = identity.productTree;
@@ -759,6 +759,23 @@ test('assembly admission covers every exact composed track head and product tree
         assembly_candidate: candidate,
         preparation_commit: preparationCommit,
       },
+    );
+    const targetBasedAssembly = clone(assembly);
+    targetBasedAssembly.proof.base_commit = beforeAssembly.target.head;
+    throwsCode(
+      () => validateAssemblyPreparationTransition(
+        fixture.repo,
+        plan,
+        targetBasedAssembly,
+        {
+          beforeSnapshot: beforeAssembly,
+          afterSnapshot: assemblySnapshot,
+          recordRootAdmission: admission,
+          evidenceAdmission: evidenceFor(targetBasedAssembly),
+          profile: 'guided',
+        },
+      ),
+      'STALE_BINDING',
     );
     const projectedAssembly = selectAssemblyFromSnapshot(
       plan,

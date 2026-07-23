@@ -1,0 +1,35 @@
+# Baton reference records
+
+The supported mutation entry point is `createBatonActions` from `actions.mjs`.
+It binds one admitted plan, repository, execution profile, protected-evidence
+resolver, and record-root policy:
+
+```js
+const actions = createBatonActions({
+  repo,
+  plan,
+  profile: 'autonomous',
+  resolveEvidence,
+  resolveBehavioralInertness,
+});
+```
+
+The returned object has seven methods:
+
+- `installApprovedPlan({ approvalDigest })`
+- `reboundPristinePlan({ previousPlan, approvalDigest })`
+- `recordTransition({ scope, workId, result, nextStatus, handoffs })`
+- `materializeTrack({ trackId })`
+- `composeTrack({ trackId })`
+- `prepareAssembly({ proofBytes, producerInvocation })`
+- `integrateRelease()`
+
+Callers provide authored durable facts only. The facade derives record paths,
+authority refs, expected heads, Git topology, and commit messages from the
+admitted plan. It validates prepared commits before compare-and-set, applies
+the complete effect in one ref transaction, and returns a deeply frozen
+receipt. An exact retry returns `changed: false` without another commit.
+
+The lower-level modules also export explicitly named `unsafe*` primitives for
+the facade implementation and adversarial fixtures. They are not a substitute
+for the admission, lifecycle, prospective-state, and atomic-effect checks above.

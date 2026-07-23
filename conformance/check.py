@@ -50,6 +50,7 @@ INVALID_SEMANTIC_FIXTURES = (
 )
 
 REFERENCE_SUITES = (
+    "test/records/actions.test.mjs",
     "test/records/schema.test.mjs",
     "test/records/transition.test.mjs",
     "test/records/git-topology.test.mjs",
