@@ -4,8 +4,10 @@ Baton installs the same protocol, records, operations, and local board for
 Claude Code and Codex. The host-specific files are thin Skills around identical
 canonical operation bytes.
 
-The installer does not contact a model provider, read credentials, install a
-model, or change a global instruction file. It needs only:
+The installer does not contact a model provider, read credentials, or install a
+model. A clean install does not add or change a global instruction file; the
+exact Claude v0.16 migration removes only the audited legacy block described
+below. The installer needs only:
 
 - Git;
 - Bash; and
@@ -143,9 +145,8 @@ node reference/board/web.mjs /path/to/repository
 ```
 
 The server prints its loopback URL and defaults to
-`http://127.0.0.1:4177`. It accepts GET and HEAD only. An installed package has
-the same programs below its support root; for example, the default Codex user
-paths are:
+`http://127.0.0.1:4177`. It accepts GET only. An installed package has the same
+programs below its support root; for example, the default Codex user paths are:
 
 ```sh
 node "$HOME/.codex/baton/reference/board/oracle.mjs" /path/to/repository \
