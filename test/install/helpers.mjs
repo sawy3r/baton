@@ -213,4 +213,3 @@ export async function assertInstalled(target, host, scope) {
 }
 
 export { symlink, writeMode };
-

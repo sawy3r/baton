@@ -107,4 +107,3 @@ test('unexpected generated ownership is rejected', async (t) => {
     /unexpected generated files/,
   );
 });
-

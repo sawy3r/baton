@@ -190,4 +190,3 @@ export async function inspectLegacyClaude({ bundleRoot, paths }) {
     identity,
   };
 }
-
