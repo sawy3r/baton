@@ -1,103 +1,72 @@
 # Baton Assurance 1.0
 
-The five core principles apply to every delivery. Assurance packs add evidence
-or review only when the risk justifies it; they do not create alternate loops.
+The five core principles and five responsibilities apply to every delivery.
+Assurance adds evidence or external judgement when the work's risk warrants it;
+it does not create another universal loop.
 
-## Profiles
+## Standard
 
-### Standard
+Standard delivery requires:
 
-Every work unit starts here. Standard requires:
+- one exact externally approved plan;
+- an Implementer design reviewed by a distinct Captain;
+- an exact candidate and acceptance-linked proof;
+- the project's required deterministic checks;
+- a fresh, read-only, adversarial Verifier;
+- exact track composition, Merge-prepared assembly proof, and fresh assembly
+  verification; and
+- expected-target Merge or an honest stop when Merge is not authorized.
 
-- schema-valid plan, submission, and verdict records;
-- exact candidate and actual-path capture;
-- relevant deterministic project checks;
-- acceptance-linked evidence with an honest test boundary;
-- a fresh independent verifier; and
-- compare-and-swap integration or an honest stop at `verified` or
-  `ready_to_integrate` when integration is not yet authorized or unlatched.
+Projects decide which checks are relevant to their product. A check name in a
+plan is not proof it ran; proof must link its observable result to the exact
+candidate.
 
-No Captain, design session, model-based gate cascade, journey document, RTM, or
-maintainability LLM review is universally required.
+## Heightened assurance
 
-### Assured
+A plan or repository policy MAY require additional checks, evidence boundaries,
+review questions, or external decisions for risky work. Examples include
+security, privacy, money, data migration, public contracts, deployment,
+regulated behavior, and hard-to-reverse architecture.
 
-Assured adds one or more named packs. A plan may request it directly. Project
-policy or the engine may upgrade Standard work when actual changes match a risk
-trigger. A verifier may also request an upgrade. No actor may downgrade it
-without new authority.
+Heightened policy is local and explicit. It SHOULD define:
 
-The engine SHOULD apply deterministic triggers before constructing the
-submission. If the verifier discovers a missing pack, it returns `SPEC_BLOCK`.
-The engine or authorizer must then issue an approved plan revision that names the
-new pack and policy digest before gathering evidence and creating a new
-submission for the unchanged candidate. Standing authority may make that
-revision automatic, but it still creates a new plan digest and authority
-receipt. The old submission is never relabeled.
+1. the deterministic trigger or plan selection;
+2. the exact required checks or observations;
+3. the stronger evidence boundary;
+4. the additional questions the Verifier must answer; and
+5. any decision that remains with an external authorizer.
 
-## Policy registry
+The selected requirements are written into the approved plan and therefore
+covered by its raw digest. They cannot silently appear, disappear, or change
+meaning during implementation.
 
-`assurance-policy-v1` is a strict I-JSON registry, not a delivery record. Its
-digest is RFC 8785 canonical JSON SHA-256 over the whole registry. Its non-empty
-`checks` array binds each Standard check ID to one content-addressed
-`application/json` definition. Every baseline definition MUST resolve, match its
-raw-byte digest, and parse strictly before builder dispatch. The definition owns
-the check's stable semantics; an ID alone cannot silently acquire a different
-command or meaning.
+An engine or Verifier may request stronger assurance but cannot weaken the
+approved requirements. If materialised work or assembly cannot proceed under
+the current plan, the truthful result is `ESCALATE`, `BLOCKED`, or assembly
+`FAIL`, followed by `baton-plan` creating a newly approved work and release
+identity. The existing identity is not rebound or repaired in place.
 
-The registry also maps unique versioned pack IDs, such as `security@1`, to
-content-addressed `application/json` definitions. Only packs selected by the work
-contract must resolve for that work. Every selected definition must match its
-raw-byte digest and parse strictly; unknown, ambiguous, or unavailable selected
-packs fail closed. An unavailable unselected pack does not block Standard work.
-The submission repeats the policy locator and digest for the verifier.
+## Evidence admission
 
-## Pack contract
+Schema-valid records and a structural board projection are not trusted action
+authority. Guided and autonomous hosts resolve the exact protected approval and
+Verifier-dispatch bytes outside the candidate, verify their provenance, and
+mint an opaque admission bound to the exact status and profile. Every
+state-changing transition and Merge action requires that admission.
 
-A pack definition is project or engine policy. Baton leaves its inner schema
-and procedure to that engine, but it should cover:
-
-1. **name and version** — stable identity included in the policy digest;
-2. **trigger** — deterministic facts such as paths, dependency changes, data
-   classifications, or declared effects;
-3. **required evidence** — checks, observations, or attestations that must be in
-   the submission;
-4. **verifier questions** — additional claims the fresh verifier must assess;
-5. **authority gate**, when needed — the decision or human action that cannot be
-   delegated implicitly.
-
-Pack procedures belong in the engine or project policy, not in Baton's universal
-role instructions. They can add checks or observations but cannot enlarge the
-approved plan's authority.
-
-## Recommended packs
-
-Baton standardizes no mandatory catalogue, but common packs include:
-
-- `security@1` — authentication, authorization, secrets, trust boundaries;
-- `privacy@1` — personal or sensitive data collection, access, retention;
-- `money@1` — calculations or effects that move or represent money;
-- `data-change@1` — migrations, destructive writes, compatibility, rollback;
-- `public-contract@1` — APIs, schemas, stored formats, backwards compatibility;
-- `production@1` — deployment, infrastructure, process-global state, rollback;
-- `regulated@1` — legal, compliance, accessibility, or jurisdictional evidence;
-- `design-decision@1` — irreversible or system-shaping choices needing explicit
-  authorizer review; and
-- `system-journey@1` — user-critical behavior requiring assembled or live proof.
-
-Names are illustrative and recognized only when registered by the active
-policy. A project can define fewer, broader packs. Active pack versions and the
-policy digest are always bound into the submission.
+A work `PASS` covers one Captain-reviewed design, candidate, and proof. Assembly
+`PASS` separately covers the exact composed component heads and Merge-prepared
+assembly proof. Neither can stand in for the other.
 
 ## Admission rule
 
-A proposed universal requirement belongs in Baton Core only if removing it
+A proposed universal requirement belongs in Baton Core only when removing it
 would break trust for nearly every delivery. Otherwise it belongs in:
 
-- a deterministic engine invariant;
-- a project check;
-- an assurance pack; or
-- nowhere, if retry and fresh verification already make the failure cheap.
+- a deterministic reference or engine invariant;
+- a repository check;
+- explicit heightened policy; or
+- nowhere, when fresh verification and cheap retry already contain the risk.
 
-Incident history is evidence for improving a trigger or invariant. It is not by
-itself a reason to add prose that every future model must read.
+Incident history is valuable test evidence. It is not, by itself, another
+document every future responsibility must read.

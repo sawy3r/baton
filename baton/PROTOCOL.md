@@ -1,273 +1,341 @@
 # Baton Protocol 1.0
 
-This document defines the minimum delivery loop implementing the five principles
-in [CORE.md](CORE.md). Baton records facts and authority. The engine owns
-mechanics; capable models choose how to do the work.
+This document defines the smallest complete workflow implementing
+[Baton Core](CORE.md). Baton specifies responsibility boundaries and durable
+handoffs. It does not select a provider, model, agent host, scheduler, or
+project-management method.
 
-## 1. Actors and separation
+## 1. Responsibilities
 
-- The **authorizer** approves the delivery plan and any later authority change.
-- The **builder** creates a candidate within one work contract and reports
-  completion or insufficient authority. It cannot issue a delivery verdict.
-- The **verifier** reviews one immutable submission from fresh context. It must
-  not change tracked candidate bytes.
-- The **engine** validates records, derives state, runs deterministic policy,
-  isolates actors, captures repository facts, and performs only authorized
-  effects.
+Roles are authority boundaries, not personas. A human, conversational agent,
+subagent, CLI agent, or autonomous engine may perform one when it honours the
+same contract.
 
-These are authority boundaries, not mandatory personas or prompt bodies. One
-model product may serve both builder and verifier only through distinct runs
-with fresh context and different run identifiers.
+### Planner
 
-An evidence producer is an engine-managed check, observer, or attestation intake,
-not another universal model role.
+The Planner turns intent into a bounded release plan. It defines outcomes,
+scope, acceptance criteria, checks, constraints, ordered work, tracks,
+dependencies, touch surfaces, repository, and target. It may replan blocked
+work. It does not approve its own plan, implement it, or certify delivery.
 
-## 2. Records
+### Implementer
 
-Baton 1.0 has four portable delivery-record shapes. `control-receipt-v1`
-standardizes authority-approval, verifier-dispatch, and integration facts.
-Producer receipts remain content-addressed artifacts. None is an additional
-delivery record.
+The Implementer first writes a concise design and stops. After a current Captain
+decision permits it to proceed, the Implementer builds one candidate and writes
+acceptance-linked proof. It does not review its own design or issue a delivery
+verdict.
 
-### Delivery plan
+The same Implementer context may resume after Captain review. Its candidate
+MUST remain inside the approved work and its owning track.
 
-`delivery-plan-v1` is the contract offered for approval. It contains the
-delivery outcome, target, bounded authority grants, an assurance-policy locator
-and digest, and a dependency graph of work units. Each work unit contains its
-own outcome, path scope, acceptance criteria, and assurance selection.
+### Captain
 
-The plan is immutable for an attempt. An authorized revision creates a new plan
-digest. Engines MAY store plans in Git, a content-addressed store, or another
-durable system, but dispatches and submissions MUST name the digest they used.
+The Captain is a distinct invocation that reviews the proposed design during
+implementation. It binds the exact plan and design and returns one outcome:
 
-A plan is not active merely because `authority.ref` is present. Before dispatch,
-the engine MUST resolve that source and durably issue an authority receipt that
-binds the exact plan digest, grants, authorizer identity, and approval time. The
-submission links its exact bytes by artifact locator and digest. Missing, stale,
-or unresolvable approval fails closed.
-The engine MUST authenticate approval against a configured trust root, signature,
-or capability unavailable to the autonomous caller, builder, and verifier. The
-source and proof bytes MUST be outside their write authority and retained
-durably. Caller-supplied JSON, a claimed identity, a TTY, or an operating-system
-username is not approval by itself. Baton leaves the proof mechanism to the
-engine; it does not enlarge the delivery-record schemas.
+- `PROCEED` — the design is suitable for implementation;
+- `REVISE` — the Implementer must revise the design; or
+- `ESCALATE` — an external decision or newly approved plan is required.
 
-Repository-local actions target `workspace`. An integration grant names an exact
-repository identity and full `refs/heads/...` target matching the plan. Baton 1.0
-does not authorize publishing, deployment, or arbitrary external writes. The
-builder's `execute` authority is confined to a workspace sandbox and cannot be
-used for an external side effect. The engine MUST bound process count, memory,
-CPU, output, run time, and writable temporary storage for every builder,
-producer, and verifier subprocess under local policy. A broader source policy
-does not enlarge the grants recorded in the approved plan.
+The Captain does not become another Planner, Implementer, or Verifier.
 
-Scope entries are normalized, repo-relative path prefixes rather than globs.
-Matching is case-sensitive over `/`-separated Git paths. `.` matches the whole
-repository; otherwise a prefix matches the identical path or descendants after
-`/`. Exclusions win over inclusions. Absolute paths, empty segments, `.` or `..`
-segments, trailing `/`, backslashes, and glob metacharacters are invalid.
+### Verifier
 
-### Submission
+For work, the Verifier receives the approved plan, current Captain-reviewed
+design, exact candidate, and Implementer proof. For assembly, it receives the
+approved plan, exact assembled candidate and component heads, and
+Merge-prepared proof; assembly has no Implementer design or Captain binding.
+Either review runs in a clean context, cannot alter the candidate, and returns
+one outcome:
 
-`submission-v1` is constructed by the engine from live state after the builder
-finishes. It
-binds exactly one work contract to:
+- `PASS` — the exact candidate satisfies the approved contract;
+- `FAIL` — the contract is adequate but implementation or evidence is wrong;
+- `BLOCKED` — safe progress requires a changed contract, authority, or external
+  product decision.
 
-- the plan and contract digests;
-- the authority receipt;
-- the exact base commit, candidate commit, and candidate tree;
-- the builder run;
-- the active assurance policy;
-- actual changed paths;
-- check receipts; and
-- acceptance-linked evidence.
+A transport, runner, tool, or environment failure produces no verdict. A fresh
+retry may review the unchanged candidate.
 
-`changed_paths` is an observed list of literal Git paths, not a scope language;
-characters such as `*`, `?`, `[`, `]`, and backslash are data there. The list MAY
-be empty when the exact base already satisfies the contract. In that case the
-candidate commit may equal the base and integration reconciles as already
-observed rather than forcing an empty or unrelated change.
+### Merge
 
-The engine, not the builder's prose, MUST derive candidate identity and actual
-changed paths. A candidate MUST be committed and its workspace clean before
-submission. The engine MUST materialize the candidate in a fresh workspace and
-run required deterministic checks there. It stores content-addressed receipts
-before constructing the submission. No non-ignored untracked path or unbound
-external input may be required for the build, checks, or behavior. A new
-candidate creates a new submission and attempt.
+Merge proves eligibility and composes or integrates the exact passed candidate.
+It has no discretionary model verdict. It either performs the authorized,
+expected-target Git operation and records the observed result, or stops.
 
-Every evidence producer is an engine-registered run represented in `checks`, not
-a builder-stamped claim. A producer may execute a deterministic check, perform a
-controlled observation, or admit an external attestation. For live observations
-and attestations, the engine records the producer identity, candidate binding,
-environment, capture time, and exact artifact just as it does for an executable
-check.
+Merge has three mechanical scopes: compose an eligible frozen track and record
+the collective authority transfer; prepare the assembled release proof and
+status for a fresh Verifier; and, only after assembly `PASS`, integrate that
+exact candidate into the release target.
 
-### Delivery verdict
+The external authorizer remains outside these five responsibilities. It owns
+approval, consequential product judgement, and any standing authority granted
+to autonomous execution.
 
-`delivery-verdict-v1` binds one submission digest to a fresh verifier run. Its
-outcome is exactly one of:
+## 2. Release topology
 
-- `PASS` — the exact submission satisfies its contract and assurance policy;
-- `FAIL` — the contract is adequate, but the implementation or evidence is
-  wrong or incomplete;
-- `SPEC_BLOCK` — safe progress requires a changed contract, authority,
-  assurance requirement, or product/design decision; or
-- `INCONCLUSIVE` — verification could not establish truth because its own
-  environment, tooling, or evidence access was insufficient.
+A release has one assembly lineage and one or more ordered tracks:
 
-The verdict records acceptance results, assurance-pack results, and typed
-findings. The engine stamps the immutable envelope and validates the verifier's
-structured result. A model emission alone is not a verdict record.
-Repeated verification of an unchanged submission creates a new write-once
-verdict. The current verdict is the last valid verdict admitted by durable
-engine event order; a timestamp or filename does not choose it.
+```text
+target
+  <- release-wt/<release>
+       <- track/<release>/<track-id>
+```
 
-When several problems coexist, the most upstream blocker decides the outcome:
-insufficient contract or authority is `SPEC_BLOCK`; otherwise an inability to
-establish truth in the verifier's environment is `INCONCLUSIVE`; otherwise a
-disproved or incomplete delivery is `FAIL`.
-This applies to a verifier finding about the bound contract or grants. A current
-resolver failure outside the review is an engine control stop and raises
-`attention`; it is never converted into a verdict.
+- `release-wt/<release>` owns the approved plan, baseline statuses, composed
+  track heads, assembly proof, and release Merge record.
+- `track/<release>/<track-id>` owns the ordered work assigned to that track
+  after materialisation.
+- Work advances one item at a time in a track.
+- A work at `merge / ready / merge` has passed for track sequencing, so the next
+  ordered work may begin. It does not claim that the track has been composed.
+- Independent, dependency-ready tracks may advance concurrently.
+- A dependent track starts from a release head that already contains every
+  required frozen track head.
+- Parallel tracks have disjoint declared touch surfaces. An unexpected
+  conflict stops for repair or replan.
 
-### Delivery board
+Only one writer may advance an owning track at a time. Every durable transition
+names the exact ref head it observed. The reference helper creates a
+record-only commit and updates the ref with compare-and-set; a stale writer
+leaves the ref untouched.
 
-`delivery-board-v1` is a read-only projection of the plan, immutable records,
-engine events, and repository facts. It exists for humans and adapters. Editing
-it cannot change delivery state. An integration effect receipt binds the
-candidate, expected target revision, authority used, effect time, and
-compare-and-swap result. An integrated row binds that exact receipt, submission,
-and current verdict; a receipt for an earlier verdict is not transferable.
+Materialisation is one atomic ref transaction. The release ref and newly
+created owner ref first point to the same record-only marker, which records one
+exact release base and dependency-head set for every work in the track. The
+release lineage must retain that marker. Deleting the owner ref, or resetting
+release records to make the materialisation appear not to have happened, fails
+closed.
 
-## 3. The standard loop
+Ownership does not move because another branch has a newer timestamp. Before a
+track materialises, its release baseline is authoritative. While it is active,
+its owning ref is authoritative and a missing or malformed owner record is an
+error. Authority returns to `release-wt` only after Git proves that the exact
+frozen track head was composed and the matching Merge binding was recorded.
 
-For each dependency-ready work unit, a conforming engine performs this loop:
+After materialisation, `ESCALATE`, `BLOCKED`, or assembly `FAIL` cannot rebind
+the existing identity. The Planner creates a newly approved work and release
+identity; the old lineage remains durable archaeology. `REBOUND` is limited to
+a pristine, unmaterialised release baseline whose plan or approval changes.
 
-1. Validate the current plan and authority.
-2. Prepare an isolated workspace at an exact base revision.
-3. Start a builder with the work contract, active packs, workspace, and required
-   output schema.
-   If it reports insufficient contract or authority, record that control fact
-   durably and stop without manufacturing a verdict.
-4. Inspect the result and repository. Reject out-of-scope changes or unauthorized
-   effects. Capture a clean exact candidate.
-5. Materialize the candidate afresh, run policy-required deterministic checks,
-   and retain their content-addressed evidence. If a required check fails, bank
-   that control fact and start a bounded builder repair attempt without creating
-   a submission, dispatching a verifier, or manufacturing a verdict. Otherwise
-   construct the submission from engine-observed facts.
-6. Start a fresh verifier from an engine-controlled context, with the candidate
-   exposed only as read-only review data and with no builder transcript, writable
-   target ref, inherited write authority, or activated candidate-local runner
-   configuration.
-7. Validate and record the verdict.
-8. Route only from the typed outcome:
-   - `PASS` -> `verified`;
-   - `FAIL` -> builder repair as a new attempt;
-   - `SPEC_BLOCK` -> stop for plan, assurance, or authority revision;
-   - `INCONCLUSIVE` -> retry a fresh verifier over the same submission.
-9. If the plan lacks the exact integration grant, remain `verified` and replan.
-   If the grant exists but a local or manual latch remains, project
-   `ready_to_integrate`; otherwise re-resolve authority and integrate only under
-   B5 preconditions.
+### Mechanical action surface
 
-The happy path therefore requires two model-role invocations: builder and
-verifier. Deterministic producers may run as bounded subprocesses, and a coding
-agent may make multiple internal model turns.
-Planning MAY be another model dispatch, but the plan is not active until it is
-schema-valid and authorized.
+An engine exposes one safe mutation surface over an admitted plan:
 
-## 4. Derived lifecycle
+```text
+installApprovedPlan   reboundPristinePlan   recordTransition
+materializeTrack      composeTrack          prepareAssembly
+integrateRelease
+```
 
-An engine MAY use different internal event names, but its board MUST truthfully
-project these meanings:
+Actors author plans, statuses, designs, and proofs. They do not supply arbitrary
+refs, paths, Git commands, admission capabilities, commit messages, or merge
+targets. The action surface derives those from the admitted plan, validates the
+prospective immutable commits before any ref moves, and then applies one exact
+ref transaction. Retrying an already completed exact action returns the same
+durable result without another commit. A divergent state or stale ref stops.
 
-- `waiting` — one or more dependencies lacks a current `PASS`;
-- `ready` — the contract is valid and every dependency has a current `PASS`;
-- `active` — a builder attempt is in progress;
-- `attention` — a pre-submission work-level control stop requires contract or
-  authority work;
-- `reviewable` — a valid submission exists without a current verdict, including
-  after verifier transport failure;
-- `repair` — the current submission received `FAIL`;
-- `blocked` — a verifier gave the current submission `SPEC_BLOCK`;
-- `retry` — the current submission received `INCONCLUSIVE`;
-- `verified` — the exact submission has `PASS`, but the plan lacks its exact
-  integration grant and must be replanned;
-- `ready_to_integrate` — the exact submission has `PASS` and the plan grant,
-  with only a local or manual integration latch remaining;
-- `integrating` — an authorized integration effect is durably in progress; and
-- `integrated` — a valid effect receipt exists and the exact verified candidate
-  is equal to or an ancestor of the observed target.
+## 3. Durable handoffs
 
-These labels are projections, not mutable commands. No success label may appear
-before its underlying effect has completed durably.
+The standard release root is:
 
-A delivery-level `attention` latch MAY coexist with a row's factual state. For
-example, authority loss after submission leaves the row `reviewable` while the
-delivery stops for attention; clearing the latch requires new durable authority,
-not an edited board.
+```text
+.baton/releases/<release>/
+  plan.md
+  work/<work-id>/
+    design.md
+    proof.md
+    status.json
+  assembly/
+    proof.md
+    status.json
+```
 
-## 5. Invalidation
+Baton 1 uses exactly `.baton/releases`. Plan metadata records that fixed value;
+it is not a configuration seam. Any other, absolute, escaping, ambiguous, or
+symlinked root fails closed.
 
-A verdict ceases to authorize integration when any of these bound facts changes:
+Plan, design, and proof identities are
+`sha256:<64 lowercase hexadecimal characters>` over their exact raw bytes.
 
-- its referenced plan becomes unavailable or revoked;
-- its extracted work-contract digest;
-- base commit;
-- candidate commit or tree;
-- active assurance profile, pack set, or policy digest;
-- authority receipt, source digest, or grants;
-- verifier independence; or
-- target revision required for compare-and-swap integration.
+### Plan
 
-An unrelated new plan revision does not invalidate already banked work under an
-earlier still-authorized plan. The submission continues to name the exact plan
-and authority receipt that govern it.
+`plan.md` starts at byte zero with one strict JSON metadata block:
 
-An engine MUST check invalidation immediately before integration. It MUST NOT
-repair record drift by rewriting the candidate after verification.
+````text
+```baton-plan-v1
+{"schema_version":"baton.plan/v1", "...":"..."}
+```
 
-Invalidation prevents a pending effect; it does not erase a completed one. Once
-integration succeeds, later source expiry, revocation, or policy change leaves
-the banked effect valid. Historical validation uses the source snapshot and
-authorization bound by the effect receipt, while new effects use current policy
-and authority. The engine MUST durably retain the exact resolved source bytes so
-the receipt's `source_digest` can address and revalidate that snapshot.
+# Human-readable release plan
+````
 
-Protocol records SHOULD be persisted outside the product candidate tree. If an
-engine uses a repository metadata channel, updating that channel must not change
-the candidate commit or the target's product bytes.
+No content may precede the opening fence. The metadata has a closed shape and
+defines:
 
-## 6. Composition
+- release, repository, target and release-worktree refs;
+- canonical record root and protected external approval reference;
+- ordered tracks, exact track refs, dependencies, and touch surfaces; and
+- each ordered work item's outcome, path scope, acceptance criteria, checks,
+  constraints, and dependencies.
 
-The simplest conforming strategy is serial delivery: activate a work unit from
-the current target, verify it, and integrate it by fast-forward compare-and-swap
-before the next dependent unit begins. The base and candidate MUST belong to the
-plan's repository, the base commit MUST be an ancestor of the candidate, and
-`changed_paths` MUST equal the actual base-tree-to-candidate-tree diff. Rename
-scope checks cover both the old and new path. No dependent builder may start
-before every named dependency has `PASS`; its materialized base must include the
-exact dependency candidates under B5.
+The complete file's raw digest is the plan identity. Approval evidence binds
+that digest; approval never edits the plan it approves.
 
-Parallel building is optional. When the target moves, another candidate cannot
-be rebased, merged, or cherry-picked under its old verdict. The engine must
-capture the resulting candidate as a new submission and verify it. An engine
-that cannot prove safe composition MUST serialize the work.
+### Design
 
-After later serial work advances the target, an earlier integrated row remains
-integrated only while Git proves that row's exact candidate is still reachable
-as an ancestor of the target. Equality is required at the compare-and-swap
-instant; reachability preserves the historical result afterward.
+`design.md` is the Implementer's concise proposed approach. Its raw digest and
+producer invocation are recorded before Captain review. A revision has new
+bytes and therefore a new digest. A Captain decision over an earlier digest
+cannot authorize the revision.
 
-## 7. Retries and stopping
+### Proof
 
-Retry budgets are engine policy, not model judgment. Transport failures never
-become `PASS` or `SPEC_BLOCK` by inference. Repeating the same failure SHOULD
-stop at a bounded limit and surface the durable findings.
+Work `proof.md` names the delivered outcome and links each acceptance criterion
+to observable evidence. Its status binding records the exact repository, base,
+candidate commit, normal Git tree, product-tree digest, required checks, and
+Implementer invocation.
 
-The engine MUST stop when authority is insufficient, repository truth is
-ambiguous, persistence fails, the candidate changes during verification, or a
-required assurance pack cannot run. Stopping safely is a successful control
-outcome, not a delivery verdict.
+Assembly proof is prepared by Merge after every exact track transfer. It names
+every composed track and frozen head and binds the pre-preparation release head
+as both its base and candidate because assembly verifies the complete product,
+not a work delta. Per-work verification is not authority to ship an unverified
+composition.
+
+### Status
+
+`status.json`, validated by `work-status-v1`, is the sole machine-authoritative
+current projection. Every status binds the plan, approval, current
+responsibility, proof, Verifier result, and Merge result when present. Work also
+binds its design and Captain decision; assembly instead binds its exact
+components in the Merge-prepared proof.
+
+Its durable vocabulary is exactly:
+
+```text
+stage:      plan | design | implement | verify | merge
+status:     ready | blocked | complete
+next_role:  planner | implementer | captain | verifier | merge | none
+outcome:    none | proceed | revise | escalate | pass | fail | blocked | merged
+```
+
+`active` may be a runtime board overlay. A runner failure is `NO_VERDICT`: the
+durable status remains byte-for-byte unchanged and the same candidate may be
+redispatched. Persisting `active`, `no_verdict`, or any replacement result is
+invalid. `NO_VERDICT` is the only unchanged redispatch path.
+
+Git provides history and timestamps. Status contains no transcript, event
+array, activity log, retry ledger, worker, lease, token, or cost state.
+
+## 4. Standard transitions
+
+After external approval, each initial work status is
+`design / ready / implementer`.
+
+| Current | Responsibility result | Next |
+| --- | --- | --- |
+| `design / ready / implementer` | design written | `design / ready / captain` |
+| `design / ready / captain` | `PROCEED` | `implement / ready / implementer` |
+| `design / ready / captain` | `REVISE` | `design / ready / implementer` |
+| `design / ready / captain` | `ESCALATE` | `design / blocked / planner` |
+| `implement / ready / implementer` | candidate and proof written | `verify / ready / verifier` |
+| `verify / ready / verifier` | `PASS` | `merge / ready / merge` |
+| `verify / ready / verifier` | `FAIL` | `implement / ready / implementer` |
+| `verify / ready / verifier` | `BLOCKED` | `verify / blocked / planner` |
+| `verify / ready / verifier` | runner failure / `NO_VERDICT` | unchanged; redispatch same candidate |
+| `merge / ready / merge` | exact composition or integration | `merge / complete / none` |
+
+A work `PASS` means its Captain-reviewed design and Implementer candidate proof
+passed independently. It leaves the status at `merge / ready / merge` on the
+owning track and admits the next serial work; it does not pass the assembled
+release. When every ordered work item is there, the exact final track head is
+frozen and composed once. One following record-only commit transfers every work
+status to `merge / complete / none` together. Partial transfer is invalid.
+
+A materialised track may perform one projection-preserving authority transfer
+from its release baseline to its exact owner ref. A `REBOUND` may change plan
+and approval only for a pristine, unmaterialised release baseline. Any replan
+after materialisation creates new work and release identity rather than
+clearing gates in place. Neither operation invents lifecycle progress.
+
+Assembly uses the same status shape with `kind: assembly`, no work or track
+identity, and the release-worktree as owner. After every work transfer is
+complete, Merge atomically prepares the proof and initial
+`verify / ready / verifier` status, then hands it to a fresh Verifier. Assembly
+`PASS` means that exact set of components and the Merge-produced assembly proof
+passed together; only this permits release Merge. Assembly `FAIL` persists as
+`verify / ready / planner`, while assembly `BLOCKED` persists as
+`verify / blocked / planner`. Either requires `baton-plan` to create a newly
+approved work and release identity; there is no in-place assembly repair or
+`RETRY_ASSEMBLY` transition.
+
+## 5. Binding rules
+
+- Captain invocation differs from the design producer and binds the current
+  plan and design digests.
+- Implementation requires a current `PROCEED`.
+- Work proof binds the current plan, approval, design, Captain invocation,
+  repository, base, candidate, candidate tree, and product tree.
+- Assembly proof binds the current plan, approval, repository, base, assembled
+  candidate, candidate tree, product tree, and exact ordered component heads.
+- For work, the Verifier invocation differs from the design producer, proof
+  producer, and Captain. For assembly, it differs from the Merge proof
+  producer. Its trusted dispatch evidence resolves outside the candidate and
+  attests clean context and read-only candidate access.
+- Verification binds the current proof, candidate, and product tree.
+- Each Work Merge binds its own passed candidate plus the shared frozen track
+  head, expected and observed release-worktree head, composition result, and
+  authority-transfer commit. Every work candidate is an ancestor of the frozen
+  head; the frozen product tree equals the final work's passed product tree.
+- Release Merge binds the passed assembly candidate, expected target head, and
+  observed integration.
+
+Any stale or mismatched binding fails. A runner result boolean or status field
+alone never proves separation, evidence, Git history, or effect success.
+
+Structural parsing and the board establish record shape and current authority
+only. Before an admitted transition or Merge action, a trusted external
+resolver must verify the exact approval and Verifier-dispatch bytes and their
+protected provenance. The engine mints an opaque admission bound to that exact
+status and execution profile; a copied status, self-declared boolean, or board
+row cannot substitute for it.
+
+## 6. Product identity and composition
+
+Candidate proof records the ordinary Git tree and a deterministic SHA-256 over
+the ordered path, mode, type, and object identity outside the fixed Baton record
+root. Later record-only commits may preserve that product identity.
+
+The exclusion is valid only while the record root is behaviorally inert. If a
+build, test, package, deploy, hook, or runtime consumes it, the exclusion cannot
+be claimed and validation stops.
+
+Product-tree equality is necessary for record-only advancement but never
+replaces ancestry or expected-target checks. Track composition is either an
+exact fast-forward to the eligible frozen track head or a two-parent commit
+whose ordered parents and tree equal Git's deterministic merge of the expected
+release head and that track head. Release integration applies the same rule to
+the expected target and passed assembly candidate.
+
+Candidate admission replays the full first-parent history from the exact
+materialisation or prior passed-candidate base. Product commits are admitted
+only after the current work has Captain `PROCEED`; record commits must form the
+closed lifecycle, may not span work identities, and later work cannot advance
+before earlier work `PASS`. The final candidate commit is product-only.
+
+After all tracks are composed, Merge prepares the assembly handoff and a fresh
+Verifier checks the complete approved plan over that exact product. Only that
+assembly `PASS` permits release Merge.
+
+## 7. Guided and autonomous use
+
+A guided host may rely on a human to approve the plan, start distinct Captain
+and Verifier invocations, and preserve read-only verification. It MUST stop
+when it cannot establish a required boundary.
+
+An autonomous engine additionally proves protected approval, process and
+credential isolation, one active writer per track, durable dispatch identity,
+resource bounds, effect recovery, and compare-and-set updates. These are engine
+mechanisms and executable conformance cases, not prose every model must load.
+
+Sworn is the reference autonomous engine. Baton remains usable without Sworn
+through its portable operations and reference record tools.

@@ -6,23 +6,29 @@ Run Baton's portable checks with:
 python3 conformance/check.py
 ```
 
-The script requires Python 3 and `jsonschema`. It runs:
+The script requires Python 3 and `jsonschema`. It checks:
 
 - strict I-JSON rejection cases, including duplicate keys, unsafe numbers, and
   invalid Unicode;
-- RFC 8785 canonicalization vectors;
-- positive and negative Draft 2020-12 schema fixtures with `format` assertions;
-  and
-- executable cross-record mutations over the complete example chain.
+- the sole authored Draft 2020-12 schema;
+- positive and negative `work-status-v1` fixtures;
+- semantic rejection through the dependency-free Node record validator; and
+- coherence between `manifest.json` and every executable fixture path.
 
-The last group deterministically exercises digest, authority, policy,
-candidate-tree, evidence, verifier-dispatch, identity, timestamp, and board
-bindings in the portable record model. It is deliberately more than independent
-schema checks, but it does not prove a real resolver, store, Git boundary,
-sandbox, or process boundary.
+Run the complete reference boundary suite with:
 
-`manifest.json` also publishes real-boundary engine cases. This local script
-reports those as **NOT RUN** because they require an actual engine, Git object
-database, persistence store, subprocess executor, sandbox, and crash injection.
-An implementation must run those cases through its real binary before claiming
-Baton engine conformance.
+```sh
+node --test test/records/*.test.mjs
+```
+
+Those tests use temporary real Git repositories to exercise plan and status
+parsing, transitions, ownership, serial work, dependency materialisation,
+product identity, exact composition, assembly, conflicts, compare-and-set, and
+the seven-method safe action facade including exact retries and multi-ref
+contention.
+
+This portable suite establishes Baton record conformance. Autonomous-engine
+conformance additionally requires the real process, persistence, isolation,
+retry, recovery, and effect cases in [Baton Conformance](../baton/CONFORMANCE.md).
+Sworn is the intended reference implementation of that larger profile; final
+Baton 1.0 waits until Sworn passes those cases through its real boundaries.
