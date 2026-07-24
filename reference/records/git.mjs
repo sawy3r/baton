@@ -590,6 +590,21 @@ export function resolveRecordPathAdmission(repo) {
   return admission;
 }
 
+/**
+ * Admit captured-object reads below the fixed v1 record root without
+ * consulting launch-worktree entries. Callers receive no write capability;
+ * every downstream read still validates the root and path at an exact commit.
+ */
+export function resolveCapturedRecordPathAdmission(repo) {
+  const repository = realpathSync(repositoryRoot(repo));
+  const admission = Object.freeze(Object.create(null));
+  recordPathAdmissions.set(admission, {
+    repository,
+    root: RECORD_ROOT_V1,
+  });
+  return admission;
+}
+
 function recordPathAdmissionData(admission) {
   const direct = (
     admission !== null

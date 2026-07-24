@@ -1696,12 +1696,14 @@ function validateOwnerMarker(
   if (!isAncestor(repo, marker, releaseHead)) {
     fail('INVALID_OWNER_MARKER', `track ${track.id} marker is not retained by the release`);
   }
-  const markerStatuses = parsedStatusBatch(
-    repo,
-    plan,
-    marker,
-    track.work.map((work) => ({ track, work })),
-  );
+  const markerStatuses = marker === ownerHead
+    ? statuses
+    : parsedStatusBatch(
+      repo,
+      plan,
+      marker,
+      track.work.map((work) => ({ track, work })),
+    );
   for (const [index, entry] of markerStatuses.entries()) {
     if (
       entry.status.authority_ref !== track.ref
@@ -2128,7 +2130,7 @@ export function assertTrackReadyForComposition(plan, statuses, trackId) {
   return track;
 }
 
-export function validateProofGitIdentity(repo, status, recordRootAdmission, options = {}) {
+export function validateProofGitTopology(repo, status, options = {}) {
   validateStatusSemantics(status);
   if (!status.proof) fail('MISSING_PROOF', 'Git proof validation requires status.proof');
   if (options.repository && status.proof.repository !== options.repository) {
@@ -2138,23 +2140,32 @@ export function validateProofGitIdentity(repo, status, recordRootAdmission, opti
   if (candidate.base !== status.proof.base_commit || candidate.candidate !== status.proof.candidate_commit) {
     fail('OBJECT_ID_MISMATCH', 'proof must use exact full Git object identities');
   }
-  const identity = productTreeIdentity(repo, candidate.candidate, recordRootAdmission);
+  let authorityHead = null;
+  if (options.authorityHead) {
+    authorityHead = resolveRef(repo, options.authorityHead);
+    if (!isAncestor(repo, candidate.candidate, authorityHead)) {
+      fail('CANDIDATE_NOT_ON_AUTHORITY', 'proof candidate is not reachable from its authoritative ref head');
+    }
+  }
+  return {
+    ...candidate,
+    authorityHead,
+  };
+}
+
+export function validateProofGitIdentity(repo, status, recordRootAdmission, options = {}) {
+  const topology = validateProofGitTopology(repo, status, options);
+  const identity = productTreeIdentity(repo, topology.candidate, recordRootAdmission);
   if (identity.candidateTree !== status.proof.candidate_tree) {
     fail('STALE_BINDING', 'proof candidate tree does not match Git');
   }
   if (identity.productTree !== status.proof.product_tree) {
     fail('STALE_BINDING', 'proof product tree does not match Git');
   }
-  if (options.authorityHead) {
-    const authorityHead = resolveRef(repo, options.authorityHead);
-    if (!isAncestor(repo, candidate.candidate, authorityHead)) {
-      fail('CANDIDATE_NOT_ON_AUTHORITY', 'proof candidate is not reachable from its authoritative ref head');
-    }
-    if (options.requireCurrentProduct === true) {
-      const current = productTreeIdentity(repo, authorityHead, recordRootAdmission);
-      if (current.productTree !== identity.productTree) {
-        fail('STALE_BINDING', 'authoritative ref product no longer matches the passed candidate');
-      }
+  if (topology.authorityHead && options.requireCurrentProduct === true) {
+    const current = productTreeIdentity(repo, topology.authorityHead, recordRootAdmission);
+    if (current.productTree !== identity.productTree) {
+      fail('STALE_BINDING', 'authoritative ref product no longer matches the passed candidate');
     }
   }
   return identity;
@@ -2463,7 +2474,7 @@ export function validateWorkRecordTail(
   return { record_transitions: recordTransitions };
 }
 
-export function validateAssemblyStatus(repo, plan, status, options = {}) {
+export function validateAssemblyProjection(repo, plan, status, options = {}) {
   requirePlanAdmission(plan);
   const snapshot = validateRefSnapshot(plan, options.snapshot);
   validateStatusSemantics(status, {
@@ -2480,10 +2491,9 @@ export function validateAssemblyStatus(repo, plan, status, options = {}) {
     fail('STATUS_IDENTITY_MISMATCH', 'assembly status does not match the approved release');
   }
   validateStatusHandoffsAtRef(repo, plan, status, snapshot.release.head);
-  validateProofGitIdentity(repo, status, options.recordRootAdmission, {
+  validateProofGitTopology(repo, status, {
     repository: plan.metadata.repository,
     authorityHead: snapshot.release.head,
-    requireCurrentProduct: true,
   });
 
   const expectedTracks = plan.metadata.tracks;
@@ -2528,6 +2538,16 @@ export function validateAssemblyStatus(repo, plan, status, options = {}) {
       }
     }
   }
+  return status;
+}
+
+export function validateAssemblyStatus(repo, plan, status, options = {}) {
+  validateAssemblyProjection(repo, plan, status, options);
+  validateProofGitIdentity(repo, status, options.recordRootAdmission, {
+    repository: plan.metadata.repository,
+    authorityHead: options.snapshot.release.head,
+    requireCurrentProduct: true,
+  });
   return status;
 }
 
