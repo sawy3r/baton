@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import subprocess
 import sys
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ STATUS_SCHEMA = SCHEMAS / "work-status-v1.json"
 STATUS_VALIDATOR = ROOT / "reference" / "records" / "records.mjs"
 MANIFEST = ROOT / "conformance" / "manifest.json"
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
+REQUIRED_JSONSCHEMA_VERSION = "4.10.3"
 
 STRICT_CASES = (
     ("raw-valid-edge.json", True, None),
@@ -57,6 +60,76 @@ REFERENCE_SUITES = (
     "test/records/product-tree.test.mjs",
     "test/records/hardening.test.mjs",
     "test/records/git-trust-adversarial.test.mjs",
+)
+
+PORTABLE_COMMANDS = (
+    "python3 conformance/check.py",
+    "node --test test/records/*.test.mjs test/operations/*.test.mjs "
+    "test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs "
+    "test/driver/*.test.mjs test/dogfood/*.test.mjs test/release/*.test.mjs",
+)
+
+PORTABLE_CASES = (
+    (
+        "strict-plan-status-and-sole-schema",
+        (
+            "conformance/check.py",
+            "test/records/schema.test.mjs",
+            "test/records/transition.test.mjs",
+        ),
+    ),
+    (
+        "owner-aware-git-topology-and-cas",
+        REFERENCE_SUITES[0:1] + REFERENCE_SUITES[3:],
+    ),
+    (
+        "operations-generated-adapters-and-install",
+        (
+            "test/operations/operations.test.mjs",
+            "test/adapters/generated.test.mjs",
+            "test/install/install.test.mjs",
+        ),
+    ),
+    (
+        "oracle-terminal-webui-and-performance",
+        (
+            "test/board/cli.test.mjs",
+            "test/board/oracle.test.mjs",
+            "test/board/terminal.test.mjs",
+            "test/board/web.test.mjs",
+            "test/board/performance.test.mjs",
+        ),
+    ),
+    (
+        "role-neutral-fake-driver",
+        ("test/driver/fake-driver.test.mjs",),
+    ),
+    (
+        "real-git-manual-dogfood",
+        ("test/dogfood/*.test.mjs",),
+    ),
+    (
+        "release-overhead-and-manifest-truth",
+        (
+            "test/release/conformance.test.mjs",
+            "test/release/overhead.test.mjs",
+        ),
+    ),
+)
+
+AUTONOMOUS_CASES = (
+    "protected-external-approval",
+    "role-instruction-credential-workspace-process-isolation",
+    "clean-read-only-fresh-verifier-dispatch",
+    "one-writer-per-track-with-independent-track-concurrency",
+    "durable-invocation-attempt-and-effect-identity",
+    "crash-recovery-at-every-effect-boundary",
+    "timeout-cancellation-cleanup-and-bounded-retry",
+    "dependency-scheduling-and-one-serial-worker-per-track",
+    "exact-track-composition-and-ownership-transfer",
+    "fresh-assembly-verification",
+    "moved-target-compare-and-set-refusal",
+    "exact-release-integration",
 )
 
 
@@ -161,29 +234,63 @@ def expected_manifest() -> dict[str, Any]:
         if error is not None:
             case["error"] = error
         strict_cases.append(case)
+    schema_digest = "sha256:" + hashlib.sha256(STATUS_SCHEMA.read_bytes()).hexdigest()
     return {
-        "schema_version": "baton.conformance-manifest/v1",
-        "portable_command": "python3 conformance/check.py",
-        "strict_json_cases": strict_cases,
-        "status_schema": {
-            "schema": "schemas/work-status-v1.json",
-            "valid_instances": [
-                f"conformance/fixtures/{name}" for name in VALID_STATUS_FIXTURES
-            ],
-            "invalid_schema_instances": [
-                f"conformance/fixtures/{name}" for name in INVALID_SCHEMA_FIXTURES
-            ],
-            "invalid_semantic_instances": [
-                f"conformance/fixtures/{name}" for name in INVALID_SEMANTIC_FIXTURES
-            ],
+        "schema_version": "baton.conformance-manifest/v2",
+        "baton_version": (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
+        "profiles": {
+            "portable_kit": {
+                "status": "EXECUTABLE",
+                "commands": list(PORTABLE_COMMANDS),
+                "record_contract": {
+                    "schema": {
+                        "path": "schemas/work-status-v1.json",
+                        "digest": schema_digest,
+                    },
+                    "strict_json_cases": strict_cases,
+                    "valid_status_fixtures": [
+                        f"conformance/fixtures/{name}"
+                        for name in VALID_STATUS_FIXTURES
+                    ],
+                    "invalid_schema_fixtures": [
+                        f"conformance/fixtures/{name}"
+                        for name in INVALID_SCHEMA_FIXTURES
+                    ],
+                    "invalid_semantic_fixtures": [
+                        f"conformance/fixtures/{name}"
+                        for name in INVALID_SEMANTIC_FIXTURES
+                    ],
+                },
+                "cases": [
+                    {"id": case_id, "suites": list(suites)}
+                    for case_id, suites in PORTABLE_CASES
+                ],
+                "measurements": {
+                    "command": "node scripts/measure-overhead.mjs --check",
+                    "baseline": "conformance/baselines/v0.16.0-overhead.json",
+                },
+            },
+            "autonomous_engine": {
+                "status": "NOT RUN",
+                "adapter_contract": "conformance/engine-adapter.md",
+                "cases": [
+                    {"id": case_id, "status": "NOT RUN"}
+                    for case_id in AUTONOMOUS_CASES
+                ],
+            },
         },
-        "reference_command": "node --test test/records/*.test.mjs",
-        "reference_suites": list(REFERENCE_SUITES),
     }
 
 
 def run() -> list[str]:
     failures: list[str] = []
+
+    if version("jsonschema") != REQUIRED_JSONSCHEMA_VERSION:
+        failures.append(
+            "jsonschema version: expected "
+            f"{REQUIRED_JSONSCHEMA_VERSION}, got {version('jsonschema')}"
+        )
+        return failures
 
     try:
         manifest = strict_load(MANIFEST)
@@ -194,14 +301,23 @@ def run() -> list[str]:
     if manifest != expected:
         failures.append("conformance manifest does not match the executable fixture inventory")
         return failures
+    portable = manifest["profiles"]["portable_kit"]
+    record_contract = portable["record_contract"]
     manifest_paths = [
-        case["instance"] for case in manifest["strict_json_cases"]
+        case["instance"] for case in record_contract["strict_json_cases"]
     ] + [
-        manifest["status_schema"]["schema"],
-        *manifest["status_schema"]["valid_instances"],
-        *manifest["status_schema"]["invalid_schema_instances"],
-        *manifest["status_schema"]["invalid_semantic_instances"],
-        *manifest["reference_suites"],
+        record_contract["schema"]["path"],
+        *record_contract["valid_status_fixtures"],
+        *record_contract["invalid_schema_fixtures"],
+        *record_contract["invalid_semantic_fixtures"],
+        portable["measurements"]["baseline"],
+        manifest["profiles"]["autonomous_engine"]["adapter_contract"],
+        *[
+            path
+            for case in portable["cases"]
+            for path in case["suites"]
+            if "*" not in path
+        ],
     ]
     for relative_path in manifest_paths:
         if not (ROOT / relative_path).is_file():
