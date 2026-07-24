@@ -1,0 +1,120 @@
+{
+  "schema_version": "baton.overhead-baseline/v1",
+  "source": {
+    "tag": "v0.16.0",
+    "tag_object": "a9128d8993a23d49ba3d3bd5bf918b28bda6ec67",
+    "commit": "aae82d1cb8c28085ab20668c720f0282048dcc09",
+    "tree": "8e65016101762320572857ec786c0a377eedf2a8"
+  },
+  "word_count": {
+    "algorithm": "utf8-whitespace-v1"
+  },
+  "audited_paths": [
+    {
+      "path": "baton/role-prompts/planner.md",
+      "bytes": 50883,
+      "words": 7421,
+      "digest": "sha256:b96d7e851d0df816acbc0ac0e9af3f79ac40060eed5a79a367f5d9ebd8eb0d52"
+    },
+    {
+      "path": "baton/role-prompts/implementer.md",
+      "bytes": 27921,
+      "words": 3873,
+      "digest": "sha256:0671ca9b7ebe12cb52343036f316e915f5ac7dd35c21c1de3fe04ebc59c69ff7"
+    },
+    {
+      "path": "baton/role-prompts/captain.md",
+      "bytes": 30331,
+      "words": 4462,
+      "digest": "sha256:afee3899d8b386e9ef5c343560bfb04308d5c2c6ce15c8002da27cec56725f4f"
+    },
+    {
+      "path": "baton/role-prompts/verifier.md",
+      "bytes": 41883,
+      "words": 6014,
+      "digest": "sha256:1e3d02b8c60883f3cf749f3444a2cefdda988cc93f83cbd92e718fcfacd9531c"
+    },
+    {
+      "path": "baton/track-mode.md",
+      "bytes": 22549,
+      "words": 3058,
+      "digest": "sha256:15d5519d72b301865ed52efe6cfbd67f47ca8345012d3d4140c0da8f61419c22"
+    },
+    {
+      "path": "baton/llm-checks/README.md",
+      "bytes": 36285,
+      "words": 4977,
+      "digest": "sha256:1a13c436529c0bca5992374063741314ab929a2c91801565c32dd52fb5645b63"
+    },
+    {
+      "path": "baton/AGENTS-fragment.md",
+      "bytes": 16871,
+      "words": 2453,
+      "digest": "sha256:3d95b3053ca4fad36e043bbe697e4cbf50a2c7be6cc88014e39c832111120fda"
+    },
+    {
+      "path": "baton/CLAUDE-md-user-level.md",
+      "bytes": 2767,
+      "words": 444,
+      "digest": "sha256:6c17e24cda63ef908caa3f904981090d149a0cb21642e7ccc46aff97edfcb5df"
+    }
+  ],
+  "normal_work_happy_path": {
+    "required_artifacts": [
+      "board.json",
+      "spec.json",
+      "journal.md",
+      "status.json",
+      "design.md",
+      "review.md",
+      "proof.json"
+    ],
+    "minimum_invocations": 4,
+    "invocations": [
+      {
+        "id": "implementer-design",
+        "count": 1,
+        "loaded_paths": [
+          "baton/role-prompts/implementer.md",
+          "baton/track-mode.md",
+          "baton/llm-checks/README.md",
+          "baton/AGENTS-fragment.md",
+          "baton/CLAUDE-md-user-level.md"
+        ]
+      },
+      {
+        "id": "captain-review",
+        "count": 1,
+        "loaded_paths": [
+          "baton/role-prompts/captain.md",
+          "baton/track-mode.md",
+          "baton/AGENTS-fragment.md",
+          "baton/CLAUDE-md-user-level.md"
+        ]
+      },
+      {
+        "id": "implementer-delivery",
+        "count": 1,
+        "loaded_paths": [
+          "baton/role-prompts/implementer.md",
+          "baton/track-mode.md",
+          "baton/llm-checks/README.md",
+          "baton/AGENTS-fragment.md",
+          "baton/CLAUDE-md-user-level.md"
+        ]
+      },
+      {
+        "id": "verifier",
+        "count": 1,
+        "loaded_paths": [
+          "baton/role-prompts/verifier.md",
+          "baton/track-mode.md",
+          "baton/llm-checks/README.md",
+          "baton/AGENTS-fragment.md",
+          "baton/CLAUDE-md-user-level.md"
+        ]
+      }
+    ],
+    "fixed_words": 56973
+  }
+}
