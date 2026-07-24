@@ -26,6 +26,7 @@ const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
 const RECORD_ROOT_V1 = '.baton/releases';
 const MAX_HEAD_REFS = 128;
 const MAX_BATCH_PATHS = 1025;
+const MAX_RELEASE_PROJECTION_PATHS = (1024 * 3) + 2;
 const MAX_BATCH_FILE_BYTES = 262_144;
 const MAX_BATCH_TOTAL_BYTES = MAX_BATCH_PATHS * MAX_BATCH_FILE_BYTES;
 const MAX_RECORD_TREE_ENTRIES = MAX_BATCH_PATHS;
@@ -426,22 +427,17 @@ export function readFileAtOID(repo, ref, relativePath) {
   }
 }
 
-/**
- * Read up to 1025 files from one captured commit OID with one cat-file process.
- * Each frozen entry contains exact bytes, or null fields when the path is
- * absent. Individual files and aggregate output are bounded.
- */
-export function readFilesAtOID(repo, refOID, paths) {
+function readFilesAtOIDWithin(repo, refOID, paths, maxPaths) {
   if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(refOID)) {
     throw new GitRecordError(
       'INVALID_REF_OID',
       'batched file reads require a full captured commit OID',
     );
   }
-  if (!Array.isArray(paths) || paths.length > MAX_BATCH_PATHS) {
+  if (!Array.isArray(paths) || paths.length > maxPaths) {
     throw new GitRecordError(
       'INVALID_PATH_BATCH',
-      `batched file reads require an array of at most ${MAX_BATCH_PATHS} paths`,
+      `batched file reads require an array of at most ${maxPaths} paths`,
     );
   }
   if (paths.length === 0) return Object.freeze([]);
@@ -519,6 +515,30 @@ export function readFilesAtOID(repo, refOID, paths) {
   return Object.freeze(entries);
 }
 
+/**
+ * Read up to 1025 files from one captured commit OID with one cat-file process.
+ * Each frozen entry contains exact bytes, or null fields when the path is
+ * absent. Individual files and aggregate output are bounded.
+ */
+export function readFilesAtOID(repo, refOID, paths) {
+  return readFilesAtOIDWithin(repo, refOID, paths, MAX_BATCH_PATHS);
+}
+
+/**
+ * Read the complete release projection envelope: status, design, and proof for
+ * every protocol-valid work item, plus assembly status and proof. This wider
+ * path allowance is read-only and retains the ordinary per-file and aggregate
+ * byte ceilings.
+ */
+export function readReleaseProjectionFilesAtOID(repo, refOID, paths) {
+  return readFilesAtOIDWithin(
+    repo,
+    refOID,
+    paths,
+    MAX_RELEASE_PROJECTION_PATHS,
+  );
+}
+
 function assertRepositoryPath(relativePath) {
   const segments = typeof relativePath === 'string' ? relativePath.split('/') : [];
   if (
@@ -582,6 +602,21 @@ export function assertCanonicalRecordRoot(repo, root) {
 export function resolveRecordPathAdmission(repo) {
   const repository = realpathSync(repositoryRoot(repo));
   assertCanonicalRecordRoot(repository, RECORD_ROOT_V1);
+  const admission = Object.freeze(Object.create(null));
+  recordPathAdmissions.set(admission, {
+    repository,
+    root: RECORD_ROOT_V1,
+  });
+  return admission;
+}
+
+/**
+ * Admit captured-object reads below the fixed v1 record root without
+ * consulting launch-worktree entries. Callers receive no write capability;
+ * every downstream read still validates the root and path at an exact commit.
+ */
+export function resolveCapturedRecordPathAdmission(repo) {
+  const repository = realpathSync(repositoryRoot(repo));
   const admission = Object.freeze(Object.create(null));
   recordPathAdmissions.set(admission, {
     repository,

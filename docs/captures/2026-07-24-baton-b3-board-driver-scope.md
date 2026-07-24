@@ -1,7 +1,7 @@
 # Baton B3 board and driver scope
 
 Date: 2026-07-24
-Status: queued; implementation blocked on composed B1 contract
+Status: implemented and corrected; awaiting independent re-review and composition
 Stage: B3 / RC2 R5-R7
 Integration branch: `release/v1.0.0`
 Track branch: `track/v1.0.0/B3-board-driver`
