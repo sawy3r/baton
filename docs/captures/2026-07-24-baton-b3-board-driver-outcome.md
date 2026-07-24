@@ -4,7 +4,7 @@ Date: 2026-07-24
 Status: implemented and corrected; awaiting independent re-review
 Stage: B3 / RC2 R5-R7
 Track: `track/v1.0.0/B3-board-driver`
-Code head: `c5c3c1fab1f5bd1c2f6534afd66c7e84eff97ae4`
+Code head: `b3732c1a9a4af803f7f56963c4729c76c1dd0c91`
 Authority: [B3 scope](./2026-07-24-baton-b3-board-driver-scope.md)
 
 ## Delivered
@@ -44,18 +44,23 @@ composition:
    visibly stale. Process fixtures exercise crash, missing-result, and
    stderr-diagnostic boundaries in addition to typed timeout and cancellation.
 4. This durable outcome records the exact boundary and evidence.
+5. A second review found that 342 valid work items exceeded the generic
+   1,025-path batch ceiling. Release projection now has one dedicated,
+   read-only `3 × work_total + 2` path envelope while ordinary record reads,
+   tree reads, and mutation limits remain unchanged. A real 64-track,
+   1,024-work plan proves the exact protocol ceiling and ref-scaled Git work.
 
 ## Evidence
 
-- `node --test`: 127/127 pass across the composed B1, B2, and B3 tree.
-- B3 board and driver suites: 38/38 pass, including rejection of a missing
-  captured design handoff.
+- `node --test`: 128/128 pass across the composed B1, B2, and B3 tree.
+- B3 board and driver suites: 39/39 pass, including rejection of a missing
+  captured design handoff and projection of the maximum valid work count.
 - `python3 conformance/check.py`: PASS for all strict JSON, schema, positive,
   and negative cases.
 - `node scripts/generate-adapters.mjs --check`: ten adapters match five
   canonical operations; current composed package digest is
-  `sha256:aecdbc101e11e704f055ea6cd0ca4439419f911d0d807ad963ab4f1c349c1213`.
-- The 100-work/20-ref warm projection median measured 8.9 ms in the final full
+  `sha256:2d1564223abe2a79157a56409c12f2155d4b285baf2141af23c75b2c8be40c34`.
+- The 100-work/20-ref warm projection median measured 9.3 ms in the final full
   run, below the one-second gate.
 - Headless Chrome rendered the real fixture at desktop and mobile sizes with
   the intended release, track, work, assembly, and next-operation hierarchy.
