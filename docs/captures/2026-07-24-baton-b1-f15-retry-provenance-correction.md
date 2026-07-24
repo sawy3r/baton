@@ -1,8 +1,9 @@
 # Baton B1 F15-F20 action-boundary correction
 
 Date: 2026-07-24
-Status: bounded correction frozen; independent verdict pending
+Status: independent PASS; composition pending
 Track: `track/v1.0.0/B1-contract-records`
+Independently reviewed head: `1ded8262f649c1032188411d4fa7200713381b29`
 F15 rejected head: `a30a06740a3434d8f5ba85d659fd4ecaaeb2a498`
 F16-F17 rejected head: `de67556789fe023ea62c1580b7f21d9938503890`
 F18 rejected head: `bcebb9770517138d7fe86d752be0b6f567bc0b12`
@@ -137,5 +138,13 @@ $ git diff --check
 (no output)
 ```
 
-This is correction evidence, not a self-issued completion verdict. B1 remains
-pending until a fresh independent review assesses the immutable corrected head.
+## Independent verdict
+
+PASS on exact head `1ded8262f649c1032188411d4fa7200713381b29`.
+The independent read-only release review reproduced the focused 6/6 action
+tests, full 67/67 record tests, portable conformance PASS, and clean whitespace
+check. It confirmed the exact seven-action facade and the complete F15-F20
+correction boundary. No release-blocking correctness defect remained.
+
+B1 is ready to compose into `release/v1.0.0`. This verdict does not claim that
+composition or the integrated release-head checks have happened.
