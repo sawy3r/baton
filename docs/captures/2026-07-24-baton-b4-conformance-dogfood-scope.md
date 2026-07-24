@@ -1,7 +1,7 @@
 # Baton B4 integrated conformance and dogfood scope
 
 Date: 2026-07-24
-Status: queued; blocked on composed B1, B2, and B3
+Status: implemented; integrated checks pass; awaiting independent release review
 Stage: B4 / RC2 R8
 Integration branch: `release/v1.0.0`
 Track branch: `track/v1.0.0/B4-conformance-dogfood`
