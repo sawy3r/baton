@@ -1,39 +1,49 @@
 # Baton
 
-Baton is a small protocol and portable kit for software delivery whose “done”
-claim can be checked. It gives an agent team five clear responsibilities, keeps
-the important handoffs in Git, and refuses to merge anything except the exact
-candidate that passed independent verification.
+Baton is a small, open protocol for delivering software with agents. It gives
+the work five clear jobs, saves the important handoffs in Git, and merges only
+the version that passed a fresh, independent check.
 
 ```text
-approved Plan
-  -> Implementer design
-  -> Captain
-  -> Implementer build and proof
-  -> fresh Verifier
-  -> exact Merge
+                                         fresh-context boundary
+                                                   ║
+                          ┌─────────┐              ║
+                          │ Captain │              ║
+                          └────┬────┘              ║
+                  design ▲     │ PROCEED / REVISE  ║
+                         │     ▼                   ║
+┌─────────┐ approved plan ┌─────────────┐ proof.md ║ ┌──────────┐ PASS ┌───────┐
+│ Planner │──────────────►│ Implementer │──────────╫►│ Verifier │─────►│ Merge │
+└─────────┘               └─────────────┘          ║ └──────────┘      └───────┘
+                              ▲                    ║      │
+                              └────── FAIL ─────────╫──────┘
 ```
 
-Baton defines the rules and records. [Sworn](https://github.com/sawy3r/sworn)
-is the reference engine being built to coordinate those rules autonomously.
-Baton does not run models, host inference, keep provider credentials, or choose
-a model for you.
+The double bar is the load-bearing boundary: the Verifier starts fresh and
+cannot change the work. `REVISE` and `FAIL` go back to the Implementer;
+`ESCALATE` and `BLOCKED` go back to the Planner. Only `PASS` can reach Merge.
+
+Baton defines the jobs, handoffs, and checks.
+[Sworn](https://github.com/sawy3r/sworn) is the reference engine being built to
+keep that loop moving autonomously. Baton does not run models, keep provider
+credentials, or choose a model for you.
 
 ## The small model
 
 Five principles make completion trustworthy:
 
-1. **Bounded authority** — work stays inside an externally approved Plan.
-2. **Durable truth** — repository facts and validated records outrank chat.
-3. **Real evidence** — proof binds checks to one exact candidate.
-4. **Independent verification** — a fresh Verifier checks the builder’s work.
-5. **Safe composition** — Merge integrates only the passed candidate against
-   the expected target.
+1. **Stay inside the agreed work** — start with an approved plan; approve it
+   again if its scope, contract, or authority changes materially.
+2. **Write down what matters** — repository files and Git outrank chat.
+3. **Prove the real result** — test the thing you say you finished.
+4. **Use a fresh Verifier** — the builder does not mark its own homework.
+5. **Merge only what passed** — changed code or a moved target needs a fresh
+   check.
 
-Five responsibilities carry that model: **Planner**, **Implementer**,
-**Captain**, **Verifier**, and **Merge**. Their normal work produces four
-durable handoffs—`plan.md`, `design.md`, `proof.md`, and `status.json`—using one
-authored JSON Schema.
+Five roles carry that model: **Planner**, **Implementer**, **Captain**,
+**Verifier**, and **Merge**. Their normal work produces four saved
+handoffs—`plan.md`, `design.md`, `proof.md`, and `status.json`—using one JSON
+Schema.
 
 The five portable operations are:
 
@@ -43,34 +53,53 @@ The five portable operations are:
 - `baton-verify`
 - `baton-merge`
 
-The board is a thin, read-only view of those durable facts. Editing a board
-cannot advance delivery.
+Claude Code and Codex expose those operations as generated skills.
+
+The board is a thin, read-only view of the repository. Looking at it cannot
+move work forward.
 
 ## More than one track
 
-Independent tracks may move at the same time, while work inside each track
-remains serial. When a track passes, Merge freezes its exact head and composes
-it into the release line. After every track is composed, Merge prepares one
-assembly proof, a fresh Verifier checks the whole product, and release Merge
-updates the target only if it is still the expected commit.
+Independent tracks can run at the same time. Inside each track, work stays
+one-at-a-time. Tracks whose ordered work has passed can rejoin; a fresh
+Verifier then checks the complete release, and Merge lands it only if the code
+and target have not changed.
 
 ## Get started
 
-From this repository checkout, preview and install either host package:
+The easiest route is to let the coding agent you already use install Baton.
+Open Claude Code or Codex and paste:
 
-```sh
-./install-claude.sh --user --dry-run
-./install-claude.sh --user --yes
+```text
+Install Baton v1.0.0-rc.2 for this coding agent. Clone
+https://github.com/sawy3r/baton at that exact tag, read the root INSTALL.md,
+and install it for this tool—Claude Code or Codex—at user scope. Run the
+matching installer with --dry-run and show me the exact actions first. After I
+approve, run the same scope with --yes. Do not edit instruction files directly;
+only allow an instruction-file change made by the reviewed installer as part
+of its exact audited v0.16 migration. Do not install Sworn or a model, or read
+provider credentials. If this host is not supported, stop and tell me.
 ```
 
+Prefer to do it yourself? Clone the reviewed release, then preview and run the
+matching installer:
+
 ```sh
+git clone --branch v1.0.0-rc.2 --depth 1 https://github.com/sawy3r/baton.git
+cd baton
+
+# Claude Code
+./install-claude.sh --user --dry-run
+./install-claude.sh --user --yes
+
+# Codex
 ./install-codex.sh --user --dry-run
 ./install-codex.sh --user --yes
 ```
 
 Project-local installs are also supported. See [INSTALL.md](INSTALL.md) for
-Claude Code and Codex quick starts, invocation, board commands, migration,
-rollback, uninstall, and failure behavior.
+Claude Code and Codex paths, board commands, migration, rollback, uninstall,
+and failure behavior.
 
 Then read the [platform-agnostic walkthrough](examples/README.md). It follows
 one release from approved Plan through independent tracks, composition,

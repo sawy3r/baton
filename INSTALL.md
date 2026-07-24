@@ -13,7 +13,29 @@ below. The installer needs only:
 - Bash; and
 - Node.js 22 or 24.
 
-Run the commands from a Baton `v1.0.0-rc.2` source checkout. Preview first.
+## Ask your agent to install it
+
+This is the easiest route. Open Claude Code or Codex and paste:
+
+```text
+Install Baton v1.0.0-rc.2 for this coding agent. Clone
+https://github.com/sawy3r/baton at that exact tag, read the root INSTALL.md,
+and install it for this tool—Claude Code or Codex—at user scope. Run the
+matching installer with --dry-run and show me the exact actions first. After I
+approve, run the same scope with --yes. Do not edit instruction files directly;
+only allow an instruction-file change made by the reviewed installer as part
+of its exact audited v0.16 migration. Do not install Sworn or a model, or read
+provider credentials. If this host is not supported, stop and tell me.
+```
+
+The prompt pins the reviewed release and makes the dry-run the approval point.
+The ready-made RC2 installers support Claude Code and Codex. Baton itself is
+platform-agnostic, but the agent should not invent an unreviewed host adapter.
+
+## Install it yourself
+
+Clone Baton at `v1.0.0-rc.2`, run the commands below from that checkout, and
+preview every install before applying it.
 
 ## User install
 
