@@ -44,6 +44,10 @@ output must be empty.
 - `fresh_context`: the engine's explicit context-isolation requirement; and
 - `limits`: positive `timeout_ms` and `output_bytes`.
 
+The driver validates the complete operation tuple against the canonical
+operation installed beside it. A caller-supplied digest that merely matches
+caller-supplied replacement text is not a canonical operation.
+
 Drivers do not choose a default model, retry, fall back, rotate providers, or
 reinterpret roles. Workspace access, fresh context, cancellation, and timeout
 remain engine dispatch obligations and must be enforced outside model text.

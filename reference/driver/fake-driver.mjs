@@ -40,6 +40,13 @@ const OPERATION_FOR_ROLE = Object.freeze({
   merge: 'baton-merge',
 });
 const OPERATION_VERSION = 'baton.operation/v1';
+const OPERATION_SOURCES = Object.freeze({
+  'baton-plan': '../../operations/baton-plan.md',
+  'baton-implement': '../../operations/baton-implement.md',
+  'baton-design-review': '../../operations/baton-design-review.md',
+  'baton-verify': '../../operations/baton-verify.md',
+  'baton-merge': '../../operations/baton-merge.md',
+});
 const MAX_REQUEST_BYTES = 1_048_576;
 const MAX_INSTRUCTIONS_BYTES = 262_144;
 const MAX_RESULT_TEXT_BYTES = 1_048_576;
@@ -116,6 +123,31 @@ function instructionsDigest(instructions) {
   return `sha256:${createHash('sha256').update(Buffer.from(instructions)).digest('hex')}`;
 }
 
+function canonicalOperations() {
+  return Object.freeze(Object.fromEntries(
+    Object.entries(OPERATION_SOURCES).map(([id, source]) => {
+      const bytes = readFileSync(new URL(source, import.meta.url));
+      let instructions;
+      try {
+        instructions = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch (error) {
+        fail('INVALID_PACKAGE', `canonical operation ${id} is not valid UTF-8`, error);
+      }
+      if (!instructions.endsWith('\n') || instructions.includes('\r')) {
+        fail('INVALID_PACKAGE', `canonical operation ${id} is not exact UTF-8/LF text`);
+      }
+      return [id, Object.freeze({
+        id,
+        version: OPERATION_VERSION,
+        digest: instructionsDigest(instructions),
+        instructions,
+      })];
+    }),
+  ));
+}
+
+const CANONICAL_OPERATIONS = canonicalOperations();
+
 function operationInstructions(value) {
   if (
     typeof value !== 'string'
@@ -142,16 +174,16 @@ function validateOperation(value) {
     fail('INVALID_VERSION', `request.operation.version must be ${OPERATION_VERSION}`);
   }
   const instructions = operationInstructions(value.instructions);
-  const expected = instructionsDigest(instructions);
-  if (digest(value.digest, 'request.operation.digest') !== expected) {
-    fail('STALE_OPERATION', 'request.operation.digest does not bind the instruction bytes');
+  const suppliedDigest = digest(value.digest, 'request.operation.digest');
+  const canonical = CANONICAL_OPERATIONS[id];
+  if (
+    suppliedDigest !== canonical.digest
+    || instructionsDigest(instructions) !== canonical.digest
+    || instructions !== canonical.instructions
+  ) {
+    fail('STALE_OPERATION', 'request.operation does not match the installed canonical operation');
   }
-  return Object.freeze({
-    id,
-    version: OPERATION_VERSION,
-    digest: expected,
-    instructions,
-  });
+  return canonical;
 }
 
 function validateInputs(value) {

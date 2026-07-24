@@ -17,6 +17,7 @@ import { makePlanMetadata } from '../records/helpers.mjs';
 import {
   baselineFixture,
   materializeTrack,
+  passEveryWork,
 } from './helpers.mjs';
 
 const TRACE_DIRECTORY = mkdtempSync(path.join(tmpdir(), 'baton-board-git-trace-'));
@@ -102,4 +103,52 @@ test('100 work items across 20 owner refs project below one second warm median',
   } finally {
     fixture.cleanup();
   }
+});
+
+function advancedProjectionCommands(workCount) {
+  const metadata = performancePlan();
+  metadata.tracks = [{
+    ...metadata.tracks[0],
+    work: metadata.tracks[0].work.slice(0, workCount),
+  }];
+  const fixture = baselineFixture(metadata);
+  try {
+    const materialized = materializeTrack(fixture, 'T01');
+    passEveryWork(fixture, materialized);
+    writeFileSync(TRACE_FILE, '');
+    const board = projectBoard(fixture.repo);
+    assert.equal(board.valid, true);
+    assert.equal(board.releases[0].tracks[0].composition, 'ready');
+    return readFileSync(TRACE_FILE, 'utf8').trim().split('\n').filter(Boolean);
+  } finally {
+    fixture.cleanup();
+  }
+}
+
+test('advanced proof projection uses fixed Git process count per selected ref', (t) => {
+  const one = advancedProjectionCommands(1);
+  const five = advancedProjectionCommands(5);
+  assert.equal(
+    five.length,
+    one.length,
+    `five proofs used ${five.length} Git processes versus ${one.length} for one proof`,
+  );
+  for (const commands of [one, five]) {
+    assert.equal(
+      commands.filter((command) => command.includes('cat-file --batch')).length,
+      3,
+      'release, owner, and immutable materialization marker each use one batch',
+    );
+    assert.equal(
+      commands.filter((command) => command.includes('merge-base --independent')).length,
+      1,
+      'all proof candidates share one captured-authority reachability check',
+    );
+    assert.equal(
+      commands.filter((command) => command.includes('--ancestry-path')).length,
+      1,
+      'all proof pairs share one bounded commit-graph read',
+    );
+  }
+  t.diagnostic(`advanced projection Git processes: ${five.length}`);
 });

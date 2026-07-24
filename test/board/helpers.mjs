@@ -181,6 +181,56 @@ export function advanceToCaptain(fixture, materialized, workId) {
   return { status, head };
 }
 
+export function passEveryWork(fixture, materialized) {
+  git(
+    fixture.repo,
+    'switch',
+    '-q',
+    materialized.track.ref.replace('refs/heads/', ''),
+  );
+  let previousCandidate = materialized.materialization.base_commit;
+  const passed = {};
+  for (const work of materialized.track.work) {
+    const designBytes = Buffer.from(`# ${work.id} design\n`);
+    write(fixture.repo, workDesignPath(fixture.plan, work.id), designBytes);
+    const designed = designReady(materialized.statuses[work.id], {
+      digest: digestBytes(designBytes),
+      producer: `${work.id}-implementer-design`,
+    });
+    writeStatus(fixture.repo, fixture.plan, designed);
+    commitAll(fixture.repo, `design ${work.id}`);
+
+    const proceeded = captainResult(designed, 'proceed');
+    proceeded.captain.invocation = `${work.id}-captain`;
+    writeStatus(fixture.repo, fixture.plan, proceeded);
+    commitAll(fixture.repo, `captain proceeds ${work.id}`);
+
+    write(fixture.repo, work.scope.include[0], `${work.id} product\n`);
+    const candidate = commitAll(fixture.repo, `implement ${work.id}`);
+    const identity = productTreeIdentity(fixture.repo, candidate, materialized.admission);
+    const proofBytes = Buffer.from(`# ${work.id} proof\n`);
+    write(fixture.repo, workProofPath(fixture.plan, work.id), proofBytes);
+    const implemented = proofReady(proceeded, {
+      digest: digestBytes(proofBytes),
+      producer: `${work.id}-implementer-code`,
+      candidate,
+      candidateTree: identity.candidateTree,
+      productTree: identity.productTree,
+    });
+    implemented.proof.base_commit = previousCandidate;
+    writeStatus(fixture.repo, fixture.plan, implemented);
+    commitAll(fixture.repo, `proof ${work.id}`);
+
+    const verifiedStatus = verified(implemented, 'pass');
+    verifiedStatus.verification.invocation = `${work.id}-verifier`;
+    writeStatus(fixture.repo, fixture.plan, verifiedStatus);
+    commitAll(fixture.repo, `verify ${work.id}`);
+    passed[work.id] = verifiedStatus;
+    previousCandidate = candidate;
+  }
+  return { passed, candidate: previousCandidate };
+}
+
 export function composeSingleWorkTrack(fixture, trackId) {
   const materialized = materializeTrack(fixture, trackId);
   const [work] = materialized.track.work;

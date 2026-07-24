@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -25,6 +26,22 @@ const RESULT_FILE = new URL(
 const DRIVER_FILE = fileURLToPath(
   new URL('../../reference/driver/fake-driver.mjs', import.meta.url),
 );
+const PROCESS_BEHAVIOR_FILE = fileURLToPath(
+  new URL('../../conformance/fixtures/driver/process-behavior.mjs', import.meta.url),
+);
+
+function operationFixture(id) {
+  const instructions = readFileSync(
+    new URL(`../../operations/${id}.md`, import.meta.url),
+    'utf8',
+  );
+  return {
+    id,
+    version: 'baton.operation/v1',
+    digest: `sha256:${createHash('sha256').update(Buffer.from(instructions)).digest('hex')}`,
+    instructions,
+  };
+}
 
 function requestFixture() {
   return JSON.parse(readFileSync(REQUEST_FILE, 'utf8'));
@@ -73,7 +90,7 @@ test('all five roles use the same fake executable and explicit model', () => {
   for (const role of ['planner', 'implementer', 'captain', 'verifier', 'merge']) {
     const request = requestFixture();
     request.role = role;
-    request.operation.id = operations[role];
+    request.operation = operationFixture(operations[role]);
     request.invocation_id = `invoke-${role}`;
     request.workspace.access = role === 'verifier' ? 'read_only' : 'read_write';
     const child = invoke(['run'], `${JSON.stringify(request)}\n`, {
@@ -142,6 +159,13 @@ test('request parsing is strict, bounded, and binds operation bytes', () => {
   const stale = requestFixture();
   stale.operation.instructions = 'Changed operation instructions.\n';
   throwsCode(() => validateDriverRequest(stale), 'STALE_OPERATION');
+
+  const substituted = requestFixture();
+  substituted.operation.instructions = 'Self-consistent but noncanonical instructions.\n';
+  substituted.operation.digest = `sha256:${
+    createHash('sha256').update(Buffer.from(substituted.operation.instructions)).digest('hex')
+  }`;
+  throwsCode(() => validateDriverRequest(substituted), 'STALE_OPERATION');
 
   const wrongRole = requestFixture();
   wrongRole.role = 'captain';
@@ -224,4 +248,34 @@ test('invalid invocation or request emits no result and bounded diagnostics', ()
     assert.equal(child.stdout, '');
     assert.ok(Buffer.byteLength(child.stderr) <= 1024);
   }
+});
+
+test('process fixtures expose crash, missing-result, and stderr-noise boundaries', () => {
+  const crash = spawnSync(process.execPath, [PROCESS_BEHAVIOR_FILE, 'crash'], {
+    encoding: 'utf8',
+  });
+  assert.equal(crash.status, 17);
+  assert.equal(crash.stdout, '');
+  assert.match(crash.stderr, /exited before producing a result/);
+  assert.ok(Buffer.byteLength(crash.stderr) <= 1024);
+
+  const missing = spawnSync(
+    process.execPath,
+    [PROCESS_BEHAVIOR_FILE, 'missing-result'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(missing.status, 0);
+  assert.equal(missing.stdout, '');
+
+  const noisy = spawnSync(
+    process.execPath,
+    [PROCESS_BEHAVIOR_FILE, 'stderr-noise'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(noisy.status, 0);
+  assert.match(noisy.stderr, /transport diagnostic/);
+  assert.deepEqual(
+    validateDriverResult(JSON.parse(noisy.stdout)),
+    validateDriverResult(JSON.parse(readFileSync(RESULT_FILE, 'utf8'))),
+  );
 });

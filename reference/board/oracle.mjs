@@ -20,8 +20,8 @@ import {
   selectAssemblyFromSnapshot,
   selectAuthoritativeStatusFromSnapshot,
   validateAssemblyProjection,
-  validateProofGitTopology,
-  validateStatusHandoffsAtRef,
+  validateCapturedStatusHandoffs,
+  validateProjectionProofTopology,
 } from '../records/records.mjs';
 
 export const BOARD_VERSION = 'baton.board/v1';
@@ -235,15 +235,9 @@ function trackState(track, selections) {
   return frozen({ composition: 'pending', frozen_head: null });
 }
 
-function verifySelectedStatus(repo, plan, selection, admission) {
+function verifySelectedStatus(plan, selection) {
   if (selection.status.design || selection.status.proof) {
-    validateStatusHandoffsAtRef(repo, plan, selection.status, selection.head);
-  }
-  if (selection.status.proof) {
-    validateProofGitTopology(repo, selection.status, {
-      repository: plan.metadata.repository,
-      authorityHead: selection.head,
-    });
+    validateCapturedStatusHandoffs(plan, selection.status, selection.handoffs);
   }
 }
 
@@ -252,13 +246,22 @@ function materialisationMode(records, trackId, composition) {
   return records.refs.some((entry) => entry.track_id === trackId) ? 'owner' : 'baseline';
 }
 
-function projectTracks(repo, plan, snapshot, records, admission) {
+function projectTracks(repo, plan, snapshot, records) {
   const selections = new Map();
   for (const track of plan.metadata.tracks) {
+    const topologyGroups = new Map();
     for (const work of track.work) {
       const selection = selectAuthoritativeStatusFromSnapshot(plan, work.id, records);
-      verifySelectedStatus(repo, plan, selection, admission);
+      verifySelectedStatus(plan, selection);
       selections.set(work.id, selection);
+      if (selection.status.proof) {
+        const statuses = topologyGroups.get(selection.head) ?? [];
+        statuses.push(selection.status);
+        topologyGroups.set(selection.head, statuses);
+      }
+    }
+    for (const [head, statuses] of topologyGroups) {
+      validateProjectionProofTopology(repo, plan, track.id, statuses, head);
     }
   }
 
@@ -350,6 +353,8 @@ function projectAssembly(repo, plan, snapshot, records, admission, allComposed) 
   validateAssemblyProjection(repo, plan, selection.status, {
     snapshot,
     recordRootAdmission: admission,
+    capturedHandoffs: selection.handoffs,
+    capturedTransfers: records.refs[0].statuses,
   });
   let complete = false;
   if (
@@ -477,7 +482,7 @@ function projectCapturedRelease(repo, plan, snapshot, admission) {
   const records = readAuthoritativeRecordSnapshot(repo, plan, snapshot, {
     recordRootAdmission: admission,
   });
-  const tracks = projectTracks(repo, plan, snapshot, records, admission);
+  const tracks = projectTracks(repo, plan, snapshot, records);
   const assembly = projectAssembly(
     repo,
     plan,

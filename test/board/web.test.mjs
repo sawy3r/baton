@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { request } from 'node:http';
+import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 import {
@@ -37,6 +38,97 @@ function fetchLocal(running, {
     operation.on('error', reject);
     operation.end();
   });
+}
+
+class TestNode {
+  constructor(tag = null, value = '') {
+    this.tag = tag;
+    this.className = '';
+    this.attributes = {};
+    this.children = [];
+    this.value = String(value);
+  }
+
+  append(...children) {
+    this.children.push(...children);
+  }
+
+  replaceChildren(...children) {
+    this.children = [...children];
+    this.value = '';
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+  }
+
+  set textContent(value) {
+    this.value = String(value);
+    this.children = [];
+  }
+
+  get textContent() {
+    return `${this.value}${this.children.map((child) => child.textContent).join('')}`;
+  }
+}
+
+function executeClient(client, board) {
+  const createdTags = [];
+  const roots = {
+    board: new TestNode('main'),
+    freshness: new TestNode('p', 'Connecting'),
+  };
+  const document = {
+    getElementById(id) {
+      return roots[id] ?? null;
+    },
+    createElement(tag) {
+      createdTags.push(tag);
+      return new TestNode(tag);
+    },
+    createTextNode(value) {
+      return new TestNode(null, value);
+    },
+    createDocumentFragment() {
+      return new TestNode(null);
+    },
+  };
+  let interval = null;
+  let requestCount = 0;
+  const context = {
+    document,
+    fetch: async () => {
+      requestCount += 1;
+      if (requestCount > 1) throw new Error('expected refresh failure');
+      return {
+        ok: true,
+        json: async () => board,
+      };
+    },
+    window: {
+      setInterval(callback, milliseconds) {
+        interval = { callback, milliseconds };
+        return 1;
+      },
+    },
+  };
+  runInNewContext(client, context, { timeout: 1000 });
+  return {
+    ...roots,
+    createdTags,
+    interval: () => interval,
+    requestCount: () => requestCount,
+  };
+}
+
+function nodeSnapshot(node) {
+  return {
+    tag: node.tag,
+    className: node.className,
+    attributes: node.attributes,
+    value: node.value,
+    children: node.children.map(nodeSnapshot),
+  };
 }
 
 test('server exposes only the fixed GET surface with exact security headers', async () => {
@@ -163,6 +255,50 @@ test('shell, client, and stylesheet remain static and executable-sink free', asy
     assert.match(client, /replaceChildren/);
     assert.match(client, /setInterval\(refresh, 15000\)/);
     assert.match(client, /showing last committed view/);
+  } finally {
+    await running.close();
+  }
+});
+
+test('client renders repository text literally and retains the last view after refresh failure', async () => {
+  const running = await startBoardServer({
+    port: 0,
+    project: () => BOARD,
+  });
+  try {
+    const client = (await fetchLocal(running, { path: '/app.js' })).body;
+    const rendered = JSON.parse(JSON.stringify(BOARD));
+    const corpus = [
+      '<script>globalThis.executed = true</script>',
+      '<svg onload="globalThis.executed = true">',
+      '" onpointerover="globalThis.executed = true',
+      'javascript:globalThis.executed = true',
+      '\u001b[31mcontrol\u0007',
+      '\u202eright-to-left',
+      'line one\nline two\u2028line three',
+    ].join(' | ');
+    rendered.repository = corpus;
+    rendered.releases[0].release = corpus;
+    rendered.releases[0].tracks[0].work[0].id = corpus;
+    const execution = executeClient(client, rendered);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(execution.requestCount(), 1);
+    assert.equal(execution.freshness.textContent, 'Committed state · current');
+    assert.match(execution.board.textContent, /<script>/);
+    assert.match(execution.board.textContent, /<svg onload/);
+    assert.equal(execution.createdTags.includes('script'), false);
+    assert.equal(execution.createdTags.includes('svg'), false);
+    assert.deepEqual(execution.interval()?.milliseconds, 15000);
+
+    const committedView = nodeSnapshot(execution.board);
+    await execution.interval().callback();
+    assert.equal(execution.requestCount(), 2);
+    assert.deepEqual(nodeSnapshot(execution.board), committedView);
+    assert.equal(
+      execution.freshness.textContent,
+      'Refresh failed · showing last committed view',
+    );
   } finally {
     await running.close();
   }

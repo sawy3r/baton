@@ -1465,6 +1465,60 @@ export function validateStatusHandoffsAtRef(repo, plan, status, ref) {
   return result;
 }
 
+export function validateCapturedStatusHandoffs(plan, status, handoffs) {
+  requirePlanAdmission(plan);
+  validateStatusSemantics(status, {
+    planDigest: plan.digest,
+    approvalRef: plan.metadata.approval_ref,
+  });
+  if (!Array.isArray(handoffs)) {
+    fail('INVALID_RECORD_SNAPSHOT', 'captured handoffs must be one immutable batch');
+  }
+  const observed = new Map();
+  for (const [index, handoff] of handoffs.entries()) {
+    if (
+      handoff === null
+      || typeof handoff !== 'object'
+      || Array.isArray(handoff)
+      || !isDeepStrictEqual(Object.keys(handoff).sort(), ['digest', 'path'])
+      || typeof handoff.path !== 'string'
+      || !DIGEST_PATTERN.test(handoff.digest)
+      || observed.has(handoff.path)
+    ) {
+      fail('INVALID_RECORD_SNAPSHOT', `captured handoff ${index} is invalid`);
+    }
+    observed.set(handoff.path, handoff.digest);
+  }
+  const result = {};
+  const admit = (name, relativePath, expectedDigest) => {
+    const observedDigest = observed.get(relativePath);
+    if (observedDigest !== expectedDigest) {
+      fail(
+        'STALE_BINDING',
+        `${relativePath} digest is ${observedDigest ?? 'missing'}, expected ${expectedDigest}`,
+      );
+    }
+    result[name] = { path: relativePath, digest: observedDigest };
+  };
+  if (status.design) {
+    admit(
+      'design',
+      workDesignPath(plan, status.work_id),
+      status.design.digest,
+    );
+  }
+  if (status.proof) {
+    admit(
+      'proof',
+      status.kind === 'work'
+        ? workProofPath(plan, status.work_id)
+        : assemblyProofPath(plan),
+      status.proof.digest,
+    );
+  }
+  return result;
+}
+
 export function validateWorkStatusIdentity(status, plan, track, work) {
   if (
     status.kind !== 'work'
@@ -1623,12 +1677,27 @@ function parsedStatusBatch(repo, plan, head, plannedWork) {
 }
 
 function parsedReleaseBatch(repo, plan, head, plannedWork) {
-  const paths = [
-    ...plannedWork.map(({ work }) => workStatusPath(plan, work.id)),
-    assemblyStatusPath(plan),
-  ];
+  const paths = plannedWork.flatMap(({ work }) => [
+    workStatusPath(plan, work.id),
+    workDesignPath(plan, work.id),
+    workProofPath(plan, work.id),
+  ]);
+  paths.push(assemblyStatusPath(plan), assemblyProofPath(plan));
   const files = readFilesAtOID(repo, head, paths);
-  const assemblyFile = files.at(-1);
+  const statusFiles = plannedWork.map((ignored, index) => files[index * 3]);
+  const handoffs = [];
+  for (let index = 0; index < plannedWork.length; index += 1) {
+    for (const file of [files[(index * 3) + 1], files[(index * 3) + 2]]) {
+      if (file.bytes !== null) {
+        handoffs.push(Object.freeze({
+          path: file.path,
+          digest: digestBytes(file.bytes),
+        }));
+      }
+    }
+  }
+  const assemblyFile = files.at(-2);
+  const assemblyProofFile = files.at(-1);
   let assembly = null;
   if (assemblyFile.bytes !== null) {
     const status = parseStatusBytes(assemblyFile.bytes, {
@@ -1646,14 +1715,87 @@ function parsedReleaseBatch(repo, plan, head, plannedWork) {
     }
     assembly = frozenCopy(status);
   }
+  if (assemblyProofFile.bytes !== null) {
+    handoffs.push(Object.freeze({
+      path: assemblyProofFile.path,
+      digest: digestBytes(assemblyProofFile.bytes),
+    }));
+  }
   return Object.freeze({
     statuses: parsePlannedWorkStatusFiles(
       plan,
       head,
       plannedWork,
-      files.slice(0, -1),
+      statusFiles,
     ),
     assembly,
+    handoffs: Object.freeze(handoffs),
+  });
+}
+
+function capturedFirstParentHistory(repo, base, head, label) {
+  const rendered = runGit(
+    repo,
+    [
+      'rev-list',
+      '--first-parent',
+      '--parents',
+      '--reverse',
+      '--max-count=10001',
+      `${base}..${head}`,
+    ],
+    { label },
+  ).trim();
+  const lines = rendered === '' ? [] : rendered.split('\n');
+  if (lines.length > 10_000) {
+    fail('RESOURCE_LIMIT', `${label} exceeds 10000 commits`);
+  }
+  const history = lines.map((line) => {
+    const [commit, ...parents] = line.split(' ');
+    if (
+      !OBJECT_PATTERN.test(commit)
+      || parents.length === 0
+      || parents.some((parent) => !OBJECT_PATTERN.test(parent))
+    ) {
+      fail('MALFORMED_GIT_OUTPUT', `${label} is malformed`);
+    }
+    return { commit, parents };
+  });
+  let expectedParent = base;
+  for (const entry of history) {
+    if (entry.parents[0] !== expectedParent) {
+      fail('INVALID_CANDIDATE_ANCESTRY', `${label} does not descend from its exact base`);
+    }
+    expectedParent = entry.commit;
+  }
+  if (history.length > 0 && history.at(-1).commit !== head) {
+    fail('INVALID_CANDIDATE_ANCESTRY', `${label} does not reach its exact head`);
+  }
+  return history;
+}
+
+function parsedOwnerProjectionBatch(repo, plan, head, plannedWork) {
+  const paths = plannedWork.flatMap(({ work }) => [
+    workStatusPath(plan, work.id),
+    workDesignPath(plan, work.id),
+    workProofPath(plan, work.id),
+  ]);
+  const files = readFilesAtOID(repo, head, paths);
+  const statusFiles = plannedWork.map((ignored, index) => files[index * 3]);
+  const handoffs = [];
+  for (let index = 0; index < plannedWork.length; index += 1) {
+    for (const file of [files[(index * 3) + 1], files[(index * 3) + 2]]) {
+      if (file.bytes !== null) {
+        handoffs.push(Object.freeze({
+          path: file.path,
+          digest: digestBytes(file.bytes),
+        }));
+      }
+    }
+  }
+  return Object.freeze({
+    statuses: parsePlannedWorkStatusFiles(plan, head, plannedWork, statusFiles),
+    handoffs: Object.freeze(handoffs),
   });
 }
 
@@ -1680,7 +1822,12 @@ function validateOwnerMarker(
     }
   }
   validateMaterializationEvidence(repo, plan, track.id, materialization);
-  const history = candidateCommits(repo, materialization.base_commit, ownerHead);
+  const history = capturedFirstParentHistory(
+    repo,
+    materialization.base_commit,
+    ownerHead,
+    `materialization lineage for ${track.id}`,
+  );
   if (history.length === 0) {
     fail('INVALID_OWNER_MARKER', `track ${track.id} has no materialization marker commit`);
   }
@@ -1793,6 +1940,7 @@ export function readAuthoritativeRecordSnapshot(
     contained_in_release: true,
     statuses: releaseBatch.statuses,
     assembly: releaseBatch.assembly,
+    handoffs: releaseBatch.handoffs,
   }];
   for (const track of plan.metadata.tracks) {
     const captured = trackRefSnapshot(snapshot, track.id);
@@ -1800,12 +1948,13 @@ export function readAuthoritativeRecordSnapshot(
       assertNoErasedOwnerMarker(repo, plan, track, snapshot.release.head);
       continue;
     }
-    const statuses = parsedStatusBatch(
+    const ownerBatch = parsedOwnerProjectionBatch(
       repo,
       plan,
       captured.head,
       track.work.map((work) => ({ track, work })),
     );
+    const { statuses } = ownerBatch;
     refs.push({
       ref: captured.ref,
       head: captured.head,
@@ -1821,6 +1970,7 @@ export function readAuthoritativeRecordSnapshot(
         recordRootAdmission,
       ),
       statuses,
+      handoffs: ownerBatch.handoffs,
     });
   }
   const result = Object.freeze({
@@ -1855,6 +2005,7 @@ export function selectAuthoritativeStatusFromSnapshot(plan, workId, records) {
       head: release.head,
       source: 'baseline',
       status: releaseStatus,
+      handoffs: release.handoffs,
     });
   }
   const ownerStatus = owner.statuses.find((entry) => entry.work_id === work.id)?.status;
@@ -1879,6 +2030,7 @@ export function selectAuthoritativeStatusFromSnapshot(plan, workId, records) {
       head: release.head,
       source: 'composed',
       status: releaseStatus,
+      handoffs: release.handoffs,
     });
   }
   return Object.freeze({
@@ -1886,6 +2038,7 @@ export function selectAuthoritativeStatusFromSnapshot(plan, workId, records) {
     head: owner.head,
     source: 'owner',
     status: ownerStatus,
+    handoffs: owner.handoffs,
   });
 }
 
@@ -1906,6 +2059,7 @@ export function selectAssemblyFromSnapshot(plan, records) {
     head: release.head,
     source: 'release',
     status: release.assembly,
+    handoffs: release.handoffs,
   });
 }
 
@@ -2151,6 +2305,120 @@ export function validateProofGitTopology(repo, status, options = {}) {
     ...candidate,
     authorityHead,
   };
+}
+
+function reachesCommit(parents, candidate, base) {
+  if (candidate === base) return true;
+  const pending = [candidate];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const parent of parents.get(current) ?? []) {
+      if (parent === base) return true;
+      if (parents.has(parent) && !visited.has(parent)) pending.push(parent);
+    }
+  }
+  return false;
+}
+
+export function validateProjectionProofTopology(
+  repo,
+  plan,
+  trackId,
+  statuses,
+  authorityHead,
+) {
+  requirePlanAdmission(plan);
+  const track = findTrack(plan, trackId);
+  objectId(authorityHead, 'captured authority head');
+  if (!Array.isArray(statuses)) {
+    fail('INVALID_RECORD_SNAPSHOT', 'projection proof validation requires captured statuses');
+  }
+  const proven = [];
+  let materialization = null;
+  for (const status of statuses) {
+    const work = track.work.find((candidate) => candidate.id === status?.work_id);
+    if (!work) fail('STATUS_IDENTITY_MISMATCH', `status does not belong to track ${trackId}`);
+    validateWorkStatusIdentity(status, plan, track, work);
+    if (!status.proof) continue;
+    if (status.proof.repository !== plan.metadata.repository) {
+      fail('REPOSITORY_MISMATCH', 'proof repository does not match the approved plan');
+    }
+    if (!status.materialization) {
+      fail('INVALID_MATERIALIZATION', `proof for ${work.id} has no materialization`);
+    }
+    if (materialization === null) {
+      materialization = status.materialization;
+    } else if (!isDeepStrictEqual(materialization, status.materialization)) {
+      fail('INVALID_MATERIALIZATION', `track ${trackId} proofs use different materializations`);
+    }
+    proven.push(status);
+  }
+  if (proven.length === 0) return Object.freeze({ proofs: 0, commits: 0 });
+
+  const rootBase = materialization.base_commit;
+  const commits = [...new Set([
+    rootBase,
+    ...proven.flatMap((status) => [
+      status.proof.base_commit,
+      status.proof.candidate_commit,
+    ]),
+  ])];
+  const independent = runGit(
+    repo,
+    ['merge-base', '--independent', authorityHead, ...commits],
+    { label: `validate captured proof reachability for ${trackId}` },
+  ).trim().split('\n').filter(Boolean);
+  if (independent.length !== 1 || independent[0] !== authorityHead) {
+    fail(
+      'CANDIDATE_NOT_ON_AUTHORITY',
+      `track ${trackId} proof commits are not all reachable from the captured authority`,
+    );
+  }
+
+  const rendered = runGit(
+    repo,
+    [
+      'rev-list',
+      '--parents',
+      '--topo-order',
+      '--ancestry-path',
+      '--max-count=10001',
+      `${rootBase}..${authorityHead}`,
+    ],
+    { label: `read captured proof graph for ${trackId}` },
+  ).trim();
+  const lines = rendered === '' ? [] : rendered.split('\n');
+  if (lines.length > 10_000) {
+    fail('RESOURCE_LIMIT', `captured proof graph for ${trackId} exceeds 10000 commits`);
+  }
+  const parents = new Map();
+  for (const line of lines) {
+    const [commit, ...commitParents] = line.split(' ');
+    if (
+      !OBJECT_PATTERN.test(commit)
+      || commitParents.some((parent) => !OBJECT_PATTERN.test(parent))
+      || parents.has(commit)
+    ) {
+      fail('MALFORMED_GIT_OUTPUT', `captured proof graph for ${trackId} is malformed`);
+    }
+    parents.set(commit, commitParents);
+  }
+  for (const status of proven) {
+    if (!reachesCommit(
+      parents,
+      status.proof.candidate_commit,
+      status.proof.base_commit,
+    )) {
+      fail(
+        'INVALID_CANDIDATE_ANCESTRY',
+        `candidate ${status.proof.candidate_commit} does not descend from base ${status.proof.base_commit}`,
+      );
+    }
+  }
+  return Object.freeze({ proofs: proven.length, commits: lines.length });
 }
 
 export function validateProofGitIdentity(repo, status, recordRootAdmission, options = {}) {
@@ -2490,7 +2758,11 @@ export function validateAssemblyProjection(repo, plan, status, options = {}) {
   ) {
     fail('STATUS_IDENTITY_MISMATCH', 'assembly status does not match the approved release');
   }
-  validateStatusHandoffsAtRef(repo, plan, status, snapshot.release.head);
+  if (options.capturedHandoffs === undefined) {
+    validateStatusHandoffsAtRef(repo, plan, status, snapshot.release.head);
+  } else {
+    validateCapturedStatusHandoffs(plan, status, options.capturedHandoffs);
+  }
   validateProofGitTopology(repo, status, {
     repository: plan.metadata.repository,
     authorityHead: snapshot.release.head,
@@ -2520,14 +2792,24 @@ export function validateAssemblyProjection(repo, plan, status, options = {}) {
       fail('INCOMPLETE_ASSEMBLY', `assembly candidate does not contain track ${track.id}`);
     }
     for (const work of track.work) {
-      const transfer = readBoundStatus(
-        repo,
-        releaseHead,
-        workStatusPath(plan, work.id),
-        plan,
-        track,
-        work,
-      ).status;
+      let transfer;
+      if (options.capturedTransfers === undefined) {
+        transfer = readBoundStatus(
+          repo,
+          releaseHead,
+          workStatusPath(plan, work.id),
+          plan,
+          track,
+          work,
+        ).status;
+      } else {
+        const captured = options.capturedTransfers.find((entry) => entry.work_id === work.id);
+        if (!captured) {
+          fail('AUTHORITATIVE_STATUS_MISSING', `release snapshot lacks ${work.id}`);
+        }
+        transfer = captured.status;
+        validateWorkStatusIdentity(transfer, plan, track, work);
+      }
       if (
         transfer.stage !== 'merge'
         || transfer.status !== 'complete'
