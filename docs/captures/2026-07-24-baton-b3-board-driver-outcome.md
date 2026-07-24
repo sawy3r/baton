@@ -47,8 +47,9 @@ composition:
 
 ## Evidence
 
-- `node --test`: 126/126 pass across the composed B1, B2, and B3 tree.
-- B3 board and driver suites: 37/37 pass.
+- `node --test`: 127/127 pass across the composed B1, B2, and B3 tree.
+- B3 board and driver suites: 38/38 pass, including rejection of a missing
+  captured design handoff.
 - `python3 conformance/check.py`: PASS for all strict JSON, schema, positive,
   and negative cases.
 - `node scripts/generate-adapters.mjs --check`: ten adapters match five

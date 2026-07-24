@@ -11,6 +11,7 @@ import {
 } from '../../reference/board/oracle.mjs';
 import {
   captureRefSnapshot,
+  workDesignPath,
   workStatusPath,
 } from '../../reference/records/records.mjs';
 import {
@@ -223,6 +224,23 @@ test('materialised owner state wins and advances only its first serial work', ()
       work: 'W1',
     });
     assert.equal(track.work[1].next_operation, null);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('captured owner projection rejects a missing bound handoff', () => {
+  const fixture = baselineFixture();
+  try {
+    const materialized = materializeTrack(fixture, 'T1');
+    advanceToCaptain(fixture, materialized, 'W1');
+    rmSync(path.join(fixture.repo, workDesignPath(fixture.plan, 'W1')));
+    commitAll(fixture.repo, 'remove bound design');
+
+    const board = projectBoard(fixture.repo);
+    assert.equal(board.valid, false);
+    assert.equal(board.releases[0].diagnostics[0].code, 'STALE_BINDING');
+    assert.deepEqual(board.releases[0].next_operations, []);
   } finally {
     fixture.cleanup();
   }
