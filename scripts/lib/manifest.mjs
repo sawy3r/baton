@@ -359,6 +359,13 @@ export async function desiredCollisions(desired, priorManifest, paths, { allowSu
   const prior = new Set(
     priorManifest?.owned_files.map(({ root, path }) => `${root}:${path}`) ?? [],
   );
+  for (const operation of OPERATIONS) {
+    if (prior.has(`launcher:${operation.name}/SKILL.md`)) continue;
+    const tree = await walkTree(join(paths.launcherRoot, operation.name));
+    if (tree.files.length > 0 || tree.directories.length > 0) {
+      fail('UNOWNED_COLLISION', `launcher:${operation.name} contains unowned content`);
+    }
+  }
   for (const file of desired.manifest.owned_files) {
     if (prior.has(`${file.root}:${file.path}`)) continue;
     if (allowSupportRoot && file.root === 'support') continue;

@@ -245,6 +245,24 @@ test('confirmation, collision, modified ownership, and path hazards fail before 
   );
   assert.deepEqual(await snapshot(collision.home), collisionBefore);
 
+  const nestedCollision = await temporaryFixture(t, 'baton-nested-collision-');
+  const nestedTarget = targets('codex', 'user', nestedCollision.home);
+  await writeMode(
+    join(nestedTarget.launcherRoot, 'baton-plan', 'notes.txt'),
+    Buffer.from('foreign content\n'),
+    0o644,
+  );
+  const nestedBefore = await snapshot(nestedCollision.home);
+  await rejectCode(
+    runInstaller(['--host', 'codex', '--user', '--yes'], {
+      env: environment(nestedCollision.home),
+      cwd: nestedCollision.home,
+      isTTY: false,
+    }),
+    'UNOWNED_COLLISION',
+  );
+  assert.deepEqual(await snapshot(nestedCollision.home), nestedBefore);
+
   const modified = await temporaryFixture(t, 'baton-modified-');
   const modifiedTarget = targets('codex', 'user', modified.home);
   const modifiedOptions = {
@@ -309,6 +327,22 @@ test('confirmation, collision, modified ownership, and path hazards fail before 
       'UNSAFE_OWNERSHIP',
     );
   }
+});
+
+test('an unrelated short Claude instruction file is preserved on a clean install', async (t) => {
+  const fixture = await temporaryFixture(t, 'baton-short-claude-');
+  const instructionPath = join(fixture.home, '.claude', 'CLAUDE.md');
+  await writeMode(instructionPath, Buffer.from('# Personal instructions\n'), 0o664);
+  const before = await snapshot(instructionPath);
+
+  await runInstaller(['--host', 'claude', '--user', '--yes'], {
+    env: environment(fixture.home),
+    cwd: fixture.home,
+    isTTY: false,
+  });
+
+  assert.deepEqual(await snapshot(instructionPath), before);
+  await assertInstalled(targets('claude', 'user', fixture.home), 'claude', 'user');
 });
 
 test('exact legacy migration preserves unrelated files and rollback restores exact bytes', async (t) => {

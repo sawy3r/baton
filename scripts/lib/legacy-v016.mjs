@@ -119,9 +119,7 @@ function splitAfterLines(bytes, count) {
   let offset = 0;
   for (let index = 0; index < count; index += 1) {
     offset = bytes.indexOf(0x0a, offset);
-    if (offset === -1) {
-      fail('LEGACY_FINGERPRINT_MISMATCH', 'legacy CLAUDE.md has fewer than four prefix lines');
-    }
+    if (offset === -1) return null;
     offset += 1;
   }
   return { prefix: bytes.subarray(0, offset), suffix: bytes.subarray(offset) };
