@@ -1,34 +1,57 @@
-# Baton conformance suite
+# Baton RC2 conformance
 
-Run Baton's portable checks with:
+The manifest has two deliberately different profiles.
 
-```sh
-python3 conformance/check.py
-```
+## Portable kit
 
-The script requires Python 3 and `jsonschema`. It checks:
-
-- strict I-JSON rejection cases, including duplicate keys, unsafe numbers, and
-  invalid Unicode;
-- the sole authored Draft 2020-12 schema;
-- positive and negative `work-status-v1` fixtures;
-- semantic rejection through the dependency-free Node record validator; and
-- coherence between `manifest.json` and every executable fixture path.
-
-Run the complete reference boundary suite with:
+Install the one pinned Python dependency in a virtual environment, then run
+the complete portable profile from the repository root:
 
 ```sh
-node --test test/records/*.test.mjs
+python3 -m venv .venv
+.venv/bin/python -m pip install -r conformance/requirements.txt
+.venv/bin/python conformance/check.py
+node --test test/records/*.test.mjs test/operations/*.test.mjs test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs test/driver/*.test.mjs test/dogfood/*.test.mjs test/release/*.test.mjs
 ```
 
-Those tests use temporary real Git repositories to exercise plan and status
-parsing, transitions, ownership, serial work, dependency materialisation,
-product identity, exact composition, assembly, conflicts, compare-and-set, and
-the seven-method safe action facade including exact retries and multi-ref
-contention.
+If the pinned dependency is already available to `python3`, the manifest's
+shorter `python3 conformance/check.py` command is equivalent.
 
-This portable suite establishes Baton record conformance. Autonomous-engine
-conformance additionally requires the real process, persistence, isolation,
-retry, recovery, and effect cases in [Baton Conformance](../baton/CONFORMANCE.md).
-Sworn is the intended reference implementation of that larger profile; final
-Baton 1.0 waits until Sworn passes those cases through its real boundaries.
+These checks exercise strict parsing and the sole schema, the closed lifecycle,
+real-Git ownership and compare-and-set behavior, canonical operations,
+generated Claude/Codex packages, isolated installation, the owner-aware board,
+GET-only WebUI, common fake driver, and release budgets.
+
+Overhead measurement is independently reproducible:
+
+```sh
+node scripts/measure-overhead.mjs --check
+```
+
+The baseline file pins the annotated `v0.16.0` tag object, peeled commit and
+tree, and every audited path's byte count, word count, and SHA-256. The script
+reads those bytes directly from Git objects. It refuses a moved tag, changed
+object, path mismatch, or stored total that cannot be recomputed.
+
+The word ratio measures exact fixed instruction bytes loaded by the four
+normal-work invocations on each version. Dynamic plan, design, proof, and
+status contents are not converted into an invented token estimate; their
+logical file count is reported separately. A current invocation uses the full
+generated skill, including host bridge and frontmatter, not only its canonical
+region.
+
+The warm-board, WebUI mutation-surface, fresh assembly, and exact Merge budgets
+are executable tests rather than prose claims. Performance is kept out of the
+deterministic word-measurement JSON and enforced by
+`test/board/performance.test.mjs`.
+
+## Autonomous engine
+
+The autonomous profile contains only boundaries a library fixture cannot
+prove. Its small process contract is
+[engine-adapter.md](./engine-adapter.md).
+
+Every autonomous case in the checked-in manifest is `NOT RUN`. Baton RC2 does
+not claim that a real engine has passed authority, isolation, scheduling,
+recovery, cancellation, fresh-Verifier, or final-effect cases. Sworn must run
+them through its real binary before any result can change to PASS.
