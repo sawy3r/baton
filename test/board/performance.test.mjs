@@ -31,9 +31,9 @@ chmodSync(GIT_WRAPPER, 0o755);
 configureEngineGitExecutable(GIT_WRAPPER);
 after(() => rmSync(TRACE_DIRECTORY, { recursive: true, force: true }));
 
-function performancePlan() {
+function performancePlan({ trackCount = 20, workPerTrack = 5 } = {}) {
   const metadata = makePlanMetadata();
-  metadata.tracks = Array.from({ length: 20 }, (_, trackIndex) => {
+  metadata.tracks = Array.from({ length: trackCount }, (_, trackIndex) => {
     const trackId = `T${String(trackIndex + 1).padStart(2, '0')}`;
     const surface = `src/track-${String(trackIndex + 1).padStart(2, '0')}`;
     return {
@@ -41,11 +41,12 @@ function performancePlan() {
       ref: `refs/heads/track/v1.0.0/${trackId}`,
       depends_on: [],
       touch_surfaces: [surface],
-      work: Array.from({ length: 5 }, (_, workIndex) => {
-        const workId = `W${String((trackIndex * 5) + workIndex + 1).padStart(3, '0')}`;
+      work: Array.from({ length: workPerTrack }, (_, workIndex) => {
+        const ordinal = (trackIndex * workPerTrack) + workIndex + 1;
+        const workId = `W${String(ordinal).padStart(4, '0')}`;
         const prior = workIndex === 0
           ? []
-          : [`W${String((trackIndex * 5) + workIndex).padStart(3, '0')}`];
+          : [`W${String(ordinal - 1).padStart(4, '0')}`];
         return {
           id: workId,
           outcome: `Deliver ${workId}`,
@@ -100,6 +101,31 @@ test('100 work items across 20 owner refs project below one second warm median',
     t.diagnostic(`warm samples ms: ${samples.map((value) => value.toFixed(1)).join(', ')}`);
     t.diagnostic(`warm median ms: ${median.toFixed(1)}`);
     assert.ok(median < 1000, `warm median ${median.toFixed(1)}ms exceeded 1000ms`);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('maximum 1024-work release plan projects within the ref-scaled batch bound', () => {
+  const fixture = baselineFixture(performancePlan({
+    trackCount: 64,
+    workPerTrack: 16,
+  }));
+  try {
+    writeFileSync(TRACE_FILE, '');
+    const board = projectBoard(fixture.repo);
+    assert.equal(board.valid, true);
+    assert.equal(board.releases[0].tracks.length, 64);
+    assert.equal(
+      board.releases[0].tracks.reduce((total, track) => total + track.work.length, 0),
+      1024,
+    );
+    const commands = readFileSync(TRACE_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    assert.equal(
+      commands.filter((command) => command.includes('cat-file --batch')).length,
+      65,
+      'one release batch plus one erased-owner check per authored track is independent of work count',
+    );
   } finally {
     fixture.cleanup();
   }

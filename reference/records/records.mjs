@@ -20,6 +20,7 @@ import {
   changedPathsBetween,
   captureHeadRefs,
   readFilesAtOID,
+  readReleaseProjectionFilesAtOID,
   unsafeRunGit as runGit,
 } from './git.mjs';
 
@@ -1683,7 +1684,7 @@ function parsedReleaseBatch(repo, plan, head, plannedWork) {
     workProofPath(plan, work.id),
   ]);
   paths.push(assemblyStatusPath(plan), assemblyProofPath(plan));
-  const files = readFilesAtOID(repo, head, paths);
+  const files = readReleaseProjectionFilesAtOID(repo, head, paths);
   const statusFiles = plannedWork.map((ignored, index) => files[index * 3]);
   const handoffs = [];
   for (let index = 0; index < plannedWork.length; index += 1) {
