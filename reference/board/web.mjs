@@ -591,7 +591,8 @@ body {
   background: var(--white);
 }
 
-.release-facts .fact:last-child:nth-child(odd) {
+.release-facts .fact:last-child:nth-child(odd),
+.track-facts .fact:last-child:nth-child(odd) {
   grid-column: 1 / -1;
 }
 
