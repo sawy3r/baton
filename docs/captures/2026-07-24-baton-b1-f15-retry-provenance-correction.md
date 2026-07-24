@@ -1,4 +1,4 @@
-# Baton B1 F15-F19 action-boundary correction
+# Baton B1 F15-F20 action-boundary correction
 
 Date: 2026-07-24
 Status: bounded correction frozen; independent verdict pending
@@ -7,10 +7,12 @@ F15 rejected head: `a30a06740a3434d8f5ba85d659fd4ecaaeb2a498`
 F16-F17 rejected head: `de67556789fe023ea62c1580b7f21d9938503890`
 F18 rejected head: `bcebb9770517138d7fe86d752be0b6f567bc0b12`
 F19 rejected head: `2113d57ba2b9cc7cc6184715fe79f3a9339bff55`
+F20 rejected head: `30487fbacfe56386c1a3a44c2f5358e3b53f60da`
 F15 implementation: `b0f33e24e5e2167fe2484b06b97f363ea8975a7e`
 F16-F17 implementation: `6c25a33021ab1eb28657a3ebf023dcd595da4007`
 F18 implementation: `c5ea71923a35ac3dad2057d51b1aa751eb6509bd`
 F19 implementation: `46507f59d0101935803a9faabf858e512f0cd27b`
+F20 implementation: `d35635716557f8418e56abb1101df0ac393d9a33`
 
 ## Finding F15
 
@@ -54,6 +56,15 @@ return a non-string during destructuring, then hide the property from the later
 presence check. That recreated F18's post-effect receipt failure despite the
 plain-descriptor checks.
 
+## Finding F20
+
+The F19 snapshots were frozen and engine-owned but inherited
+`Object.prototype`. If `Object.prototype.workId` was a `Date`, an assembly call
+with no own `workId` destructured the inherited value while its own-property
+presence check remained false. The ref could move before the inherited `Date`
+caused receipt validation to fail. Other omitted optional fields, including
+`handoffs`, were exposed to the same inherited lookup.
+
 ## Bounded correction
 
 - `NO_VERDICT` is unchanged only at `verify / ready / verifier`; work still
@@ -81,9 +92,10 @@ plain-descriptor checks.
 - Receipts contain no caller-owned objects, admit only JSON data, and recurse
   through already-frozen parents so every nested engine-owned object is frozen.
 - The generic option boundary rejects Proxies and snapshots each validated
-  enumerable value descriptor exactly once into engine-owned storage. Symbols,
-  accessors, and non-enumerable fields fail; getters and Proxy traps are not
-  evaluated.
+  enumerable value descriptor exactly once into frozen, null-prototype,
+  engine-owned storage, including empty and omitted option sets. Symbols,
+  accessors, and non-enumerable fields fail; getters, Proxy traps, and inherited
+  optional values are not evaluated.
 - `recordTransition` copies and validates handoffs and canonicalises the
   authored next status before repository snapshot capture, eliminating later
   reads from caller-controlled option storage.
@@ -100,11 +112,19 @@ non-string and missing work identities, and non-plain method options; every
 case proves zero ref and commit-object movement. F19 adds the stateful assembly
 Proxy that reproduced the bypass shape, a second action-method Proxy, a nested
 handoff Proxy, and accessor/symbol/non-enumerable option records. Each rejects
-without evaluating dynamic traps or changing refs or commit objects.
+without evaluating dynamic traps or changing refs or commit objects. F20
+temporarily pollutes `Object.prototype` inside guaranteed `try`/`finally`
+cleanup: assembly `PASS` ignores inherited `workId`, and exact retries under
+inherited `workId` and `handoffs` prove zero ref and commit-object movement.
 
 ## Correction evidence
 
 ```text
+$ node --test test/records/actions.test.mjs
+tests 6
+pass 6
+fail 0
+
 $ node --test test/records/*.test.mjs
 tests 67
 pass 67
