@@ -1,0 +1,61 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/work-status-v1.json",
+  "schema_version": "baton.work-status/v1",
+  "kind": "assembly",
+  "release": "checkout-recovery",
+  "owner_ref": "refs/heads/release-wt/checkout-recovery",
+  "authority_ref": "refs/heads/release-wt/checkout-recovery",
+  "target_ref": "refs/heads/main",
+  "plan": {
+    "digest": "sha256:8649847c7cf51a21dedc3daab721c805703f5affa380008d233a9ab7637c752d",
+    "approval": {
+      "ref": "approval://checkout-recovery/1",
+      "digest": "sha256:953d90c7fc7c79263a949a251437485e61528b7a57996c891a3bc237729a1e8c"
+    }
+  },
+  "stage": "merge",
+  "status": "complete",
+  "next_role": "none",
+  "outcome": "merged",
+  "proof": {
+    "digest": "sha256:a59c4d80e5c6114f6775e22d25934fef4ac4908f3e65d8c0adf758e8788ec787",
+    "producer_invocation": "merge-assembly-1",
+    "repository": "acme/checkout",
+    "base_commit": "7777777777777777777777777777777777777777",
+    "candidate_commit": "7777777777777777777777777777777777777777",
+    "candidate_tree": "8888888888888888888888888888888888888888",
+    "product_tree": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "plan_digest": "sha256:8649847c7cf51a21dedc3daab721c805703f5affa380008d233a9ab7637c752d",
+    "approval_digest": "sha256:953d90c7fc7c79263a949a251437485e61528b7a57996c891a3bc237729a1e8c",
+    "components": [
+      {
+        "track_id": "T1",
+        "head": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      {
+        "track_id": "T2",
+        "head": "4444444444444444444444444444444444444444"
+      }
+    ]
+  },
+  "verification": {
+    "outcome": "pass",
+    "invocation": "verifier-assembly-1",
+    "attestation_ref": "attestation://checkout-recovery/assembly/1",
+    "attestation_digest": "sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+    "plan_digest": "sha256:8649847c7cf51a21dedc3daab721c805703f5affa380008d233a9ab7637c752d",
+    "proof_digest": "sha256:a59c4d80e5c6114f6775e22d25934fef4ac4908f3e65d8c0adf758e8788ec787",
+    "candidate_commit": "7777777777777777777777777777777777777777",
+    "product_tree": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+  },
+  "merge": {
+    "scope": "release",
+    "passed_candidate": "7777777777777777777777777777777777777777",
+    "expected_target": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "outcome": "merged",
+    "observed_target": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "result_commit": "7777777777777777777777777777777777777777",
+    "plan_digest": "sha256:8649847c7cf51a21dedc3daab721c805703f5affa380008d233a9ab7637c752d",
+    "verification_attestation_digest": "sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+  }
+}

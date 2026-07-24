@@ -1,31 +1,48 @@
 # Baton roadmap
 
-## 1.0 release candidate — prove the kernel
+## RC2 — publish the portable kit
 
-- Keep the complete normative surface below 6,000 words and `CORE.md` below
-  1,000 words.
-- Stabilize the four record schemas and canonical digest rules.
-- Expand the behavioral corpus from every known false-green class worth keeping.
-- Make Sworn run the same conformance manifest through real Git and subprocess
-  boundaries.
-- Dogfood the Standard path and measure dispatch count, fixed prompt tokens,
-  wall time, retries, false greens, and false reds.
+`v1.0.0-rc.2` is the first release candidate of the current Baton model. It
+delivers:
 
-## Next — earn optional capability
+- five principles and five responsibilities;
+- four durable handoffs and one status schema;
+- five concise canonical operations generated as Claude Code and Codex Skills;
+- transactional user and project installation;
+- an owner-aware JSON, terminal, and local-WebUI board;
+- one role-independent driver seam with explicit per-invocation model choice;
+- real-Git multi-track dogfood through assembly and exact Merge; and
+- reproducible conformance and overhead measurement.
 
-New capability starts outside the core. Candidates include reusable assurance
-pack conventions, composition fixtures, and read-only board interoperability.
-Each must demonstrate value without adding universal ceremony.
+The publication work for RC2 is to keep the repository, website, prerelease,
+and immutable package object aligned with that delivered behavior.
 
-## Deliberate non-goals
+## Final 1.0 — prove autonomous boundaries
 
-- tool-specific installers or user-level agent instructions;
-- canonical role prompts or prompt-byte conformance;
-- provider or model selection;
-- project-management methodology;
-- mandatory Captain, RTM, journey, design, or LLM-review stages;
-- compatibility with Baton 0.x records; and
-- implementation-specific Git, worktree, or deployment commands.
+The portable profile cannot prove an engine’s scheduler, process containment,
+credentials, fresh-context dispatch, recovery, cancellation, or final Git
+effect. The reference engine, Sworn, must run all 12 autonomous cases through
+its real binary and boundaries. Final `v1.0.0` waits for that evidence; the
+cases stay `NOT RUN` until it exists.
 
-The protocol grows only when a guarantee cannot be expressed as an existing
-principle, deterministic engine invariant, project check, or assurance pack.
+## After 1.0 — earn additions
+
+Candidates include more independent engine adapters, useful assurance patterns,
+and board interoperability. New capability starts outside the trust kernel and
+earns inclusion with evidence.
+
+The standing tests are:
+
+- Does it prevent a demonstrated false green?
+- Can it be a project check or engine policy instead?
+- Does it preserve one authoritative status and a read-only board?
+- Does it keep common drivers independent of roles, providers, and model
+  policy?
+- What can be removed or simplified in exchange?
+
+## Deliberate boundaries
+
+Baton does not plan product roadmaps, provide managed inference, bundle models,
+hold credentials, select providers, or deploy software. It also does not make
+Sworn conformance claims on Sworn’s behalf. Those boundaries keep the protocol
+portable and its completion claims precise.
