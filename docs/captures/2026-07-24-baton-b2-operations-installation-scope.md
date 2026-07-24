@@ -308,7 +308,7 @@ this outcome-only update is `0a3f63aba7601ffd968744858c78802e497bf41f`.
 
 ### Evidence
 
-- `node --test`: 87 tests passed, including the composed B1 suite and 18 B2
+- `node --test`: 88 tests passed, including the composed B1 suite and 19 B2
   operation, generation, install, migration, tamper, coexistence, and
   interruption cases.
 - `python3 conformance/check.py`: PASS for seven strict-JSON cases, one schema,
@@ -329,3 +329,19 @@ No planned behavior was deferred and no v0.16 command or `mark-shipped`
 workflow was revived. Transaction backups intentionally persist until explicit
 future pruning, as required. Independent verification and release composition
 remain the next authority boundaries; this outcome does not self-certify them.
+
+### Independent release review correction
+
+Independent review reproduced and corrected two pre-composition edge cases at
+code head `22adc0e8818465cb5399f27ae32bd5581af41f68`:
+
+- a normal Claude `CLAUDE.md` shorter than the historical four-line v0.16
+  prefix is now treated as unrelated configuration and remains byte-identical
+  through a clean install; and
+- any pre-existing file or directory inside a managed `baton-*` Skill root now
+  blocks before mutation even when `SKILL.md` itself is absent.
+
+The correction adds exact regression coverage. The complete `node --test`
+suite passes 88/88, the Python conformance check passes, adapter regeneration
+matches checked-in bytes, both shell delegates pass syntax validation, and
+`git diff --check` is clean.
