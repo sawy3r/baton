@@ -828,20 +828,57 @@ test('the seven-action facade carries one release through a complete trusted loo
       );
     }
     assert.equal(Object.isFrozen(frozenNestedWorkId.nested), false);
-    const assemblyPassed = actions.recordTransition({
-      scope: 'assembly',
-      result: 'PASS',
-      nextStatus: passedAssembly,
-    });
-    const assemblyPassRetry = exactRetryWithoutMovement(fixture.repo, () => (
-      actions.recordTransition({
+    const originalWorkId = Object.getOwnPropertyDescriptor(Object.prototype, 'workId');
+    const originalHandoffs = Object.getOwnPropertyDescriptor(Object.prototype, 'handoffs');
+    let assemblyPassed;
+    let assemblyPassRetry;
+    let inheritedHandoffsRetry;
+    try {
+      Object.defineProperty(Object.prototype, 'workId', {
+        configurable: true,
+        value: new Date(0),
+      });
+      assemblyPassed = actions.recordTransition({
         scope: 'assembly',
         result: 'PASS',
         nextStatus: passedAssembly,
-      })
-    ));
-    assert.equal(assemblyPassRetry.changed, false);
-    assert.equal(assemblyPassRetry.commit, assemblyPassed.commit);
+      });
+      assert.equal(assemblyPassed.work_id, null);
+      assemblyPassRetry = exactRetryWithoutMovement(fixture.repo, () => (
+        actions.recordTransition({
+          scope: 'assembly',
+          result: 'PASS',
+          nextStatus: passedAssembly,
+        })
+      ));
+      assert.equal(assemblyPassRetry.changed, false);
+      assert.equal(assemblyPassRetry.commit, assemblyPassed.commit);
+
+      Object.defineProperty(Object.prototype, 'handoffs', {
+        configurable: true,
+        value: new Date(0),
+      });
+      inheritedHandoffsRetry = exactRetryWithoutMovement(fixture.repo, () => (
+        actions.recordTransition({
+          scope: 'assembly',
+          result: 'PASS',
+          nextStatus: passedAssembly,
+        })
+      ));
+      assert.equal(inheritedHandoffsRetry.changed, false);
+      assert.equal(inheritedHandoffsRetry.commit, assemblyPassed.commit);
+    } finally {
+      if (originalHandoffs) {
+        Object.defineProperty(Object.prototype, 'handoffs', originalHandoffs);
+      } else {
+        delete Object.prototype.handoffs;
+      }
+      if (originalWorkId) {
+        Object.defineProperty(Object.prototype, 'workId', originalWorkId);
+      } else {
+        delete Object.prototype.workId;
+      }
+    }
 
     write(fixture.repo, 'target-note.txt', 'independent target advance\n');
     const targetAdvance = commitAll(fixture.repo, 'advance target before integration');
@@ -995,6 +1032,7 @@ test('the seven-action facade carries one release through a complete trusted loo
       prepareRetry,
       assemblyPassed,
       assemblyPassRetry,
+      inheritedHandoffsRetry,
       integrated,
       integrateRetry,
     ]) {

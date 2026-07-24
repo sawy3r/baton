@@ -76,7 +76,9 @@ function fail(code, message, cause) {
 }
 
 function exactOptions(value, required, optional, label) {
-  if (value === undefined && required.length === 0) return Object.freeze({});
+  if (value === undefined && required.length === 0) {
+    return Object.freeze(Object.create(null));
+  }
   if (
     value === null
     || typeof value !== 'object'
@@ -112,10 +114,9 @@ function exactOptions(value, required, optional, label) {
       fail('INVALID_ACTION_INPUT', `${label} requires ${key}`);
     }
   }
-  return Object.freeze(Object.fromEntries(keys.map((key) => [
-    key,
-    descriptors.get(key).value,
-  ])));
+  const snapshot = Object.create(null);
+  for (const key of keys) snapshot[key] = descriptors.get(key).value;
+  return Object.freeze(snapshot);
 }
 
 function frozen(value, seen = new WeakSet()) {
