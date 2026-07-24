@@ -1,7 +1,7 @@
 # Baton B2 operations and installation scope
 
 Date: 2026-07-24
-Status: queued; implementation blocked on composed B1 contract
+Status: implemented; awaiting composition and independent verification
 Stage: B2 / RC2 R3-R4
 Integration branch: `release/v1.0.0`
 Track branch: `track/v1.0.0/B2-operations-install`
@@ -280,3 +280,68 @@ mark-shipped                  -> retired
 B2 produces one exact operations/adapters/install commit and a concise outcome
 capture containing word budgets, generation parity, isolated install evidence,
 legacy migration/rollback evidence, and any deviation.
+
+## Outcome
+
+Implementation completed on `track/v1.0.0/B2-operations-install` from composed
+B1 head `a5fcd746d2ce5e1f05d647da41fe5c2f5a22b6aa`. The implementation head before
+this outcome-only update is `0a3f63aba7601ffd968744858c78802e497bf41f`.
+
+### Delivered
+
+- Five canonical operations bind only the composed B1 action facade and closed
+  outcomes. Word counts are 309 plan, 315 implement, 268 design review, 295
+  verify, and 317 merge: 1,504 total.
+- Three strict, concise templates cover plan, design, and proof.
+- Ten checked-in Agent Skills are generated from the five exact operation
+  sources. Claude and Codex share package digest
+  `sha256:3e395c876604fc51e586f8c13ea6df9dfd753e633575e30a318a3c5433d1c3af`.
+- One Node-builtins installer and two source-relative shell delegates cover
+  Claude and Codex user/project scope, dry-run, interactive/noninteractive
+  confirmation, manifest-stable no-op, uninstall, rollback, durable recovery,
+  ownership, collision, path, symlink, and Git-environment safeguards.
+- The legacy identity freezes eight commands, 79 package files with modes, and
+  the 15,561-byte global block at raw digest
+  `bfa1fbe8bb01436f585a94067fa9e0131efea75e6f5d59c2e1440527e88d8484`.
+  Exact migration archives all recognized preimages, preserves the four-line
+  prefix and unrelated commands, and is fully rollbackable.
+
+### Evidence
+
+- `node --test`: 88 tests passed, including the composed B1 suite and 19 B2
+  operation, generation, install, migration, tamper, coexistence, and
+  interruption cases.
+- `python3 conformance/check.py`: PASS for seven strict-JSON cases, one schema,
+  two positive statuses, and six negative statuses.
+- `node scripts/generate-adapters.mjs --check`: ten adapters checked for five
+  operations at the package digest above; two isolated generations were
+  byte-identical.
+- Agent Skills `quick_validate.py`: all ten generated Skill directories valid.
+- `bash -n install-claude.sh install-codex.sh` and `git diff --check`: pass.
+- An isolated clone of the live recognized Claude v0.16 footprint migrated,
+  retained unrelated `pr.md`, reduced `CLAUDE.md` to its exact 222-byte prefix,
+  and restored all 79 package files, eight commands, and the full instruction
+  file on rollback.
+
+### Divergence and residual risk
+
+No planned behavior was deferred and no v0.16 command or `mark-shipped`
+workflow was revived. Transaction backups intentionally persist until explicit
+future pruning, as required. Independent verification and release composition
+remain the next authority boundaries; this outcome does not self-certify them.
+
+### Independent release review correction
+
+Independent review reproduced and corrected two pre-composition edge cases at
+code head `22adc0e8818465cb5399f27ae32bd5581af41f68`:
+
+- a normal Claude `CLAUDE.md` shorter than the historical four-line v0.16
+  prefix is now treated as unrelated configuration and remains byte-identical
+  through a clean install; and
+- any pre-existing file or directory inside a managed `baton-*` Skill root now
+  blocks before mutation even when `SKILL.md` itself is absent.
+
+The correction adds exact regression coverage. The complete `node --test`
+suite passes 88/88, the Python conformance check passes, adapter regeneration
+matches checked-in bytes, both shell delegates pass syntax validation, and
+`git diff --check` is clean.
