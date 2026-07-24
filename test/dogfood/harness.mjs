@@ -4,11 +4,12 @@ import { request as httpRequest } from 'node:http';
 import { performance } from 'node:perf_hooks';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 import { createBatonActions } from '../../reference/records/actions.mjs';
 import {
   productTreeIdentity,
+  readFileAtOID,
   resolveRef,
   unsafePrepareRecordTransition,
 } from '../../reference/records/git.mjs';
@@ -569,19 +570,8 @@ function readFileAtStatus(repo, plan, status, field) {
     : status.kind === 'assembly'
       ? assemblyProofPath(plan)
       : workProofPath(plan, status.work_id);
-  return execFileSync(
-    'git',
-    ['show', `${status.authority_ref}:${relativePath}`],
-    {
-      cwd: repo,
-      encoding: 'buffer',
-      env: {
-        ...process.env,
-        GIT_CONFIG_NOSYSTEM: '1',
-        GIT_CONFIG_GLOBAL: '/dev/null',
-      },
-    },
-  );
+  const authorityHead = resolveRef(repo, status.authority_ref);
+  return readFileAtOID(repo, authorityHead, relativePath);
 }
 
 export async function runDogfood() {
