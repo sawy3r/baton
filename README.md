@@ -15,9 +15,9 @@ approved Plan
 ```
 
 Baton defines the rules and records. [Sworn](https://github.com/sawy3r/sworn)
-is the reference engine that can coordinate those rules autonomously. Baton
-does not run models, host inference, keep provider credentials, or choose a
-model for you.
+is the reference engine being built to coordinate those rules autonomously.
+Baton does not run models, host inference, keep provider credentials, or choose
+a model for you.
 
 ## The small model
 

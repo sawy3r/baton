@@ -41,7 +41,7 @@ Claude Code and Codex packages remain identical at:
 
 ```text
 version: 1.0.0-rc.2
-digest:  sha256:6be0e7548087df663fd27316f9c8a197cfa116a2dc29fcfc17dafe0f9ef36dd7
+digest:  sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436
 ```
 
 The earlier B4 dogfood capture remains truthful evidence for its pre-publication
@@ -64,7 +64,7 @@ node --test test/records/*.test.mjs test/operations/*.test.mjs \
 
 node scripts/generate-adapters.mjs --check
   PASS: 10 adapters, 5 operations
-  package sha256:6be0e7548087df663fd27316f9c8a197cfa116a2dc29fcfc17dafe0f9ef36dd7
+  package sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436
 
 node scripts/measure-overhead.mjs --check
   PASS: all 9 deterministic budgets

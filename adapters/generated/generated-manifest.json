@@ -1,15 +1,15 @@
 {
   "schema_version": "baton.generated-adapters/v1",
   "package_version": "1.0.0-rc.2",
-  "package_digest": "sha256:6be0e7548087df663fd27316f9c8a197cfa116a2dc29fcfc17dafe0f9ef36dd7",
+  "package_digest": "sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436",
   "generator_version": "baton.adapter-generator/v1",
   "operation_version": "baton.operation/v1",
   "packages": {
     "claude": {
-      "digest": "sha256:6be0e7548087df663fd27316f9c8a197cfa116a2dc29fcfc17dafe0f9ef36dd7"
+      "digest": "sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436"
     },
     "codex": {
-      "digest": "sha256:6be0e7548087df663fd27316f9c8a197cfa116a2dc29fcfc17dafe0f9ef36dd7"
+      "digest": "sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436"
     }
   },
   "operations": [

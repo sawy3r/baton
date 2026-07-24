@@ -1,7 +1,8 @@
 # Baton 1.0 RC2 protocol
 
-Baton is the protocol and portable kit; an engine such as Sworn orchestrates it.
-The shortest useful path through the normative documents is:
+Baton is the protocol and portable kit; an engine can orchestrate it. Sworn is
+the reference engine being built to pass RC2's autonomous profile. The shortest
+useful path through the normative documents is:
 
 1. [CORE.md](CORE.md) — five principles for a trustworthy “done” claim;
 2. [PROTOCOL.md](PROTOCOL.md) — five responsibilities, lifecycle, records,
