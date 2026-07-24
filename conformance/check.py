@@ -316,11 +316,16 @@ def run() -> list[str]:
             path
             for case in portable["cases"]
             for path in case["suites"]
-            if "*" not in path
         ],
     ]
     for relative_path in manifest_paths:
-        if not (ROOT / relative_path).is_file():
+        if "*" in relative_path:
+            matches = list(ROOT.glob(relative_path))
+            if not matches or any(not match.is_file() for match in matches):
+                failures.append(
+                    f"conformance manifest pattern has no file matches: {relative_path}"
+                )
+        elif not (ROOT / relative_path).is_file():
             failures.append(f"conformance manifest path does not exist: {relative_path}")
     if failures:
         return failures

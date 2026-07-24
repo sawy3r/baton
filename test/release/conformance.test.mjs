@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
+  readdir,
   readFile,
   stat,
 } from 'node:fs/promises';
@@ -32,6 +33,9 @@ test('the RC2 manifest inventories executable portable and unrun engine profiles
     portable.cases.some(({ id }) => id === 'real-git-manual-dogfood'),
     true,
   );
+  const dogfoodTests = (await readdir(path.join(ROOT, 'test/dogfood')))
+    .filter((entry) => entry.endsWith('.test.mjs'));
+  assert.ok(dogfoodTests.length > 0);
   const schemaBytes = await readFile(path.join(ROOT, portable.record_contract.schema.path));
   assert.equal(portable.record_contract.schema.digest, sha256(schemaBytes));
   assert.equal(portable.measurements.command, 'node scripts/measure-overhead.mjs --check');
