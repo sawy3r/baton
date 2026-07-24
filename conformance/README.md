@@ -4,14 +4,18 @@ The manifest has two deliberately different profiles.
 
 ## Portable kit
 
-Install the one pinned Python dependency, then run the complete portable
-profile from the repository root:
+Install the one pinned Python dependency in a virtual environment, then run
+the complete portable profile from the repository root:
 
 ```sh
-python3 -m pip install -r conformance/requirements.txt
-python3 conformance/check.py
+python3 -m venv .venv
+.venv/bin/python -m pip install -r conformance/requirements.txt
+.venv/bin/python conformance/check.py
 node --test test/records/*.test.mjs test/operations/*.test.mjs test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs test/driver/*.test.mjs test/dogfood/*.test.mjs test/release/*.test.mjs
 ```
+
+If the pinned dependency is already available to `python3`, the manifest's
+shorter `python3 conformance/check.py` command is equivalent.
 
 These checks exercise strict parsing and the sole schema, the closed lifecycle,
 real-Git ownership and compare-and-set behavior, canonical operations,
