@@ -1,21 +1,29 @@
-# Baton 1.0 schemas
+# Baton RC2 schema
 
-The delivery-record surface contains exactly four shapes:
+Baton RC2 has one authored JSON Schema:
 
-- `delivery-plan-v1.json` — approved delivery and embedded work contracts;
-- `submission-v1.json` — exact candidate, checks, and evidence;
-- `delivery-verdict-v1.json` — fresh review of one immutable submission; and
-- `delivery-board-v1.json` — read-only derived projection.
+- [`work-status-v1.json`](work-status-v1.json) validates the sole durable
+  current projection for either one planned work item or the assembled release.
 
-`assurance-policy-v1.json` separately validates the content-addressed Standard
-check and pack registry referenced by a plan. `control-receipt-v1.json`
-validates engine-stamped authority approval, verifier dispatch, and integration
-receipts. They are policy input and engine facts, not extra delivery records.
+The other three handoffs are exact Markdown:
 
-Schema validity does not prove the cross-record or repository invariants in
-[`../baton/CONFORMANCE.md`](../baton/CONFORMANCE.md). Engines must enforce both.
-Record and policy bindings use canonical JSON digests; artifact pointers use
-exact raw-byte digests as defined there.
+- `plan.md` contains one closed strict-JSON `baton-plan-v1` metadata block;
+- `design.md` records the Implementer’s approach and evidence plan; and
+- `proof.md` binds acceptance evidence to one exact candidate.
 
-Schemas from Baton 0.x are available at the `v0.16.0` tag and are unsupported by
-Baton 1.x.
+Plan metadata is parsed by the reference record validator; it is deliberately
+not a second JSON Schema.
+
+Schema validity alone cannot prove a Baton transition. The reference record and
+Git actions additionally enforce plan and approval digests, responsibility
+separation, exact handoff bytes, state transitions, ref ownership, candidate
+and product identity, track composition, assembly components, and target
+compare-and-set behavior.
+
+`baton.board/v1` is a read-only projection contract produced from captured refs
+and records. It is not another status schema, an editable database, or an action
+surface.
+
+See the [RC2 walkthrough](../examples/README.md) for work and assembly status
+examples in context. Executable positive and negative fixtures live in
+[`../conformance/fixtures/`](../conformance/fixtures/).

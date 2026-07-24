@@ -1,0 +1,119 @@
+{
+  "schema_version": "baton.generated-adapters/v1",
+  "package_version": "1.0.0-rc.2",
+  "package_digest": "sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436",
+  "generator_version": "baton.adapter-generator/v1",
+  "operation_version": "baton.operation/v1",
+  "packages": {
+    "claude": {
+      "digest": "sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436"
+    },
+    "codex": {
+      "digest": "sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436"
+    }
+  },
+  "operations": [
+    {
+      "name": "baton-plan",
+      "version": "baton.operation/v1",
+      "source": "operations/baton-plan.md",
+      "digest": "sha256:e5c3ace4177cb10c9b0d3b5e569aa7cbe43bfdb3b7f4a17071a925a5ba3b77d3"
+    },
+    {
+      "name": "baton-implement",
+      "version": "baton.operation/v1",
+      "source": "operations/baton-implement.md",
+      "digest": "sha256:2444bead5b1a32188003ce515ac8862bd04d373b740bd89646a86ac5341c2f88"
+    },
+    {
+      "name": "baton-design-review",
+      "version": "baton.operation/v1",
+      "source": "operations/baton-design-review.md",
+      "digest": "sha256:ead3a7d0e22a794ca5430fdbaca5c29f3ae5d5f6fad7c102d1f2bd878f28e356"
+    },
+    {
+      "name": "baton-verify",
+      "version": "baton.operation/v1",
+      "source": "operations/baton-verify.md",
+      "digest": "sha256:a6f0e9b9bf95cb59e5030b7f95f72d8d3545b52ef771c7d20e7be44a20e45bed"
+    },
+    {
+      "name": "baton-merge",
+      "version": "baton.operation/v1",
+      "source": "operations/baton-merge.md",
+      "digest": "sha256:94b8fb6026c903569cd375cafd11d27868759072dde256265556c710387ae62c"
+    }
+  ],
+  "adapters": [
+    {
+      "host": "claude",
+      "operation": "baton-plan",
+      "path": "claude/skills/baton-plan/SKILL.md",
+      "digest": "sha256:71564de0485c2bf4665d5f5d28dcd4d9381404ad7999af6fb1da274e6c56e9b5",
+      "canonical_digest": "sha256:e5c3ace4177cb10c9b0d3b5e569aa7cbe43bfdb3b7f4a17071a925a5ba3b77d3"
+    },
+    {
+      "host": "codex",
+      "operation": "baton-plan",
+      "path": "codex/skills/baton-plan/SKILL.md",
+      "digest": "sha256:3aa91ed317f6f4e8468e38e2a3c8603f2ec6cf2c946600e7dc57cbcd01e1f5fd",
+      "canonical_digest": "sha256:e5c3ace4177cb10c9b0d3b5e569aa7cbe43bfdb3b7f4a17071a925a5ba3b77d3"
+    },
+    {
+      "host": "claude",
+      "operation": "baton-implement",
+      "path": "claude/skills/baton-implement/SKILL.md",
+      "digest": "sha256:dc398f7b3b55ccc38b1870f4c4513c58940b7c56d4741cd60e07ab2ba166514c",
+      "canonical_digest": "sha256:2444bead5b1a32188003ce515ac8862bd04d373b740bd89646a86ac5341c2f88"
+    },
+    {
+      "host": "codex",
+      "operation": "baton-implement",
+      "path": "codex/skills/baton-implement/SKILL.md",
+      "digest": "sha256:606ed257d472e509328c0075e8b571a0d8a791c60d40deb6af1ea77d56e0292d",
+      "canonical_digest": "sha256:2444bead5b1a32188003ce515ac8862bd04d373b740bd89646a86ac5341c2f88"
+    },
+    {
+      "host": "claude",
+      "operation": "baton-design-review",
+      "path": "claude/skills/baton-design-review/SKILL.md",
+      "digest": "sha256:5769929d9873f638c6b02bd0e8d2b908ef0cce383c12e0bdf8d006a0fbe32464",
+      "canonical_digest": "sha256:ead3a7d0e22a794ca5430fdbaca5c29f3ae5d5f6fad7c102d1f2bd878f28e356"
+    },
+    {
+      "host": "codex",
+      "operation": "baton-design-review",
+      "path": "codex/skills/baton-design-review/SKILL.md",
+      "digest": "sha256:8bafdaa938c1a21805d71e838cd00569068d56782e05084b3f2699e61428fd1d",
+      "canonical_digest": "sha256:ead3a7d0e22a794ca5430fdbaca5c29f3ae5d5f6fad7c102d1f2bd878f28e356"
+    },
+    {
+      "host": "claude",
+      "operation": "baton-verify",
+      "path": "claude/skills/baton-verify/SKILL.md",
+      "digest": "sha256:4374b8a6e81ca6db83b4212df93a0ec4eb30030795f70be51953e4113dd397c5",
+      "canonical_digest": "sha256:a6f0e9b9bf95cb59e5030b7f95f72d8d3545b52ef771c7d20e7be44a20e45bed"
+    },
+    {
+      "host": "codex",
+      "operation": "baton-verify",
+      "path": "codex/skills/baton-verify/SKILL.md",
+      "digest": "sha256:0dd8f7b6bc6bb4fc35be804cd0e32f05735fce9523f430eb0df905ededd16daa",
+      "canonical_digest": "sha256:a6f0e9b9bf95cb59e5030b7f95f72d8d3545b52ef771c7d20e7be44a20e45bed"
+    },
+    {
+      "host": "claude",
+      "operation": "baton-merge",
+      "path": "claude/skills/baton-merge/SKILL.md",
+      "digest": "sha256:0adc4908df24bf3d94f8e680d8054ea10a770a72caa28b707da8a959ed04c246",
+      "canonical_digest": "sha256:94b8fb6026c903569cd375cafd11d27868759072dde256265556c710387ae62c"
+    },
+    {
+      "host": "codex",
+      "operation": "baton-merge",
+      "path": "codex/skills/baton-merge/SKILL.md",
+      "digest": "sha256:db12971f304073a176e81b432702a2dcfcaa8a4ad34089d4257cbd33c1b86b7f",
+      "canonical_digest": "sha256:94b8fb6026c903569cd375cafd11d27868759072dde256265556c710387ae62c"
+    }
+  ]
+}

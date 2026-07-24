@@ -1,0 +1,78 @@
+name: Conformance
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-kit:
+    name: Portable kit (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - 22
+          - 24
+
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the pinned Python dependency
+        run: python -m pip install --disable-pip-version-check -r conformance/requirements.txt
+
+      - name: Validate strict JSON and the status schema
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python conformance/check.py
+
+      - name: Run the complete portable Node profile
+        run: >-
+          node --test
+          test/records/*.test.mjs
+          test/operations/*.test.mjs
+          test/adapters/*.test.mjs
+          test/install/*.test.mjs
+          test/board/*.test.mjs
+          test/driver/*.test.mjs
+          test/dogfood/*.test.mjs
+          test/release/*.test.mjs
+
+      - name: Verify generated adapters and package digests
+        run: node scripts/generate-adapters.mjs --check
+
+      - name: Verify historical overhead and release budgets
+        run: node scripts/measure-overhead.mjs --check
+
+      - name: Check installer shell syntax
+        run: |
+          sh -n install-claude.sh
+          sh -n install-codex.sh
+
+      - name: Require a clean generated and tested tree
+        run: |
+          git diff --check
+          git diff --exit-code
+          git diff --cached --exit-code
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            git status --short --untracked-files=all
+            exit 1
+          fi

@@ -1,0 +1,124 @@
+{
+  "schema_version": "baton.board/v1",
+  "repository": "example/baton",
+  "valid": true,
+  "diagnostics": [],
+  "releases": [
+    {
+      "schema_version": "baton.board/v1",
+      "release": "v1.0.0",
+      "repository": "example/baton",
+      "valid": true,
+      "diagnostics": [],
+      "plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "release_ref": "refs/heads/release-wt/v1.0.0",
+      "release_head": "1111111111111111111111111111111111111111",
+      "target_ref": "refs/heads/main",
+      "target_head": "2222222222222222222222222222222222222222",
+      "status": "in_progress",
+      "tracks": [
+        {
+          "id": "T1",
+          "ref": "refs/heads/track/v1.0.0/T1",
+          "head": null,
+          "depends_on": [],
+          "blockers": [],
+          "materialisation": "baseline",
+          "composition": "pending",
+          "frozen_head": null,
+          "work": [
+            {
+              "id": "W1",
+              "depends_on": [],
+              "stage": "design",
+              "status": "ready",
+              "next_role": "implementer",
+              "outcome": "none",
+              "blocker": null,
+              "source": {
+                "mode": "baseline",
+                "ref": "refs/heads/release-wt/v1.0.0",
+                "head": "1111111111111111111111111111111111111111"
+              },
+              "next_operation": {
+                "operation": "baton-implement",
+                "scope": "work",
+                "release": "v1.0.0",
+                "track": "T1",
+                "work": "W1"
+              }
+            }
+          ],
+          "next_operation": {
+            "operation": "baton-implement",
+            "scope": "work",
+            "release": "v1.0.0",
+            "track": "T1",
+            "work": "W1"
+          }
+        },
+        {
+          "id": "T2",
+          "ref": "refs/heads/track/v1.0.0/T2",
+          "head": null,
+          "depends_on": [
+            "T1"
+          ],
+          "blockers": [
+            "T1"
+          ],
+          "materialisation": "baseline",
+          "composition": "pending",
+          "frozen_head": null,
+          "work": [
+            {
+              "id": "W2",
+              "depends_on": [
+                "W1"
+              ],
+              "stage": "design",
+              "status": "ready",
+              "next_role": "implementer",
+              "outcome": "none",
+              "blocker": null,
+              "source": {
+                "mode": "baseline",
+                "ref": "refs/heads/release-wt/v1.0.0",
+                "head": "1111111111111111111111111111111111111111"
+              },
+              "next_operation": null
+            }
+          ],
+          "next_operation": null
+        }
+      ],
+      "assembly": {
+        "stage": "verify",
+        "status": "waiting",
+        "next_role": "none",
+        "outcome": "none",
+        "blocker": null,
+        "source": null,
+        "next_operation": null
+      },
+      "next_operations": [
+        {
+          "operation": "baton-implement",
+          "scope": "work",
+          "release": "v1.0.0",
+          "track": "T1",
+          "work": "W1"
+        }
+      ]
+    }
+  ],
+  "next_operations": [
+    {
+      "operation": "baton-implement",
+      "scope": "work",
+      "release": "v1.0.0",
+      "track": "T1",
+      "work": "W1"
+    }
+  ]
+}

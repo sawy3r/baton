@@ -1,0 +1,57 @@
+{
+  "$schema": "https://baton.sawy3r.net/schemas/work-status-v1.json",
+  "schema_version": "baton.work-status/v1",
+  "kind": "assembly",
+  "release": "1.0.0",
+  "owner_ref": "refs/heads/release-wt/1.0.0",
+  "authority_ref": "refs/heads/release-wt/1.0.0",
+  "target_ref": "refs/heads/main",
+  "plan": {
+    "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "approval": {
+      "ref": "approval://release/1.0.0",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  },
+  "stage": "merge",
+  "status": "complete",
+  "next_role": "none",
+  "outcome": "merged",
+  "proof": {
+    "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "producer_invocation": "assembly-capture-1",
+    "repository": "example/baton",
+    "base_commit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "candidate_commit": "ffffffffffffffffffffffffffffffffffffffff",
+    "candidate_tree": "9999999999999999999999999999999999999999",
+    "product_tree": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "plan_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "approval_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "components": [
+      {
+        "track_id": "T1",
+        "head": "dddddddddddddddddddddddddddddddddddddddd"
+      }
+    ]
+  },
+  "verification": {
+    "outcome": "pass",
+    "invocation": "verifier-assembly-1",
+    "attestation_ref": "attestation://verifier/assembly-1",
+    "attestation_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+    "plan_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "proof_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "candidate_commit": "ffffffffffffffffffffffffffffffffffffffff",
+    "product_tree": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "merge": {
+    "scope": "release",
+    "passed_candidate": "ffffffffffffffffffffffffffffffffffffffff",
+    "expected_target": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "outcome": "merged",
+    "observed_target": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "result_commit": "ffffffffffffffffffffffffffffffffffffffff",
+    "plan_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "verification_attestation_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+  }
+}
