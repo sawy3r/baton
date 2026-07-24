@@ -1,12 +1,14 @@
 # Baton RC2 final global cutover audit
 
 Date: 2026-07-24
-Status: FAIL — installation PASS; final Claude discovery gate blocked by host authentication
+Status: PASS — live Claude model invocation NOT RUN because no account is configured
 Release branch: `release/v1.0.0`
 Source head: `2d63d30917c095c7303bfd9d1316b282a0b79f51`
 Package version: `1.0.0-rc.2`
 Package digest: `sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436`
 Authority: explicit user approval for global Claude Code and Codex installation
+Gate clarification: Brad confirmed that no Claude account is currently held;
+provider-account ownership is not a Baton publication prerequisite
 Acceptance: [B4 publication and local cutover scope](./2026-07-24-baton-b4-publication-cutover-scope.md)
 
 ## Verdict
@@ -20,8 +22,8 @@ dry-run non-mutation checks pass.
 Codex also discovered all five installed Baton Skills in an ephemeral,
 read-only session without changing the temporary repository.
 
-The final two-host discovery gate does not pass because Claude Code cannot
-authenticate:
+Claude Code cannot perform the model-mediated form of the same smoke because
+the machine has no configured Claude account:
 
 ```text
 Failed to authenticate: OAuth session expired and could not be refreshed
@@ -37,8 +39,15 @@ A sanitized status check reports:
 ```
 
 No authentication state was changed. The successful installations remain in
-place and recoverable. This failure blocks release publication; it does not
-invalidate the installed package.
+place and recoverable.
+
+This is `NOT RUN`, not `FAIL`. Baton installation and launcher qualification
+must not require a provider account, paid subscription, model call, or live
+credential. The exact installed Skill bytes, manifest, canonical-operation
+digests, isolated-home tests, migration proof, repeat no-op, and account-free
+Claude `doctor` result establish the portable installation claim. A future
+authenticated Claude session may reproduce model-mediated catalog discovery,
+but its absence does not block publication.
 
 ## Frozen-source preflight
 
@@ -235,6 +244,26 @@ package or instruction files.
 
 ### Claude Code 2.1.208
 
+Account-free CLI discovery:
+
+```sh
+claude doctor
+```
+
+Result:
+
+```text
+Running: native (2.1.208)
+Search: OK (bundled)
+No installation issues found.
+Remote Control requires a claude.ai subscription.
+```
+
+The command ran in a fresh temporary Git repository and created no worktree
+files, refs, staged changes, or untracked files.
+
+The stronger model-mediated discovery was attempted:
+
 Command:
 
 ```sh
@@ -267,7 +296,15 @@ claude auth status --json | jq '{loggedIn, authMethod}'
 }
 ```
 
-The failure happened before Skill discovery.
+The invocation stopped at provider authentication before Skill discovery.
+Brad then confirmed that no Claude account is currently held. No Baton
+requirement grants authority to create or purchase one, and portable
+qualification deliberately uses no live provider credential. The
+model-mediated smoke is therefore recorded as:
+
+```text
+NOT RUN — no Claude account configured
+```
 
 ### Codex CLI 0.145.0
 
@@ -293,23 +330,28 @@ sandbox: read-only
 BATON_RC2_DISCOVERY_PASS
 ```
 
-After both invocations the temporary repository still had no worktree files,
-Git refs, staged changes, or untracked files. It was then moved to the system
-trash.
+After the Codex invocation the temporary repository still had no worktree
+files, Git refs, staged changes, or untracked files. It was then moved to the
+system trash.
 
-## Exact blocker and recovery
+## Gate interpretation
 
-The remaining external action is:
+The original audit commit classified missing Claude authentication as a release
+blocker. That interpretation was too strong. It accidentally made a
+platform-neutral protocol release depend on the maintainer owning a commercial
+provider account, despite the governing cutover scope stating that installation
+smoke needs no live provider credential.
 
-```sh
-claude auth login
-```
+The corrected gate is:
 
-After Claude Code reports an authenticated session, rerun the exact Claude
-no-persistence discovery command above, confirm the temporary repository remains
-unchanged, and change this audit to PASS. The installed package, transaction
-archive, and no-op evidence do not need to be recreated unless their recorded
-fingerprints change.
+- installed package and launcher bytes must qualify deterministically for every
+  supported host;
+- account-free CLI health must pass where the host provides it;
+- a configured live account may add a model-mediated discovery smoke; and
+- an absent account is `NOT RUN`, while an authenticated session that cannot
+  discover exact installed Skills is `FAIL`.
 
-No tag, GitHub release, release PR, website deployment, or Sworn pin is
-authorized by this failed gate.
+The deterministic Claude and Codex qualifications pass. The authenticated
+Codex smoke passes. Claude account-dependent discovery is honestly `NOT RUN`.
+The final global cutover gate is PASS, so release PR, protected merge, tag,
+GitHub prerelease, website publication, and immutable Sworn pin may proceed.

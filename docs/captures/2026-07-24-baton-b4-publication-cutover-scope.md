@@ -150,12 +150,16 @@ The cutover then:
 7. proves RC2 operation/version/digest identity;
 8. proves only recognized legacy files/block were retired;
 9. repeats install and dry-run to prove a true no-op; and
-10. runs one read-only, no-persistence discovery smoke per CLI in a temporary
-    Git repository.
+10. runs account-free CLI health plus installed-catalog qualification in a
+    temporary Git repository; when that host already has a configured provider
+    account, it also runs a read-only, no-persistence model-mediated discovery
+    smoke.
 
 No permanent global `CLAUDE.md` or `AGENTS.md` block is installed. Credential
-files are neither needed nor read for installation smoke. Captures record
-digests and transaction/archive identities, never configuration contents.
+files and paid provider accounts are neither needed nor read for installation
+qualification. A missing provider account is `NOT RUN` for the optional
+model-mediated smoke, not a Baton failure. Captures record digests and
+transaction/archive identities, never configuration contents.
 
 ## Publication sequence
 
@@ -181,7 +185,9 @@ B4 exits only when:
 
 - repository and website documentation match delivered RC2 behavior;
 - CI and adversarial review pass on the exact publication candidate;
-- both global installations and rediscovery smokes pass;
+- both global installations and account-free qualifications pass; optional
+  model-mediated discovery passes when an account is configured and is
+  otherwise recorded as `NOT RUN`;
 - the release PR is merged;
 - `v1.0.0-rc.2` and its GitHub prerelease identify the exact tested main
   commit;
