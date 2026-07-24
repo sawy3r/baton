@@ -10,3 +10,6 @@
 
 # Test-install artifacts
 /tmp-install/
+
+# Local conformance environment
+/.venv/
