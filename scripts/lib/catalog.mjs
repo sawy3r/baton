@@ -38,6 +38,14 @@ export const OPERATIONS = Object.freeze([
   }),
 ]);
 
+export const PORTABLE_RUNTIME_FILES = Object.freeze([
+  'reference/board/oracle.mjs',
+  'reference/board/terminal.mjs',
+  'reference/board/web.mjs',
+  'reference/driver/contract.md',
+  'reference/driver/fake-driver.mjs',
+]);
+
 export const SUPPORT_FILES = Object.freeze([
   'VERSION',
   'baton/CORE.md',
@@ -52,6 +60,7 @@ export const SUPPORT_FILES = Object.freeze([
   'reference/records/git.mjs',
   'reference/records/records.mjs',
   'reference/records/transition.mjs',
+  ...PORTABLE_RUNTIME_FILES,
   ...OPERATIONS.map(({ source }) => source),
   'templates/plan.md',
   'templates/design.md',

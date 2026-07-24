@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   chmod,
   lstat,
@@ -12,7 +13,9 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { runInstaller } from '../../scripts/install.mjs';
+import { PORTABLE_RUNTIME_FILES } from '../../scripts/lib/catalog.mjs';
 import { sha256 } from '../../scripts/lib/digest.mjs';
+import { baselineFixture } from '../board/helpers.mjs';
 import {
   assertInstalled,
   environment,
@@ -47,6 +50,46 @@ function interruptedAt(boundary) {
 
 async function rejectCode(promise, code) {
   await assert.rejects(promise, (error) => error?.code === code);
+}
+
+function waitForOutputLine(child, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    let output = '';
+    let diagnostics = '';
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      finish(
+        reject,
+        new Error(`installed WebUI did not start within ${timeoutMs}ms: ${diagnostics}`),
+      );
+    }, timeoutMs);
+    const finish = (operation, value) => {
+      clearTimeout(timeout);
+      child.stdout.off('data', onData);
+      child.off('exit', onExit);
+      operation(value);
+    };
+    const onData = (chunk) => {
+      output += chunk;
+      const newline = output.indexOf('\n');
+      if (newline !== -1) finish(resolve, output.slice(0, newline));
+    };
+    const onExit = (code, signal) => {
+      finish(
+        reject,
+        new Error(
+          `installed WebUI exited before startup (${code ?? signal}): ${diagnostics}`,
+        ),
+      );
+    };
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
+      diagnostics += chunk;
+    });
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', onData);
+    child.once('exit', onExit);
+  });
 }
 
 async function transactionCount(stateRoot) {
@@ -119,7 +162,7 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
       });
       assert.equal(installed.actions.length, 7);
       const manifest = await assertInstalled(target, host, scope);
-      assert.equal(manifest.owned_files.length, 26);
+      assert.equal(manifest.owned_files.length, 31);
       const manifestBytes = await readFile(join(target.supportRoot, 'install-manifest.json'));
       const transactions = await transactionCount(target.stateRoot);
 
@@ -146,6 +189,144 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
       });
       await assert.rejects(lstat(target.supportRoot), { code: 'ENOENT' });
       assert.equal(await readFile(foreign, 'utf8'), 'foreign\n');
+    }
+  }
+});
+
+test('installed portable board and driver runtime is host-identical and executable', async (t) => {
+  const fixture = await temporaryFixture(t, 'baton-installed-runtime-');
+  const release = baselineFixture();
+  t.after(() => release.cleanup());
+  const env = environment(fixture.home);
+  const manifests = new Map();
+  const installedTargets = new Map();
+
+  for (const host of ['claude', 'codex']) {
+    await runInstaller(argumentsFor(host, 'project', release.repo, ['--yes']), {
+      env,
+      cwd: release.repo,
+      isTTY: false,
+    });
+    const target = targets(host, 'project', fixture.home, release.repo);
+    installedTargets.set(host, target);
+    manifests.set(host, await assertInstalled(target, host, 'project'));
+  }
+
+  assert.equal(
+    manifests.get('claude').package_digest,
+    manifests.get('codex').package_digest,
+  );
+  assert.deepEqual(
+    manifests.get('claude').owned_files.filter(({ root }) => root === 'support'),
+    manifests.get('codex').owned_files.filter(({ root }) => root === 'support'),
+  );
+
+  for (const path of PORTABLE_RUNTIME_FILES) {
+    const source = await readFile(join(ROOT, path));
+    for (const host of ['claude', 'codex']) {
+      const target = installedTargets.get(host);
+      assert.deepEqual(await readFile(join(target.supportRoot, path)), source, `${host}:${path}`);
+      const owned = manifests.get(host).owned_files.find((entry) => (
+        entry.root === 'support' && entry.path === path
+      ));
+      assert.equal(owned?.mode, '0644', `${host}:${path}`);
+      assert.equal(owned?.digest, sha256(source), `${host}:${path}`);
+    }
+  }
+
+  const runtime = installedTargets.get('codex').supportRoot;
+  const board = execFileSync(
+    process.execPath,
+    [join(runtime, 'reference/board/oracle.mjs'), release.repo],
+    { encoding: 'utf8', env },
+  );
+  const projection = JSON.parse(board);
+  assert.equal(projection.schema_version, 'baton.board/v1');
+  assert.equal(projection.valid, true);
+  assert.equal(projection.releases[0].release, 'v1.0.0');
+
+  const terminal = execFileSync(
+    process.execPath,
+    [join(runtime, 'reference/board/terminal.mjs'), '--color', 'never'],
+    { encoding: 'utf8', env, input: board },
+  );
+  assert.match(terminal, /Release v1\.0\.0/);
+  assert.match(terminal, /Next operations/);
+
+  const fakeDriver = join(runtime, 'reference/driver/fake-driver.mjs');
+  const driverInfo = JSON.parse(execFileSync(
+    process.execPath,
+    [fakeDriver, 'info'],
+    { encoding: 'utf8', env },
+  ));
+  assert.deepEqual(driverInfo, {
+    contract_version: 'baton.driver/v1',
+    driver_id: 'baton.fake',
+    driver_version: '1.0.0',
+  });
+  const instructions = await readFile(join(runtime, 'operations/baton-verify.md'), 'utf8');
+  const request = {
+    schema_version: 'baton.driver-request/v1',
+    invocation_id: 'installed-runtime-smoke',
+    role: 'verifier',
+    operation: {
+      id: 'baton-verify',
+      version: 'baton.operation/v1',
+      digest: sha256(Buffer.from(instructions)),
+      instructions,
+    },
+    model: 'fake-model-v1',
+    workspace: {
+      path: release.repo,
+      access: 'read_only',
+    },
+    inputs: [],
+    fresh_context: true,
+    limits: {
+      timeout_ms: 60000,
+      output_bytes: 65536,
+    },
+  };
+  const driverResult = JSON.parse(execFileSync(
+    process.execPath,
+    [fakeDriver, 'run'],
+    {
+      encoding: 'utf8',
+      env: { ...env, BATON_FAKE_PROFILE: 'completed' },
+      input: `${JSON.stringify(request)}\n`,
+    },
+  ));
+  assert.equal(driverResult.schema_version, 'baton.driver-result/v1');
+  assert.equal(driverResult.invocation_id, request.invocation_id);
+  assert.equal(driverResult.transport_status, 'completed');
+
+  const web = spawn(
+    process.execPath,
+    [
+      join(runtime, 'reference/board/web.mjs'),
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '0',
+      release.repo,
+    ],
+    {
+      cwd: release.repo,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  try {
+    const url = await waitForOutputLine(web);
+    const response = await fetch(`${url}/api/board`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+    assert.equal((await response.json()).schema_version, 'baton.board/v1');
+  } finally {
+    if (web.exitCode === null && web.signalCode === null) {
+      const exited = once(web, 'exit');
+      web.kill('SIGTERM');
+      await exited;
     }
   }
 });
