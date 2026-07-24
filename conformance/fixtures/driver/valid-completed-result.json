@@ -1,0 +1,14 @@
+{
+  "schema_version": "baton.driver-result/v1",
+  "invocation_id": "invocation-001",
+  "driver_id": "baton.fake",
+  "driver_version": "1.0.0",
+  "observed_model": "fake-model-v1",
+  "duration_ms": 0,
+  "text": "Fake completed response for verifier.",
+  "transport_status": "completed",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}

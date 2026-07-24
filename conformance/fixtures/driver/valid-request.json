@@ -1,0 +1,33 @@
+{
+  "schema_version": "baton.driver-request/v1",
+  "invocation_id": "invocation-001",
+  "role": "verifier",
+  "operation": {
+    "id": "baton-verify",
+    "version": "baton.operation/v1",
+    "digest": "sha256:fb9862e3862b895d14280ba00aa9d509bcb8f54737589146d00a7054b267acc9",
+    "instructions": "Produce the next durable Baton handoff.\n"
+  },
+  "model": "fake-model-v1",
+  "workspace": {
+    "path": "/workspace/project",
+    "access": "read_only"
+  },
+  "inputs": [
+    {
+      "name": "plan",
+      "path": ".baton/releases/v1.0.0/plan.md",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "proof",
+      "path": ".baton/releases/v1.0.0/work/W1/proof.md",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "fresh_context": true,
+  "limits": {
+    "timeout_ms": 60000,
+    "output_bytes": 65536
+  }
+}
