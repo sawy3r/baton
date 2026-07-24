@@ -48,7 +48,7 @@ terminal status:       696d3e1b8bc5515c22e20a74f94daaf19f6aa28f
 final board digest:    sha256:3b30c8fc74caf91666b21f0859867b95e93ccde409482e4c9bf27aad13a58d30
 ```
 
-The run exercised 16 meaningful checkpoints. At each checkpoint the direct
+The run exercised 17 meaningful checkpoints. At each checkpoint the direct
 board JSON and live WebUI `/api/board` bytes were identical, and the terminal
 renderer exposed the same release, track, work, assembly, and next-operation
 facts.
