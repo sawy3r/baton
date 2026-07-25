@@ -1,8 +1,9 @@
 # Install Baton
 
-Baton installs the same protocol, five operations, reference tools, and
-read-only board for Claude Code or Codex. It does not install Sworn, a model,
-provider credentials, or a background service.
+Baton installs the same protocol, five operations, compact receipt/state/action
+kit, and read-only terminal and browser board for Claude Code or Codex. It does
+not install Sworn, a driver, a model, provider credentials, or a background
+service.
 
 ## Before you install
 

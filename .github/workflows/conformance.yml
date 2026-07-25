@@ -39,7 +39,7 @@ jobs:
       - name: Install the pinned Python dependency
         run: python -m pip install --disable-pip-version-check -r conformance/requirements.txt
 
-      - name: Validate strict JSON and the status schema
+      - name: Validate strict JSON, plan v2, and receipt v1
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python conformance/check.py
@@ -52,8 +52,6 @@ jobs:
           test/adapters/*.test.mjs
           test/install/*.test.mjs
           test/board/*.test.mjs
-          test/driver/*.test.mjs
-          test/dogfood/*.test.mjs
           test/release/*.test.mjs
 
       - name: Verify generated adapters and package digests

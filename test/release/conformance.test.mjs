@@ -172,6 +172,11 @@ test('the install catalog contains only the compact active reference kit', () =>
   assert.deepEqual(PORTABLE_RUNTIME_FILES, [
     'reference/board/oracle.mjs',
     'reference/board/terminal.mjs',
+    'reference/board/web.mjs',
+    'reference/records/actions.mjs',
+    'reference/records/git.mjs',
+    'reference/records/receipts.mjs',
+    'reference/records/state.mjs',
   ]);
   for (const required of [
     'schemas/receipt-v1.json',

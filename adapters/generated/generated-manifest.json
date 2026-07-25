@@ -1,15 +1,15 @@
 {
   "schema_version": "baton.generated-adapters/v1",
-  "package_version": "1.0.0-rc.3",
-  "package_digest": "sha256:f4a5fef8d36e8541ba67b3c181274a0b425400609f6b3e55880bf79046a64a0e",
+  "package_version": "1.0.0-rc.4",
+  "package_digest": "sha256:25e1eb9ebd18e1b474d7164b3dbb2bccac7dfa16907131695f4ec1ed8965d782",
   "generator_version": "baton.adapter-generator/v1",
   "operation_version": "baton.operation/v2",
   "packages": {
     "claude": {
-      "digest": "sha256:f4a5fef8d36e8541ba67b3c181274a0b425400609f6b3e55880bf79046a64a0e"
+      "digest": "sha256:25e1eb9ebd18e1b474d7164b3dbb2bccac7dfa16907131695f4ec1ed8965d782"
     },
     "codex": {
-      "digest": "sha256:f4a5fef8d36e8541ba67b3c181274a0b425400609f6b3e55880bf79046a64a0e"
+      "digest": "sha256:25e1eb9ebd18e1b474d7164b3dbb2bccac7dfa16907131695f4ec1ed8965d782"
     }
   },
   "operations": [
@@ -49,70 +49,70 @@
       "host": "claude",
       "operation": "baton-plan",
       "path": "claude/skills/baton-plan/SKILL.md",
-      "digest": "sha256:b85b09f9931b2dec6dba5b80c0cbbbc5ae9ae38fdbf7cd22691ad393806341de",
+      "digest": "sha256:9cf1aee1a77e5bc6106b4c1d9cd10fc8244134ba54fe2f527cf9ad092a0a186c",
       "canonical_digest": "sha256:91197ccfdda4475b09f70d50e6dd1fe248f7135625172618051b81dc98016088"
     },
     {
       "host": "codex",
       "operation": "baton-plan",
       "path": "codex/skills/baton-plan/SKILL.md",
-      "digest": "sha256:4afa9e7ebf288345baff0c699158776e8286ba2d62c08de37e57fc645ba4cdd5",
+      "digest": "sha256:d7caf07ca792e75e9788f75844d7f807ab4f6e9e186a9def7c7a4675ff9b13dd",
       "canonical_digest": "sha256:91197ccfdda4475b09f70d50e6dd1fe248f7135625172618051b81dc98016088"
     },
     {
       "host": "claude",
       "operation": "baton-implement",
       "path": "claude/skills/baton-implement/SKILL.md",
-      "digest": "sha256:37050c81cbafa8f0cf030c744071780f92277a1c610d96f8e83c2f8988444335",
+      "digest": "sha256:c3461eb2bee91a1b318690f41c5767f37964c3e658d42b7b29622905ae4eab0f",
       "canonical_digest": "sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1"
     },
     {
       "host": "codex",
       "operation": "baton-implement",
       "path": "codex/skills/baton-implement/SKILL.md",
-      "digest": "sha256:f9b724aef7b81790f6fc2ae2ef06421eed3bf65ed439229bdfca48c99e2a33bb",
+      "digest": "sha256:50a9f7e4ad41ef914bb3f631bd875cfcc12030b67a0364da4aa9268087a82f44",
       "canonical_digest": "sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1"
     },
     {
       "host": "claude",
       "operation": "baton-design-review",
       "path": "claude/skills/baton-design-review/SKILL.md",
-      "digest": "sha256:e885842b1ac18ed849ad74ed610acc79ad5197c7e032a18d387b1d71f3dfe0e0",
+      "digest": "sha256:73868f7653854885b6abb07123942b466f5b9fd8bd9dcfb3f567bd5758f72592",
       "canonical_digest": "sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381"
     },
     {
       "host": "codex",
       "operation": "baton-design-review",
       "path": "codex/skills/baton-design-review/SKILL.md",
-      "digest": "sha256:92bb385ba8f044b9da26e456b3aab34868d4378238960c01152385c98e48d287",
+      "digest": "sha256:ed33722ba5622d9d73a10e34ff0777c1d27b5a5101f26261c03c31b34048f627",
       "canonical_digest": "sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381"
     },
     {
       "host": "claude",
       "operation": "baton-verify",
       "path": "claude/skills/baton-verify/SKILL.md",
-      "digest": "sha256:7843bfe8e18065afb1170d18162ff25de946f3dfb4367d3c2cc38b723db6cfce",
+      "digest": "sha256:ca3da4fe06d5fd78246d704209ea69f009a595250840209898b2e0b9f247f449",
       "canonical_digest": "sha256:080034f552086a7e73fc27fb9f155320ac7638749481b477d16af4afdc59afaf"
     },
     {
       "host": "codex",
       "operation": "baton-verify",
       "path": "codex/skills/baton-verify/SKILL.md",
-      "digest": "sha256:c8ff93e3c4ac066cf4602654fe7b731d6f36c0a9f1296fb23e036480ab0f6468",
+      "digest": "sha256:25dd149ac091c800dfc2ffebeb109974d7f471136fbb037ae625a3a959043ffd",
       "canonical_digest": "sha256:080034f552086a7e73fc27fb9f155320ac7638749481b477d16af4afdc59afaf"
     },
     {
       "host": "claude",
       "operation": "baton-merge",
       "path": "claude/skills/baton-merge/SKILL.md",
-      "digest": "sha256:e776fb93189eba5d69a4743bbee4c163659cd1c4fc9cdc69fc19421505ff47af",
+      "digest": "sha256:d5b49ea6e8c07e37b15edeea5dfa0bbe5a2619d8edd994bbb1c42835d5cde70e",
       "canonical_digest": "sha256:ccc995fd1b38814858f5fcf1122c61409acbbd281596cb259c6de4ba18a6df1b"
     },
     {
       "host": "codex",
       "operation": "baton-merge",
       "path": "codex/skills/baton-merge/SKILL.md",
-      "digest": "sha256:68d012953fa5846a126df6710de77298a03f0e13864f73e0d1ecde5630d46c7e",
+      "digest": "sha256:63568b39a2a253df5c80cf2c0fab090818ba4cb9666453276a6704a74f79daa7",
       "canonical_digest": "sha256:ccc995fd1b38814858f5fcf1122c61409acbbd281596cb259c6de4ba18a6df1b"
     }
   ]

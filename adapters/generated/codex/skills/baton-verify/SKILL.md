@@ -4,7 +4,7 @@ description: "Independently verify an exact Baton slice candidate or assembled p
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.3
+package-version: 1.0.0-rc.4
 operation-version: baton.operation/v2
 operation-sha256: sha256:080034f552086a7e73fc27fb9f155320ac7638749481b477d16af4afdc59afaf
 -->
