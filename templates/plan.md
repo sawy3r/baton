@@ -1,21 +1,18 @@
-```baton-plan-v1
+```baton-plan-v2
 {
-  "schema_version": "baton.plan/v1",
+  "schema_version": "baton.plan/v2",
   "release": "release-id",
+  "revision": 1,
   "repository": "owner/repository",
   "target_ref": "refs/heads/main",
-  "release_ref": "refs/heads/release-wt/release-id",
-  "record_root": ".baton/releases",
   "approval_ref": "approval://release-id/1",
   "tracks": [
     {
       "id": "T1",
-      "ref": "refs/heads/track/release-id/T1",
       "depends_on": [],
-      "touch_surfaces": ["src"],
-      "work": [
+      "slices": [
         {
-          "id": "W1",
+          "id": "S1",
           "outcome": "One observable delivered outcome.",
           "scope": {
             "include": ["src/owned-surface"],
@@ -28,8 +25,9 @@
             }
           ],
           "checks": ["project-check-command"],
-          "constraints": ["Keep .baton/releases behaviorally inert."],
-          "depends_on": []
+          "constraints": [],
+          "depends_on": [],
+          "consumes": []
         }
       ]
     }
@@ -43,29 +41,23 @@ State the approved release outcome and why it matters.
 
 # Authority
 
-Name the external decision-maker and the protected approval reference that will
-bind these exact bytes.
+Name the external decision-maker and protected approval reference that binds
+these exact bytes.
 
-# Scope
+# Revision
 
-Summarise included and excluded product surfaces without repeating metadata.
+Explain what changed, which slices are retained, and why any changed consumed
+input invalidates the named dependency closure.
 
-# Acceptance
+# Scope and acceptance
 
-Explain how each acceptance identifier is observable.
+Summarise included and excluded product surfaces and how each acceptance
+identifier is observable.
 
-# Ordered tracks and work
+# Tracks, slices, and inputs
 
-Describe why the ordering and track boundaries are safe.
+Explain ordering, parallel-safe boundaries, dependencies, and consumed inputs.
 
-# Dependencies and touch surfaces
+# Checks and constraints
 
-Call out dependency edges, shared boundaries, and ownership assumptions.
-
-# Checks
-
-Describe the required checks and where their raw output will be retained.
-
-# Constraints
-
-Record non-negotiable safety, compatibility, and delivery limits.
+Describe required checks, durable raw output, and non-negotiable limits.

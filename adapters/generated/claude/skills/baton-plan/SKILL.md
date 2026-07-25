@@ -1,12 +1,12 @@
 ---
 name: baton-plan
-description: "Create or revise an externally approved Baton plan. Use when starting delivery or authorised replanning is required."
+description: "Propose an externally approved Baton plan or forward-only revision with stable slice identities."
 ---
 
 <!-- baton-adapter
 package-version: 1.0.0-rc.3
-operation-version: baton.operation/v1
-operation-sha256: sha256:e5c3ace4177cb10c9b0d3b5e569aa7cbe43bfdb3b7f4a17071a925a5ba3b77d3
+operation-version: baton.operation/v2
+operation-sha256: sha256:91197ccfdda4475b09f70d50e6dd1fe248f7135625172618051b81dc98016088
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve the Baton package root from the current Git project .claude/baton install when present and valid; otherwise use the configured Claude user directory baton install. Read package-relative files from that root.
@@ -14,58 +14,49 @@ Treat the free-form invocation text as the operation inputs. Resolve the Baton p
 <!-- BATON_CANONICAL_BEGIN baton-plan -->
 ---
 operation: baton-plan
-version: baton.operation/v1
+version: baton.operation/v2
 ---
 
 ## Purpose
 
-Create a new approved delivery plan, or replace a pristine unmaterialised plan
-under new external approval. Planning proposes authority; it never grants its
-own approval.
+Propose a bounded delivery plan or forward-only revision for external approval.
+Planning never grants its own authority.
 
 ## Inputs
 
-- The requested release outcome, repository, target ref, and release ref.
-- Ordered tracks and work, dependencies, touch surfaces, acceptance criteria,
-  checks, constraints, and excluded paths.
-- The protected approval reference and, after approval, its exact evidence
-  digest.
-- For a replan, the previously admitted plan and authoritative repository
-  state.
+- The goal, repository, target, and external authorizer.
+- Stable tracks and slices with scope, acceptance, checks, constraints,
+  dependencies, consumed inputs, and exclusions.
+- The prior approved revision and current repository facts when revising.
 
 ## Authority
 
-Use the strict plan parser and the admitted action surface supplied by the Baton
-package. The external approval evidence must bind the raw digest of the complete
-plan. Repository refs and records, not conversation, determine whether a plan
-is pristine or materialised.
+Keep one release identity while its goal, target, and authority remain the same.
+Retain unchanged slices. Change only the slices whose contracts changed and
+identify the dependency closure whose consumed inputs changed. Approval must
+bind the exact proposed bytes.
 
 ## Actions
 
-1. Render `templates/plan.md` from byte zero. Keep its closed JSON metadata and
-   Markdown consistent, then parse and validate the exact bytes.
-2. Present those bytes for external approval without editing the proposal.
-3. For a new release identity, call `installApprovedPlan` with the protected
-   approval digest. This creates the plan and all baseline work statuses.
-4. For an authorised revision, call `reboundPristinePlan` only when the prior
-   namespace is exact, unmaterialised, and topologically identical.
-5. If materialisation or durable handoffs exist, preserve that lineage and plan
-   new work and release identities instead of clearing prior gates.
+1. Inspect current Git and the applicable plan revision.
+2. Propose the smallest complete next revision using `templates/plan.md`.
+3. Preserve stable slice identities; add or explicitly retire slices when the
+   approved outcomes change.
+4. Present the exact bytes for external approval and stop.
 
 ## Required output
 
-Return the plan digest, approval reference and digest, release head, ordered
-work, and the action receipt. A retry must identify the same durable result
-without another commit.
+Return the proposed plan bytes, release and revision, retained/changed/added/
+retired slices, invalidated dependency closure, and concise approval handoff.
+Do not write an approval or receipt.
 
 ## Stop conditions
 
-Stop on missing approval, invalid metadata, overlapping independent work,
-unsafe refs or paths, stale heads, foreign records, a non-pristine rebound, or
-any action error. Do not partially install or rewrite history.
+Stop on ambiguous goal, target, authority, scope, dependencies, consumed
+inputs, or acceptance. Do not guess approval or silently widen delivery.
 
 ## Next handoff
 
-Hand each ready work item to `baton-implement`, beginning with the first
-dependency-ready work in each independent track.
+After external approval is durably bound to the exact plan, hand each
+dependency-ready slice to `baton-implement`.
 <!-- BATON_CANONICAL_END baton-plan -->

@@ -47,10 +47,8 @@ const NORMAL_WORK_INVOCATIONS = Object.freeze([
   Object.freeze({ id: 'verifier', operation: 'baton-verify' }),
 ]);
 const LOGICAL_HANDOFFS = Object.freeze([
-  Object.freeze({ id: 'plan', path: '.baton/releases/<release>/plan.md' }),
-  Object.freeze({ id: 'design', path: '.baton/releases/<release>/work/<work>/design.md' }),
-  Object.freeze({ id: 'proof', path: '.baton/releases/<release>/work/<work>/proof.md' }),
-  Object.freeze({ id: 'status', path: '.baton/releases/<release>/work/<work>/status.json' }),
+  Object.freeze({ id: 'plan', path: '<applicable approved plan revision>' }),
+  Object.freeze({ id: 'receipts', path: '<canonical compact receipt representation>' }),
 ]);
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -256,7 +254,7 @@ async function measureCurrent(root) {
   const version = (await readFile(join(root, 'VERSION'), 'utf8')).trim();
   const observedOperations = OPERATIONS.map(({ name }) => name);
   if (!isDeepStrictEqual(observedOperations, EXPECTED_OPERATIONS)) {
-    fail('current canonical operation inventory differs from the five RC3 operations');
+    fail('current canonical operation inventory differs from the five Baton operations');
   }
 
   const rendered = await renderGenerated({ bundleRoot: root });
@@ -402,34 +400,34 @@ export async function measureOverhead({
 
   const budgets = [
     budget(
-      'exactly one authored JSON Schema',
+      'at most one authored JSON Schema',
       current.authored_schemas.length,
       1,
-      isDeepStrictEqual(current.authored_schemas, ['work-status-v1.json']),
+      current.authored_schemas.length <= 1,
     ),
     budget(
-      'four logical handoffs per normal work item',
+      'two required protocol artefacts per normal slice',
       current.logical_handoffs.length,
-      4,
-      current.logical_handoffs.length === 4,
+      2,
+      current.logical_handoffs.length === 2,
     ),
     budget(
       'each canonical operation words',
       operationWords,
-      400,
-      operationWords.every(({ words }) => words <= 400),
+      350,
+      operationWords.every(({ words }) => words <= 350),
     ),
     budget(
       'all canonical operation words',
       operationTotal,
-      2000,
-      operationTotal <= 2000,
+      1700,
+      operationTotal <= 1700,
     ),
     budget(
       'effective fixed words in one invocation',
       invocationMaximum,
-      500,
-      invocationMaximum <= 500,
+      450,
+      invocationMaximum <= 450,
     ),
     budget(
       'happy-path fixed word ratio to v0.16.0',

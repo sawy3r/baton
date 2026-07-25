@@ -13,7 +13,11 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { runInstaller } from '../../scripts/install.mjs';
-import { PORTABLE_RUNTIME_FILES } from '../../scripts/lib/catalog.mjs';
+import {
+  OPERATIONS,
+  PORTABLE_RUNTIME_FILES,
+  SUPPORT_FILES,
+} from '../../scripts/lib/catalog.mjs';
 import { sha256 } from '../../scripts/lib/digest.mjs';
 import { baselineFixture } from '../board/helpers.mjs';
 import {
@@ -162,7 +166,7 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
       });
       assert.equal(installed.actions.length, 7);
       const manifest = await assertInstalled(target, host, scope);
-      assert.equal(manifest.owned_files.length, 31);
+      assert.equal(manifest.owned_files.length, SUPPORT_FILES.length + OPERATIONS.length);
       const manifestBytes = await readFile(join(target.supportRoot, 'install-manifest.json'));
       const transactions = await transactionCount(target.stateRoot);
 

@@ -1,121 +1,65 @@
-# RC2 walkthrough: one release, two tracks
+# Walkthrough: revise one release without replacing it
 
-This platform-agnostic example follows a small `checkout-recovery` release from
-an approved Plan to exact release Merge. It uses the RC2 handoffs and status
-shape, without assuming Claude Code, Codex, Sworn, or any other engine.
-
-```text
-approved Plan
-  ├─ T1 / W1: retry-safe checkout ─┐
-  └─ T2 / W2: recovery runbook ───┤
-                                  └─ assembly -> fresh Verifier -> Merge
-```
-
-The two tracks have separate touch surfaces and no dependency edge, so they may
-advance together. Each track has one work item here; if it had more, its work
-would remain serial.
-
-## What the files show
+This platform-agnostic example follows one `checkout-recovery` release with two
+stable slices:
 
 ```text
-walkthrough/
-├── approval.txt
-├── plan.md
-├── tracks/
-│   ├── T1/W1/
-│   │   ├── design.md
-│   │   ├── proof.md
-│   │   └── status.json
-│   └── T2/W2/
-│       ├── design.md
-│       ├── proof.md
-│       └── status.json
-└── assembly/
-    ├── proof.md
-    └── status.json
+approved plan revision
+  ├─ T1 / S1: retry-safe checkout ─┐
+  └─ T2 / S2: recovery runbook ───┤
+                                  └─ assembly verification -> exact Merge
 ```
 
-The Plan, designs, and proofs are exact illustrative handoff bytes. Their
-SHA-256 digests in both status files match the checked-in files. Object IDs,
-product-tree digests, dispatch attestations, and the protected approval
-reference illustrate identities that a real repository and engine would
-produce; this documentation directory does not pretend to contain those Git or
-trust-root objects.
+The durable protocol input is [`walkthrough/plan.md`](walkthrough/plan.md).
+[`walkthrough/approval.txt`](walkthrough/approval.txt) stands in for protected
+external approval over those exact bytes. Git holds the product and plan
+history. A machine writer appends compact receipts for the responsibility
+boundaries.
 
-Executable schema fixtures remain in
-[`../conformance/fixtures/`](../conformance/fixtures/). The real-Git
-three-track lifecycle is exercised by
-[`../test/dogfood/`](../test/dogfood/).
+## One stable revision lineage
 
-## 1. Planner proposes; an external authority approves
+Suppose the first design attempt for S1 omitted an internal metadata detail.
+Captain returns `REVISE`. The Implementer supplies another design TL;DR on S1;
+the release and slice identities do not change.
 
-The Planner writes [`plan.md`](walkthrough/plan.md). Its closed metadata fixes
-the repository, target, release ref, two track refs, scope, acceptance, and
-checks. Planning does not grant approval.
+After `PROCEED`, the first S1 candidate exposes a hydration defect. The fresh
+Verifier returns `FAIL`. The Implementer creates another implementation attempt
+on S1 and the fresh Verifier checks the replacement candidate. S2 remains
+trusted because its contract and consumed inputs did not change.
 
-The external decision in
-[`approval.txt`](walkthrough/approval.txt) stands in for protected approval
-evidence that binds the Plan’s exact bytes. `baton-plan` admits those bytes and
-creates baseline work statuses.
+If fixing hydration changed an input declared by S2, the next plan revision
+would invalidate S2 as part of the real dependency closure. Filename proximity
+or a newer timestamp is not enough.
 
-## 2. Implementer designs; Captain decides
+## What each boundary keeps
 
-For each dependency-ready item, an Implementer writes `design.md`:
+The exact receipt serialization belongs to the reference kit, but the meanings
+are fixed:
 
-- [`T1/W1/design.md`](walkthrough/tracks/T1/W1/design.md)
-- [`T2/W2/design.md`](walkthrough/tracks/T2/W2/design.md)
+- approval binds the exact plan revision;
+- design binds the plan, slice, and design attempt;
+- Captain binds that design and returns `PROCEED`, `REVISE`, or `ESCALATE`;
+- implementation binds the exact candidate, checks, and evidence;
+- fresh verification binds that candidate and returns `PASS`, `FAIL`, or
+  `BLOCKED`; and
+- Merge binds current `PASS`, the expected target, observed target, and result.
 
-A distinct Captain checks the exact Plan and design digests. `PROCEED` returns
-each item to its Implementer. `REVISE` would require new design bytes;
-`ESCALATE` would stop for new planning authority.
+Roles return decisions and evidence. They do not hand-author status, proof
+bundles, or receipt files.
 
-## 3. Implementer builds and proves; a fresh Verifier checks
+## Operational failure is separate
 
-Each Implementer makes a product-only candidate commit, runs the approved
-checks, and writes an exact proof:
+A runner interruption, duplicate dispatch, stale board, or known completed Git
+effect produces no Baton verdict. The surrounding engine retries or reconciles
+it from durable facts. It cannot turn a runtime event into approval, `PROCEED`,
+`PASS`, or `MERGED`.
 
-- [`T1/W1/proof.md`](walkthrough/tracks/T1/W1/proof.md)
-- [`T2/W2/proof.md`](walkthrough/tracks/T2/W2/proof.md)
+## Whole-product verification
 
-A fresh, read-only Verifier checks the candidate and evidence. The completed
-[`T1/W1/status.json`](walkthrough/tracks/T1/W1/status.json) and
-[`T2/W2/status.json`](walkthrough/tracks/T2/W2/status.json) show PASS bound to
-the Plan, proof, candidate, and product tree.
+Work `PASS` advances a slice; it does not certify the release. After the two
+track candidates are composed, another fresh, read-only Verifier checks the
+complete product. Merge then integrates only that exact assembled candidate
+against the expected target.
 
-These are the only JSON lifecycle records in the walkthrough. Both use
-`baton.work-status/v1`.
-
-## 4. Merge composes exact tracks
-
-Track Merge freezes each passed owner ref and composes it without discretionary
-conflict resolution. The completed work statuses record the exact frozen head,
-expected release-line head, and deterministic composition result.
-
-Composition transfers authority to the release lineage. It does not yet update
-`main`, and a work PASS never substitutes for whole-product verification.
-
-## 5. Merge prepares assembly; a fresh Verifier checks again
-
-After both tracks are composed, Merge writes
-[`assembly/proof.md`](walkthrough/assembly/proof.md). It names both frozen
-component heads and the exact assembled candidate.
-
-Another fresh, read-only Verifier checks every component and the product as a
-whole. [`assembly/status.json`](walkthrough/assembly/status.json) binds the
-assembly PASS to those exact bytes.
-
-## 6. Release Merge updates the expected target
-
-Release Merge compares `refs/heads/main` with the approved expected commit. It
-updates the ref only to the passed assembly candidate. If the target moved or
-any Plan, proof, candidate, product-tree, component, or attestation binding
-changed, it stops.
-
-The final assembly status records that exact integration. Deployment is outside
-Baton; “merged” does not silently mean “deployed.”
-
-## Where the board fits
-
-The JSON oracle would derive `baton.board/v1` from the real refs and records at
-each stage, showing the next eligible operation. No board snapshot is stored
-here because it is a view, not a fifth handoff or another source of authority.
+The board is derived from the plan, receipts, and Git, so no board snapshot is
+stored as delivery truth.

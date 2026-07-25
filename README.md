@@ -1,51 +1,76 @@
 # Baton
 
-Baton is a small, open protocol for delivering software with agents. It gives
-the work five clear jobs, saves the important handoffs in Git, and merges only
-the version that passed a fresh, independent check.
+Baton is a small, open protocol for delivering software with agents. It keeps
+the facts that make “done” believable and leaves the operational machinery to
+an engine.
 
 ```text
-                                         fresh-context boundary
-                                                   ║
-                          ┌─────────┐              ║
-                          │ Captain │              ║
-                          └────┬────┘              ║
-                  design ▲     │ PROCEED / REVISE  ║
-                         │     ▼                   ║
-┌─────────┐ approved plan ┌─────────────┐ proof.md ║ ┌──────────┐ PASS ┌───────┐
-│ Planner │──────────────►│ Implementer │──────────╫►│ Verifier │─────►│ Merge │
-└─────────┘               └─────────────┘          ║ └──────────┘      └───────┘
-                              ▲                    ║      │
-                              └────── FAIL ─────────╫──────┘
+approved plan and slices
+  -> Implementer design TL;DR
+  -> Captain decision
+  -> implementation candidate
+  -> fresh Verifier decision
+  -> merge the exact candidate that passed
 ```
 
-The double bar is the load-bearing boundary: the Verifier starts fresh and
-cannot change the work. `REVISE` and `FAIL` go back to the Implementer;
-`ESCALATE` and `BLOCKED` go back to the Planner. Only `PASS` can reach Merge.
+The Verifier starts fresh, cannot change the candidate, and returns `PASS`,
+`FAIL`, or `BLOCKED`. A broken runner is not a verdict. Only `PASS` over the
+current candidate can reach Merge.
 
-Baton defines the jobs, handoffs, and checks.
-[Sworn](https://github.com/sawy3r/sworn) is the reference engine being built to
-keep that loop moving autonomously. Baton does not run models, keep provider
-credentials, or choose a model for you.
+Baton defines those responsibilities and trust-critical facts.
+[Sworn](https://github.com/sawy3r/sworn) is the reference engine for scheduling,
+retries, recovery, worktrees, drivers, projections, and telemetry. Baton does
+not run models, hold provider credentials, or choose a model.
 
 ## The small model
 
 Five principles make completion trustworthy:
 
-1. **Stay inside the agreed work** — start with an approved plan; approve it
-   again if its scope, contract, or authority changes materially.
-2. **Write down what matters** — repository files and Git outrank chat.
-3. **Prove the real result** — test the thing you say you finished.
+1. **Stay inside the agreed work** — begin from an externally approved plan.
+2. **Keep durable facts** — Git and compact receipts outrank chat and dashboards.
+3. **Prove the real result** — connect each claim to observable evidence.
 4. **Use a fresh Verifier** — the builder does not mark its own homework.
-5. **Merge only what passed** — changed code or a moved target needs a fresh
-   check.
+5. **Merge only what passed** — recheck the candidate and target at Merge.
 
-Five roles carry that model: **Planner**, **Implementer**, **Captain**,
-**Verifier**, and **Merge**. Their normal work produces four saved
-handoffs—`plan.md`, `design.md`, `proof.md`, and `status.json`—using one JSON
-Schema.
+Five responsibilities carry those principles: **Planner**, **Implementer**,
+**Captain**, **Verifier**, and **Merge**. They are authority boundaries, not a
+requirement for five people, processes, or providers.
 
-The five portable operations are:
+The durable minimum is one approved plan plus small machine-written receipts
+for decisions and outcomes. The candidate diff, tests, code, and Git history
+carry implementation evidence. Longer design or evidence documents are
+optional when the work needs them; Baton does not universally require
+`design.md`, `proof.md`, or a hand-maintained `status.json`.
+
+## Revision without churn
+
+A plan advances at one path under one release identity. Its slices keep stable
+identities:
+
+- a design revision adds a design attempt to the same slice;
+- a Verifier `FAIL` adds an implementation attempt to the same slice;
+- a plan revision reuses unchanged slices and invalidates only changed slices
+  and the real dependency closure whose inputs changed; and
+- a new release identity is needed only when the overall goal, target, or
+  authority is replaced.
+
+Git keeps every earlier revision and attempt. The board derives the most
+advanced trustworthy state; it is not another state store.
+
+## What can block
+
+Baton blocks when a trust-critical fact cannot be established: current
+approval, unambiguous scope and authority, an applicable Captain decision, an
+exact candidate and evidence, fresh verification, or safe exact composition.
+
+Missing derived status, duplicate dispatch, stale board output, runner
+interruption, a skipped cursor, or a reconcilable Git effect is operational.
+An engine reconstructs or retries it without manufacturing approval,
+`PROCEED`, `PASS`, or `MERGED`.
+
+## Portable operations
+
+Baton ships five concise, tool-neutral operations:
 
 - `baton-plan`
 - `baton-implement`
@@ -53,39 +78,21 @@ The five portable operations are:
 - `baton-verify`
 - `baton-merge`
 
-Claude Code and Codex expose those operations as generated skills.
-
-The board is a thin, read-only view of the repository. Looking at it cannot
-move work forward.
+Claude Code and Codex expose byte-identical generated Skills. The board remains
+a thin, read-only projection: looking at it cannot advance delivery.
 
 ## More than one track
 
-Independent tracks can run at the same time. Inside each track, work stays
-one-at-a-time. Tracks whose ordered work has passed can rejoin; a fresh
-Verifier then checks the complete release, and Merge lands it only if the code
-and target have not changed.
+Independent tracks may run together. Ordered slices remain serial inside a
+track. Passed track candidates may be composed only through the approved plan;
+a fresh Verifier then checks the complete assembled product before final Merge.
 
 ## Get started
 
-The easiest route is to let the coding agent you already use install Baton.
-Open Claude Code or Codex and paste:
-
-```text
-Install Baton v1.0.0-rc.3 for this coding agent. Clone
-https://github.com/sawy3r/baton at that exact tag, read the root INSTALL.md,
-and install it for this tool—Claude Code or Codex—at user scope. Run the
-matching installer with --dry-run and show me the exact actions first. After I
-approve, run the same scope with --yes. Do not edit instruction files directly;
-only allow an instruction-file change made by the reviewed installer as part
-of its exact audited v0.16 migration. Do not install Sworn or a model, or read
-provider credentials. If this host is not supported, stop and tell me.
-```
-
-Prefer to do it yourself? Clone the reviewed release, then preview and run the
-matching installer:
+Clone an exact reviewed release, preview the matching installer, then apply it:
 
 ```sh
-git clone --branch v1.0.0-rc.3 --depth 1 https://github.com/sawy3r/baton.git
+git clone --branch v1.0.0-rc.4 --depth 1 https://github.com/sawy3r/baton.git
 cd baton
 
 # Claude Code
@@ -97,65 +104,18 @@ cd baton
 ./install-codex.sh --user --yes
 ```
 
-Project-local installs are also supported. See [INSTALL.md](INSTALL.md) for
-Claude Code and Codex paths, board commands, migration, rollback, uninstall,
-and failure behavior.
-
-Then read the [platform-agnostic walkthrough](examples/README.md). It follows
-one release from approved Plan through independent tracks, composition,
-assembly verification, and exact Merge.
-
-## Guided and autonomous use
-
-Baton works in two modes:
-
-- In **guided use**, a person chooses the next eligible operation and keeps
-  responsibility boundaries separate.
-- In **autonomous use**, an engine such as Sworn additionally has to prove
-  scheduling, writer isolation, fresh context, credential isolation, recovery,
-  cancellation, and final-effect behavior.
-
-A driver is only a process adapter to a runner. The same driver can serve every
-responsibility; the engine supplies an explicit model string or deliberate
-`null` for each invocation. The driver does not pick defaults, retry, fall
-back, rotate providers, or turn a model response into a Baton verdict.
-
-## RC3 evidence
-
-The current release candidate is
-[`v1.0.0-rc.3`](docs/releases/v1.0.0-rc.3.md). Its portable profile passes 143
-Node tests plus strict Python validation, one schema, generated-package parity,
-real-Git dogfood, installer isolation, board security and performance, and all
-nine measured overhead budgets.
-
-RC3 loads 1,512 fixed words on the normal four-invocation path, or 2.6539% of
-the measured Baton v0.16 baseline. Its five canonical operations total 1,504
-words, and its largest complete generated Skill is 397 words.
-
-The 12 autonomous-engine cases remain `NOT RUN`. Sworn must exercise them
-through its real binary and boundaries before Baton can claim autonomous-engine
-conformance. Portable success is not that claim.
+Project-local installs are also supported. See [INSTALL.md](INSTALL.md), then
+follow the [platform-agnostic walkthrough](examples/README.md).
 
 ## Repository map
 
-- [`baton/CORE.md`](baton/CORE.md) — the five principles
-- [`baton/PROTOCOL.md`](baton/PROTOCOL.md) — lifecycle and exact handoffs
-- [`baton/ASSURANCE.md`](baton/ASSURANCE.md) — guided and autonomous assurance
+- [`baton/CORE.md`](baton/CORE.md) — five trust principles
+- [`baton/PROTOCOL.md`](baton/PROTOCOL.md) — responsibilities, facts, and receipts
+- [`baton/ASSURANCE.md`](baton/ASSURANCE.md) — standard and heightened assurance
 - [`baton/CONFORMANCE.md`](baton/CONFORMANCE.md) — observable obligations
-- [`operations/`](operations/) — the five canonical operations
-- [`schemas/work-status-v1.json`](schemas/work-status-v1.json) — the sole
-  authored status schema
-- [`reference/`](reference/) — record actions, board, and driver seam
+- [`operations/`](operations/) — five canonical operations
+- [`reference/`](reference/) — the portable receipt, board, and driver kit
 - [`conformance/`](conformance/) — portable and autonomous profiles
-
-## History
-
-RC3 retains RC2’s replacement for RC1’s experimental record model; the
-[RC1 release note](docs/releases/v1.0.0-rc.1.md) remains as history. Baton 0.x
-is preserved at the immutable
-[`v0.16.0`](https://github.com/sawy3r/baton/tree/v0.16.0) tag. RC3 can
-transactionally migrate one exact audited Claude v0.16 user installation, but
-the RC3 protocol does not reinterpret old delivery records.
 
 ## License
 

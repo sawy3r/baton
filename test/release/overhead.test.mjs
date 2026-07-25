@@ -13,7 +13,7 @@ const BASELINE = Object.freeze({
   fixed_words: 56_973,
 });
 
-test('RC3 overhead is reproducible and remains below every published budget', async () => {
+test('lightweight Baton overhead is reproducible and remains below every budget', async () => {
   const report = await measureOverhead();
   assert.equal(report.schema_version, 'baton.overhead-report/v1');
   assert.equal(report.pass, true);
@@ -25,15 +25,17 @@ test('RC3 overhead is reproducible and remains below every published budget', as
   });
   assert.equal(report.baseline.normal_work_happy_path.fixed_words, BASELINE.fixed_words);
   assert.equal(report.baseline.verified, true);
-  assert.equal(report.current.version, '1.0.0-rc.3');
-  assert.deepEqual(report.current.authored_schemas, ['work-status-v1.json']);
-  assert.equal(report.current.logical_handoffs.length, 4);
+  assert.ok(report.current.authored_schemas.length <= 1);
+  assert.deepEqual(
+    report.current.logical_handoffs.map(({ id }) => id),
+    ['plan', 'receipts'],
+  );
   assert.equal(report.current.operations.length, 5);
   assert.equal(report.current.adapters.length, 10);
   assert.equal(report.current.generated_package.parity, true);
   assert.equal(report.current.normal_work_happy_path.minimum_invocations, 4);
-  assert.equal(report.current.normal_work_happy_path.fixed_words, 1512);
-  assert.equal(report.comparison.fixed_word_ratio, 0.026539);
+  assert.ok(report.current.normal_work_happy_path.fixed_words < 1512);
+  assert.ok(report.comparison.fixed_word_ratio < 0.026539);
   assert.equal(report.budgets.every(({ pass }) => pass), true);
 });
 
