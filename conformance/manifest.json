@@ -104,9 +104,7 @@
           "id": "fixed-git-boundary-reconciliation-and-exact-composition",
           "suites": [
             "test/records/actions.test.mjs",
-            "test/records/git-topology.test.mjs",
-            "test/records/product-tree.test.mjs",
-            "test/records/hardening.test.mjs",
+            "test/records/git-boundary.test.mjs",
             "test/records/git-trust-adversarial.test.mjs"
           ]
         },
