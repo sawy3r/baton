@@ -4,32 +4,20 @@ import { pathToFileURL } from 'node:url';
 
 import {
   GitRecordError,
-  captureHeadRefs,
-  readFileAtOID,
   repositoryRoot,
-  resolveCapturedRecordPathAdmission,
   unsafeRunGit,
-  verifyReleaseIntegration,
 } from '../records/git.mjs';
 import {
-  RecordError,
-  captureRefSnapshot,
-  nextWorkForTrack,
-  parsePlanBytes,
-  readAuthoritativeRecordSnapshot,
-  selectAssemblyFromSnapshot,
-  selectAuthoritativeStatusFromSnapshot,
-  validateAssemblyProjection,
-  validateCapturedStatusHandoffs,
-  validateProjectionProofTopology,
-} from '../records/records.mjs';
+  BatonStateError,
+  isBatonStateError,
+  readBatonState,
+} from '../records/state.mjs';
 
 export const BOARD_VERSION = 'baton.board/v1';
 
 const RELEASE_PREFIX = 'refs/heads/release-wt/';
 const MAX_RELEASES = 32;
-const MAX_REPOSITORY_CACHE = 32;
-const MAX_DIAGNOSTIC_TEXT = 1000;
+const MAX_DIAGNOSTIC_TEXT = 1_000;
 const OPERATION_BY_ROLE = Object.freeze({
   planner: 'baton-plan',
   implementer: 'baton-implement',
@@ -37,10 +25,6 @@ const OPERATION_BY_ROLE = Object.freeze({
   verifier: 'baton-verify',
   merge: 'baton-merge',
 });
-
-function byteCompare(left, right) {
-  return Buffer.from(left).compare(Buffer.from(right));
-}
 
 function frozen(value) {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -58,10 +42,7 @@ function safeText(value, repository = '') {
 }
 
 function diagnostic(error, repository, context = {}) {
-  const code = (
-    (error instanceof RecordError || error instanceof GitRecordError)
-    && typeof error.code === 'string'
-  )
+  const code = isBatonStateError(error) || error instanceof GitRecordError
     ? error.code
     : 'BOARD_PROJECTION_FAILED';
   return frozen({
@@ -73,481 +54,209 @@ function diagnostic(error, repository, context = {}) {
   });
 }
 
-function boardDiagnostic(code, message, context = {}) {
-  return frozen({
-    code,
-    release: context.release ?? null,
-    track: context.track ?? null,
-    work: context.work ?? null,
-    message,
-  });
-}
-
-function repositoryIdentity(value) {
-  if (
-    value.startsWith('/')
-    || value.startsWith('\\\\')
-    || /^[A-Za-z]:[\\/]/.test(value)
-  ) {
-    throw new RecordError(
-      'INVALID_REPOSITORY_IDENTITY',
-      'plan repository must be a portable identity, not an absolute path',
-    );
-  }
-  return value;
-}
-
 function parseReleaseListing(raw) {
-  let rendered;
+  let text;
   try {
-    rendered = new TextDecoder('utf-8', { fatal: true }).decode(raw);
+    text = new TextDecoder('utf-8', { fatal: true }).decode(raw);
   } catch (error) {
-    throw new GitRecordError(
-      'MALFORMED_GIT_OUTPUT',
-      'release ref listing was not valid UTF-8',
-      error,
-    );
+    throw new GitRecordError('MALFORMED_GIT_OUTPUT', 'release refs are not valid UTF-8', error);
   }
-  const releases = [];
   const seen = new Set();
-  for (const line of rendered.split('\n').filter(Boolean)) {
-    const fields = line.split('\t');
-    if (fields.length !== 3) {
-      throw new GitRecordError('MALFORMED_GIT_OUTPUT', 'release ref listing was malformed');
-    }
-    const [ref, head, type] = fields;
+  const releases = text.split('\n').filter(Boolean).map((line) => {
+    const [ref, head, type, ...extra] = line.split('\t');
+    const release = ref?.slice(RELEASE_PREFIX.length);
     if (
-      !ref.startsWith(RELEASE_PREFIX)
-      || ref.length === RELEASE_PREFIX.length
-      || ref.slice(RELEASE_PREFIX.length).includes('/')
+      extra.length > 0
+      || !ref?.startsWith(RELEASE_PREFIX)
+      || !release
+      || release.includes('/')
       || type !== 'commit'
-      || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(head)
+      || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(head ?? '')
       || seen.has(ref)
     ) {
-      throw new GitRecordError('INVALID_RELEASE_REF', `invalid release ref listing entry ${ref}`);
+      throw new GitRecordError('INVALID_RELEASE_REF', `invalid release ref ${ref ?? ''}`);
     }
     seen.add(ref);
-    releases.push(frozen({
-      release: ref.slice(RELEASE_PREFIX.length),
-      ref,
-      head,
-    }));
-  }
+    return frozen({ release, ref, head });
+  });
   if (releases.length > MAX_RELEASES) {
-    throw new GitRecordError(
-      'RESOURCE_LIMIT',
-      `repository has more than ${MAX_RELEASES} Baton release refs`,
-    );
+    throw new GitRecordError('RESOURCE_LIMIT', `repository has more than ${MAX_RELEASES} releases`);
   }
-  releases.sort((left, right) => byteCompare(left.ref, right.ref));
-  return frozen(releases);
+  return frozen(releases.sort((left, right) => Buffer.from(left.ref).compare(Buffer.from(right.ref))));
 }
 
 export function discoverReleaseHeads(repo) {
-  const raw = unsafeRunGit(
-    repo,
-    [
-      'for-each-ref',
-      '--format=%(refname)%09%(objectname)%09%(objecttype)',
-      'refs/heads/release-wt',
-    ],
-    {
-      encoding: null,
-      label: 'discover Baton release refs',
-    },
-  );
-  return parseReleaseListing(raw);
+  return parseReleaseListing(unsafeRunGit(repo, [
+    'for-each-ref',
+    '--format=%(refname)%09%(objectname)%09%(objecttype)',
+    'refs/heads/release-wt',
+  ], {
+    encoding: null,
+    label: 'discover Baton release refs',
+  }));
 }
 
-function operationDescriptor(operation, scope, release, track = null, work = null) {
-  return frozen({
-    operation,
+function operation(operationRole, scope, release, track = null, work = null) {
+  const operationName = OPERATION_BY_ROLE[operationRole];
+  return operationName ? frozen({
+    operation: operationName,
     scope,
     release,
     track,
     work,
-  });
+  }) : null;
 }
 
-function operationForStatus(status, release, track, work, scope = 'work') {
-  const operation = OPERATION_BY_ROLE[status.next_role];
-  if (!operation) return null;
-  return operationDescriptor(operation, scope, release, track, work);
+function source(entry, ref, mode = 'receipt') {
+  return entry ? frozen({ mode, ref, head: entry.oid }) : null;
 }
 
-function projectBlocker(status) {
-  if (!status.blocker) return null;
+function blocker(item) {
+  if (item.status !== 'blocked') return null;
   return frozen({
-    code: status.blocker.code,
-    summary: status.blocker.summary,
+    code: item.outcome,
+    summary: item.current_receipt?.receipt.summary ?? 'External judgement is required.',
   });
 }
 
-function projectWork(work, selection, nextOperation) {
-  const status = selection.status;
-  return frozen({
-    id: work.id,
-    depends_on: frozen([...work.depends_on]),
-    stage: status.stage,
-    status: status.status,
-    next_role: status.next_role,
-    outcome: status.outcome,
-    blocker: projectBlocker(status),
-    source: frozen({
-      mode: selection.source,
-      ref: selection.ref,
-      head: selection.head,
-    }),
-    next_operation: nextOperation,
-  });
+function dependencyReady(slice, states) {
+  return [...new Set([...slice.depends_on, ...slice.consumes])]
+    .every((id) => states.get(id)?.pass);
 }
 
-function sameFrozenHead(statuses) {
-  const heads = new Set(statuses.map((status) => status.merge?.frozen_track_head));
-  return heads.size === 1 ? [...heads][0] : null;
-}
-
-function trackState(track, selections) {
-  const statuses = track.work.map((work) => selections.get(work.id).status);
-  const composed = statuses.every((status) => (
-    status.stage === 'merge'
-    && status.status === 'complete'
-    && status.outcome === 'merged'
-  ));
-  const ready = statuses.every((status) => (
-    status.stage === 'merge'
-    && status.status === 'ready'
-    && status.next_role === 'merge'
-    && status.outcome === 'pass'
-    && status.authority_ref === track.ref
-  ));
-  if (composed) {
-    const head = sameFrozenHead(statuses);
-    if (head === null) {
-      throw new RecordError(
-        'INCONSISTENT_FROZEN_HEAD',
-        `track ${track.id} completed work does not bind one frozen head`,
+function projectTracks(state) {
+  const bySlice = new Map(state.slices.map((slice) => [slice.location.slice.id, slice]));
+  const trackReady = new Map(state.tracks.map((track) => [
+    track.id,
+    track.slices.every((slice) => slice.pass),
+  ]));
+  const tracks = [];
+  const nextOperations = [];
+  for (const track of state.tracks) {
+    const blockers = track.depends_on.filter((id) => !trackReady.get(id));
+    const firstIncomplete = track.slices.find((slice) => !slice.pass) ?? null;
+    let nextOperation = null;
+    if (
+      !state.plan.target_stale
+      && blockers.length === 0
+      && firstIncomplete
+      && dependencyReady(firstIncomplete.location.slice, bySlice)
+    ) {
+      nextOperation = operation(
+        firstIncomplete.next_role,
+        'work',
+        state.release,
+        track.id,
+        firstIncomplete.location.slice.id,
       );
     }
-    return frozen({ composition: 'composed', frozen_head: head });
-  }
-  if (ready) return frozen({ composition: 'ready', frozen_head: selections.get(track.work[0].id).head });
-  return frozen({ composition: 'pending', frozen_head: null });
-}
-
-function verifySelectedStatus(plan, selection) {
-  if (selection.status.design || selection.status.proof) {
-    validateCapturedStatusHandoffs(plan, selection.status, selection.handoffs);
-  }
-}
-
-function materialisationMode(records, trackId, composition) {
-  if (composition === 'composed') return 'transferred';
-  return records.refs.some((entry) => entry.track_id === trackId) ? 'owner' : 'baseline';
-}
-
-function projectTracks(repo, plan, snapshot, records) {
-  const selections = new Map();
-  for (const track of plan.metadata.tracks) {
-    const topologyGroups = new Map();
-    for (const work of track.work) {
-      const selection = selectAuthoritativeStatusFromSnapshot(plan, work.id, records);
-      verifySelectedStatus(plan, selection);
-      selections.set(work.id, selection);
-      if (selection.status.proof) {
-        const statuses = topologyGroups.get(selection.head) ?? [];
-        statuses.push(selection.status);
-        topologyGroups.set(selection.head, statuses);
-      }
-    }
-    for (const [head, statuses] of topologyGroups) {
-      validateProjectionProofTopology(repo, plan, track.id, statuses, head);
-    }
-  }
-
-  const states = new Map(plan.metadata.tracks.map((track) => (
-    [track.id, trackState(track, selections)]
-  )));
-  const projected = [];
-  const nextOperations = [];
-
-  for (const track of plan.metadata.tracks) {
-    const state = states.get(track.id);
-    const dependencyBlockers = track.depends_on.filter((dependency) => (
-      states.get(dependency)?.composition !== 'composed'
-    ));
-    const statuses = Object.fromEntries(track.work.map((work) => (
-      [work.id, selections.get(work.id).status]
-    )));
-    const nextWorkId = nextWorkForTrack(plan, statuses, track.id);
-    let nextOperation = null;
-    if (dependencyBlockers.length === 0) {
-      if (state.composition === 'ready') {
-        nextOperation = operationDescriptor(
-          'baton-merge',
-          'track',
-          plan.metadata.release,
-          track.id,
-        );
-      } else if (state.composition === 'pending' && nextWorkId !== null) {
-        nextOperation = operationForStatus(
-          selections.get(nextWorkId).status,
-          plan.metadata.release,
-          track.id,
-          nextWorkId,
-        );
-      }
-    }
     if (nextOperation) nextOperations.push(nextOperation);
-    const work = track.work.map((item) => projectWork(
-      item,
-      selections.get(item.id),
-      nextOperation?.scope === 'work' && nextOperation.work === item.id
-        ? nextOperation
-        : null,
-    ));
-    const captured = snapshot.tracks.find((entry) => entry.id === track.id);
-    projected.push(frozen({
+    const ready = trackReady.get(track.id);
+    const finalPass = track.slices.at(-1)?.pass ?? null;
+    tracks.push(frozen({
       id: track.id,
       ref: track.ref,
-      head: captured?.head ?? null,
+      head: track.head,
       depends_on: frozen([...track.depends_on]),
-      blockers: frozen([...dependencyBlockers]),
-      materialisation: materialisationMode(records, track.id, state.composition),
-      composition: state.composition,
-      frozen_head: state.frozen_head,
-      work: frozen(work),
+      blockers: frozen(blockers),
+      materialisation: track.head ? 'owner' : 'baseline',
+      composition: ready ? (state.assembly.candidate ? 'composed' : 'ready') : 'pending',
+      frozen_head: finalPass?.receipt.candidate ?? null,
+      work: frozen(track.slices.map((slice) => {
+        const planSlice = slice.location.slice;
+        const applicable = nextOperation?.work === planSlice.id ? nextOperation : null;
+        const mode = slice.retained
+          ? 'retained'
+          : slice.current_receipt?.receipt.role === 'planner' ? 'plan' : 'receipt';
+        return frozen({
+          id: planSlice.id,
+          depends_on: frozen([...planSlice.depends_on]),
+          consumes: frozen([...planSlice.consumes]),
+          plan_revision: state.plan.metadata.revision,
+          attempt: slice.attempt,
+          stage: slice.stage,
+          status: slice.status,
+          next_role: slice.next_role,
+          outcome: slice.outcome,
+          blocker: blocker(slice),
+          source: source(slice.current_receipt, track.ref, mode),
+          next_operation: applicable,
+        });
+      })),
       next_operation: nextOperation,
     }));
   }
-  return frozen({
-    tracks: frozen(projected),
-    next_operations: frozen(nextOperations),
-    all_composed: [...states.values()].every((state) => state.composition === 'composed'),
-    any_blocked: [...selections.values()].some((selection) => selection.status.status === 'blocked'),
-  });
+  return frozen({ tracks, next_operations: nextOperations, ready: trackReady });
 }
 
-function projectAssembly(repo, plan, snapshot, records, admission, allComposed) {
-  const selection = selectAssemblyFromSnapshot(plan, records);
-  if (selection === null) {
-    const nextOperation = allComposed
-      ? operationDescriptor('baton-merge', 'assembly', plan.metadata.release)
-      : null;
-    return frozen({
-      assembly: frozen({
-        stage: 'verify',
-        status: allComposed ? 'ready' : 'waiting',
-        next_role: allComposed ? 'merge' : 'none',
-        outcome: 'none',
-        blocker: null,
-        source: null,
-        next_operation: nextOperation,
-      }),
-      next_operation: nextOperation,
-      complete: false,
-      blocked: false,
-    });
+function projectAssembly(state, allTracksReady) {
+  const item = state.assembly;
+  let nextOperation = null;
+  if (!state.plan.target_stale && allTracksReady) {
+    nextOperation = operation(item.next_role, 'assembly', state.release);
   }
-
-  validateAssemblyProjection(repo, plan, selection.status, {
-    snapshot,
-    recordRootAdmission: admission,
-    capturedHandoffs: selection.handoffs,
-    capturedTransfers: records.refs[0].statuses,
-  });
-  let complete = false;
-  if (
-    selection.status.stage === 'merge'
-    && selection.status.status === 'complete'
-    && selection.status.outcome === 'merged'
-  ) {
-    const binding = selection.status.merge;
-    verifyReleaseIntegration(
-      repo,
-      binding.expected_target,
-      selection.status.proof.candidate_commit,
-      binding.result_commit,
-    );
-    if (snapshot.target.head !== binding.result_commit) {
-      throw new RecordError(
-        'MOVED_TARGET',
-        `release target does not equal recorded result for ${plan.metadata.release}`,
-      );
-    }
-    complete = true;
-  }
-  const nextOperation = complete
-    ? null
-    : operationForStatus(
-      selection.status,
-      plan.metadata.release,
-      null,
-      null,
-      'assembly',
-    );
   return frozen({
-    assembly: frozen({
-      stage: selection.status.stage,
-      status: selection.status.status,
-      next_role: selection.status.next_role,
-      outcome: selection.status.outcome,
-      blocker: projectBlocker(selection.status),
-      source: frozen({
-        mode: selection.source,
-        ref: selection.ref,
-        head: selection.head,
-      }),
-      next_operation: nextOperation,
-    }),
+    stage: item.stage,
+    status: item.status,
+    next_role: item.next_role,
+    outcome: item.outcome,
+    blocker: blocker(item),
+    source: source(item.current_receipt, state.refs.release.ref),
     next_operation: nextOperation,
-    complete,
-    blocked: selection.status.status === 'blocked',
   });
 }
 
-function releaseStatus(tracks, assembly) {
-  if (assembly.complete) return 'complete';
-  if (tracks.any_blocked || assembly.blocked) return 'blocked';
-  if (!tracks.all_composed) return 'in_progress';
-  if (assembly.assembly.source === null) return 'assembly_ready';
-  if (assembly.assembly.stage === 'merge' && assembly.assembly.status === 'ready') {
-    return 'merge_ready';
-  }
-  return 'assembly';
-}
-
-function planPath(release) {
-  return `.baton/releases/${release}/plan.md`;
-}
-
-function readPlanAtReleaseHead(repo, release) {
-  const plan = parsePlanBytes(readFileAtOID(repo, release.head, planPath(release.release)));
+function releaseStatus(state, tracks) {
+  if (state.assembly.status === 'complete') return 'complete';
   if (
-    plan.metadata.release !== release.release
-    || plan.metadata.release_ref !== release.ref
-  ) {
-    throw new RecordError(
-      'RELEASE_PLAN_MISMATCH',
-      `approved plan does not match discovered release ${release.release}`,
-    );
-  }
-  return plan;
+    state.assembly.status === 'blocked'
+    || state.slices.some((slice) => slice.status === 'blocked')
+  ) return 'blocked';
+  if ([...tracks.ready.values()].some((ready) => !ready)) return 'in_progress';
+  if (state.assembly.outcome === 'pass') return 'merge_ready';
+  if (state.assembly.next_role === 'verifier') return 'assembly';
+  return 'assembly_ready';
 }
 
-function refreshReleaseHead(repo, ref) {
-  const [captured] = captureHeadRefs(repo, [ref]);
-  return captured.head;
-}
-
-function captureStableRelease(repo, discovered, captureSnapshot, attempts = 2) {
-  let expected = discovered;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    let plan;
-    try {
-      plan = readPlanAtReleaseHead(repo, expected);
-    } catch (error) {
-      const current = refreshReleaseHead(repo, expected.ref);
-      if (attempt + 1 < attempts && current !== null && current !== expected.head) {
-        expected = frozen({ ...expected, head: current });
-        continue;
-      }
-      throw error;
-    }
-    let snapshot;
-    try {
-      snapshot = captureSnapshot(repo, plan);
-    } catch (error) {
-      const current = refreshReleaseHead(repo, expected.ref);
-      if (attempt + 1 < attempts && current !== null && current !== expected.head) {
-        expected = frozen({ ...expected, head: current });
-        continue;
-      }
-      throw error;
-    }
-    if (snapshot.release.head === expected.head) return frozen({ plan, snapshot });
-    if (attempt + 1 < attempts && snapshot.release.head !== null) {
-      expected = frozen({ ...expected, head: snapshot.release.head });
-      continue;
-    }
-  }
-  throw new GitRecordError(
-    'REF_SNAPSHOT_UNSTABLE',
-    `release ref ${discovered.ref} moved during two snapshot attempts`,
-  );
-}
-
-function projectCapturedRelease(repo, plan, snapshot, admission) {
-  repositoryIdentity(plan.metadata.repository);
-  const records = readAuthoritativeRecordSnapshot(repo, plan, snapshot, {
-    recordRootAdmission: admission,
-  });
-  const tracks = projectTracks(repo, plan, snapshot, records);
-  const assembly = projectAssembly(
-    repo,
-    plan,
-    snapshot,
-    records,
-    admission,
-    tracks.all_composed,
-  );
-  const nextOperations = [...tracks.next_operations];
-  if (assembly.next_operation) nextOperations.push(assembly.next_operation);
+function projectState(state) {
+  const tracks = projectTracks(state);
+  const allTracksReady = [...tracks.ready.values()].every(Boolean);
+  const assembly = projectAssembly(state, allTracksReady);
+  const nextOperations = state.plan.target_stale
+    ? [operation('planner', 'release', state.release)]
+    : allTracksReady
+      ? assembly.next_operation ? [assembly.next_operation] : []
+      : tracks.next_operations;
   return frozen({
     schema_version: BOARD_VERSION,
-    release: plan.metadata.release,
-    repository: repositoryIdentity(plan.metadata.repository),
+    release: state.release,
+    repository: state.repository,
     valid: true,
-    diagnostics: frozen([]),
-    plan_digest: plan.digest,
-    release_ref: plan.metadata.release_ref,
-    release_head: snapshot.release.head,
-    target_ref: plan.metadata.target_ref,
-    target_head: snapshot.target.head,
-    status: releaseStatus(tracks, assembly),
+    diagnostics: frozen([...state.diagnostics]),
+    plan_digest: state.plan.digest,
+    plan_object: state.plan.oid,
+    plan_revision: state.plan.metadata.revision,
+    release_ref: state.refs.release.ref,
+    release_head: state.refs.release.head,
+    target_ref: state.refs.target.ref,
+    target_head: state.refs.target.head,
+    status: releaseStatus(state, tracks),
     tracks: tracks.tracks,
-    assembly: assembly.assembly,
-    next_operations: frozen(nextOperations),
+    assembly,
+    next_operations: frozen(nextOperations.filter(Boolean)),
   });
-}
-
-function projectRelease(repo, discovered, admission, captureSnapshot) {
-  const captured = captureStableRelease(repo, discovered, captureSnapshot);
-  return frozen({
-    ...captured,
-    release: projectCapturedRelease(
-      repo,
-      captured.plan,
-      captured.snapshot,
-      admission,
-    ),
-  });
-}
-
-function sameRefSnapshot(left, right) {
-  return (
-    left.release.ref === right.release.ref
-    && left.release.head === right.release.head
-    && left.target.ref === right.target.ref
-    && left.target.head === right.target.head
-    && left.tracks.length === right.tracks.length
-    && left.tracks.every((entry, index) => (
-      entry.id === right.tracks[index].id
-      && entry.ref === right.tracks[index].ref
-      && entry.head === right.tracks[index].head
-    ))
-  );
 }
 
 function invalidRelease(discovered, error, repository) {
-  const item = diagnostic(error, repository, { release: discovered.release });
   return frozen({
     schema_version: BOARD_VERSION,
     release: discovered.release,
     repository: null,
     valid: false,
-    diagnostics: frozen([item]),
+    diagnostics: frozen([diagnostic(error, repository, { release: discovered.release })]),
     plan_digest: null,
+    plan_object: null,
+    plan_revision: null,
     release_ref: discovered.ref,
     release_head: discovered.head,
     target_ref: null,
@@ -559,136 +268,82 @@ function invalidRelease(discovered, error, repository) {
   });
 }
 
-export function createBoardOracle({ captureSnapshot = captureRefSnapshot } = {}) {
-  if (typeof captureSnapshot !== 'function') {
-    throw new TypeError('captureSnapshot must be a function');
-  }
-  const repositoryCache = new Map();
+export function createBoardOracle({ readState = readBatonState } = {}) {
+  if (typeof readState !== 'function') throw new TypeError('readState must be a function');
   return frozen({
     project(repo = process.cwd(), options = {}) {
       let root;
       try {
         root = repositoryRoot(repo);
       } catch (error) {
-        const item = diagnostic(error, '');
         return frozen({
           schema_version: BOARD_VERSION,
           repository: null,
           valid: false,
-          diagnostics: frozen([item]),
+          diagnostics: frozen([diagnostic(error, '')]),
           releases: frozen([]),
           next_operations: frozen([]),
         });
-      }
-      let admission;
-      const getAdmission = () => {
-        if (admission) return admission;
-        admission = options.recordPathAdmission
-          ?? resolveCapturedRecordPathAdmission(root);
-        return admission;
-      };
-      const cacheable = options.recordPathAdmission === undefined;
-      const cache = cacheable
-        ? (repositoryCache.get(root) ?? new Map())
-        : null;
-      if (cacheable && !repositoryCache.has(root)) {
-        if (repositoryCache.size >= MAX_REPOSITORY_CACHE) {
-          repositoryCache.delete(repositoryCache.keys().next().value);
-        }
-        repositoryCache.set(root, cache);
       }
       let discovered;
       try {
         discovered = discoverReleaseHeads(root);
       } catch (error) {
-        const item = diagnostic(error, root);
         return frozen({
           schema_version: BOARD_VERSION,
           repository: null,
           valid: false,
-          diagnostics: frozen([item]),
+          diagnostics: frozen([diagnostic(error, root)]),
           releases: frozen([]),
           next_operations: frozen([]),
         });
       }
-
-      const activeRefs = new Set(discovered.map((entry) => entry.ref));
-      if (cache) {
-        for (const ref of cache.keys()) {
-          if (!activeRefs.has(ref)) cache.delete(ref);
-        }
-      }
       const releases = discovered.map((entry) => {
-        try {
-          const cached = cache?.get(entry.ref);
-          if (cached && cached.snapshot.release.head === entry.head) {
-            const snapshot = captureSnapshot(root, cached.plan);
-            if (snapshot.release.head === entry.head) {
-              if (sameRefSnapshot(snapshot, cached.snapshot)) return cached.release;
-              const release = projectCapturedRelease(
-                root,
-                cached.plan,
-                snapshot,
-                getAdmission(),
-              );
-              cache.set(entry.ref, frozen({
-                plan: cached.plan,
-                snapshot,
-                release,
-              }));
-              return release;
+        let current = entry;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            return projectState(readState(root, current.release, {
+              expectedReleaseHead: current.head,
+              captureRefs: options.captureRefs,
+              productExclusionAdmission: options.productExclusionAdmission,
+            }));
+          } catch (error) {
+            if (
+              error instanceof BatonStateError
+              && error.code === 'REF_SNAPSHOT_UNSTABLE'
+              && attempt === 0
+            ) {
+              current = discoverReleaseHeads(root)
+                .find(({ release }) => release === current.release) ?? current;
+              continue;
             }
-            if (snapshot.release.head !== null) {
-              const captured = captureStableRelease(
-                root,
-                frozen({ ...entry, head: snapshot.release.head }),
-                captureSnapshot,
-                1,
-              );
-              const release = projectCapturedRelease(
-                root,
-                captured.plan,
-                captured.snapshot,
-                getAdmission(),
-              );
-              cache.set(entry.ref, frozen({ ...captured, release }));
-              return release;
-            }
+            return invalidRelease(current, error, root);
           }
-          const projected = projectRelease(
-            root,
-            entry,
-            getAdmission(),
-            captureSnapshot,
-          );
-          if (cache) cache.set(entry.ref, projected);
-          return projected.release;
-        } catch (error) {
-          cache?.delete(entry.ref);
-          return invalidRelease(entry, error, root);
         }
+        return invalidRelease(
+          current,
+          new BatonStateError('REF_SNAPSHOT_UNSTABLE', `release ${current.release} kept moving`),
+          root,
+        );
       });
-      const diagnostics = releases.flatMap((release) => release.diagnostics);
-      const identities = new Set(
-        releases.filter((release) => release.valid).map((release) => release.repository),
-      );
-      if (identities.size > 1) {
-        diagnostics.push(boardDiagnostic(
-          'REPOSITORY_IDENTITY_MISMATCH',
-          'approved releases name different repository identities',
-        ));
-      }
-      const valid = diagnostics.length === 0;
-      const repositoryIdentity = identities.size === 1 ? [...identities][0] : null;
+      const repositories = new Set(releases.filter((release) => release.valid)
+        .map((release) => release.repository));
+      const globalDiagnostics = [];
+      if (repositories.size > 1) globalDiagnostics.push(frozen({
+        code: 'REPOSITORY_MISMATCH',
+        release: null,
+        track: null,
+        work: null,
+        message: 'release plans disagree on repository identity',
+      }));
+      const valid = releases.every((release) => release.valid) && globalDiagnostics.length === 0;
       return frozen({
         schema_version: BOARD_VERSION,
-        repository: repositoryIdentity,
+        repository: repositories.size === 1 ? [...repositories][0] : null,
         valid,
-        diagnostics: frozen(diagnostics),
+        diagnostics: frozen(globalDiagnostics),
         releases: frozen(releases),
-        next_operations: frozen(
-          releases.filter((release) => release.valid).flatMap((release) => release.next_operations),
-        ),
+        next_operations: frozen(releases.flatMap((release) => release.next_operations)),
       });
     },
   });
@@ -712,29 +367,25 @@ function usage() {
 }
 
 function main(argv) {
-  if (
-    argv.length > 1
-    || (argv.length === 1 && argv[0].startsWith('-'))
-  ) {
+  if (argv.includes('--help')) {
+    if (argv.length !== 1) {
+      process.stderr.write(usage());
+      process.exitCode = 64;
+      return;
+    }
     process.stderr.write(usage());
-    process.exitCode = (
-      argv.length === 1
-      && (argv[0] === '--help' || argv[0] === '-h')
-    ) ? 0 : 64;
     return;
   }
-  let board;
-  try {
-    board = projectBoard(argv[0] ?? process.cwd());
-  } catch (error) {
-    process.stderr.write(`${safeText(error?.message ?? 'invalid repository')}\n`);
-    process.exitCode = 2;
+  if (argv.length > 1 || argv[0]?.startsWith('-')) {
+    process.stderr.write(usage());
+    process.exitCode = 64;
     return;
   }
+  const board = projectBoard(argv[0] ?? process.cwd());
   process.stdout.write(boardBytes(board));
   process.exitCode = board.valid ? 0 : 2;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main(process.argv.slice(2));
 }

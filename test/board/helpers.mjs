@@ -1,371 +1,239 @@
 import {
-  captainResult,
-  designReady,
-  initialWorkStatus,
-  initialAssemblyStatus,
-  makePlanBytes,
-  makePlanMetadata,
-  mergedWork,
-  mergedAssembly,
-  proofReady,
-  temporaryRepository,
-  testProductExclusionAdmission,
-  verified,
-  clone,
-  commitAll,
-  git,
-  write,
-} from '../records/helpers.mjs';
-import {
-  assemblyProofPath,
-  assemblyStatusPath,
   digestBytes,
   parsePlanBytes,
-  workDesignPath,
-  workProofPath,
-  workStatusPath,
-} from '../../reference/records/records.mjs';
+  parseReceiptCommitMessage,
+  renderReceiptCommit,
+} from '../../reference/records/receipts.mjs';
 import {
   productTreeIdentity,
-  resolveRef,
-  unsafeApplyExactComposition,
-  unsafeCommitRecordTransition,
 } from '../../reference/records/git.mjs';
+import {
+  commitAll,
+  git,
+  temporaryRepository,
+  testProductExclusionAdmission,
+  write,
+} from '../records/helpers.mjs';
 
-export function bindStatus(status, plan) {
-  const bound = clone(status);
-  bound.plan.digest = plan.digest;
-  bound.plan.approval.ref = plan.metadata.approval_ref;
-  return bound;
-}
-
-export function writeStatus(repo, plan, status) {
-  write(repo, workStatusPath(plan, status.work_id), `${JSON.stringify(status)}\n`);
-}
-
-export function baselineFixture(metadata = makePlanMetadata()) {
-  const fixture = temporaryRepository();
-  write(fixture.repo, 'README.md', 'product\n');
-  const target = commitAll(fixture.repo, 'base product');
-  const plan = parsePlanBytes(makePlanBytes(metadata));
-  git(fixture.repo, 'switch', '-q', '-c', `release-wt/${metadata.release}`, target);
-  write(
-    fixture.repo,
-    `.baton/releases/${metadata.release}/plan.md`,
-    plan.bytes,
-  );
-  for (const track of plan.metadata.tracks) {
-    for (const work of track.work) {
-      writeStatus(
-        fixture.repo,
-        plan,
-        bindStatus(initialWorkStatus({
-          workId: work.id,
-          trackId: track.id,
-          authority: plan.metadata.release_ref,
-        }), plan),
-      );
-    }
-  }
-  const release = commitAll(fixture.repo, 'approved release baseline');
+export function slice(id, include, overrides = {}) {
   return {
-    ...fixture,
+    id,
+    outcome: `Deliver ${id}.`,
+    scope: { include: [include], exclude: [] },
+    acceptance: [{ id: `${id}-A1`, text: `${id} is observable.` }],
+    checks: ['node --test'],
+    constraints: [],
+    depends_on: [],
+    consumes: [],
+    ...overrides,
+  };
+}
+
+export function oneSliceMetadata(overrides = {}) {
+  return {
+    schema_version: 'baton.plan/v2',
+    release: 'v1.0.0',
+    revision: 1,
+    previous_plan: null,
+    repository: 'example/baton',
+    target_ref: 'refs/heads/main',
+    approval_ref: 'approval://v1.0.0/1',
+    tracks: [{
+      id: 'T1',
+      depends_on: [],
+      slices: [slice('S1', 'src/one.txt')],
+    }],
+    ...overrides,
+  };
+}
+
+export function planBytes(metadata) {
+  return Buffer.from(
+    `\`\`\`baton-plan-v2\n${JSON.stringify(metadata)}\n\`\`\`\n\n# ${metadata.release}\n`,
+  );
+}
+
+export function appendReceipt(repo, receipt, subject = `${receipt.role} ${receipt.result}`) {
+  const message = renderReceiptCommit({
+    subject,
+    detail: receipt.summary,
+    receipt: { ...receipt, detail: digestBytes(Buffer.alloc(0)) },
+  });
+  write(repo, '.git/BATON_BOARD_MESSAGE', message);
+  git(repo, 'commit', '--allow-empty', '-q', '-F', '.git/BATON_BOARD_MESSAGE');
+  return {
+    oid: git(repo, 'rev-parse', 'HEAD'),
+    receipt: parseReceiptCommitMessage(message).receipt,
+  };
+}
+
+export function baselineFixture(metadata = oneSliceMetadata()) {
+  const temporary = temporaryRepository();
+  const { repo } = temporary;
+  write(repo, 'README.md', 'product\n');
+  const target = commitAll(repo, 'base product');
+  const parsed = parsePlanBytes(planBytes(metadata));
+  git(repo, 'switch', '-q', '-c', `release-wt/${metadata.release}`, target);
+  write(repo, `.baton/releases/${metadata.release}/plan.md`, parsed.bytes);
+  const planCommit = commitAll(repo, `plan revision ${metadata.revision}`);
+  const plan = git(
+    repo,
+    'rev-parse',
+    `HEAD:.baton/releases/${metadata.release}/plan.md`,
+  );
+  const approval = appendReceipt(repo, {
+    version: 1,
+    release: metadata.release,
+    role: 'planner',
+    result: 'approved',
     plan,
+    binds: planCommit,
     target,
-    release,
-  };
-}
-
-export function addBaselineRelease(fixture, release, { malformedWork = null } = {}) {
-  const metadata = makePlanMetadata();
-  metadata.release = release;
-  metadata.release_ref = `refs/heads/release-wt/${release}`;
-  metadata.approval_ref = `approval://${release}/1`;
-  for (const track of metadata.tracks) {
-    track.ref = `refs/heads/track/${release}/${track.id}`;
-  }
-  const plan = parsePlanBytes(makePlanBytes(metadata));
-  git(fixture.repo, 'switch', '-q', 'main');
-  git(fixture.repo, 'switch', '-q', '-c', `release-wt/${release}`);
-  write(fixture.repo, `.baton/releases/${release}/plan.md`, plan.bytes);
-  for (const track of plan.metadata.tracks) {
-    for (const work of track.work) {
-      if (work.id === malformedWork) {
-        write(fixture.repo, workStatusPath(plan, work.id), '{"malformed":true}\n');
-        continue;
-      }
-      const status = initialWorkStatus({
-        workId: work.id,
-        trackId: track.id,
-        authority: plan.metadata.release_ref,
-      });
-      status.release = release;
-      status.owner_ref = track.ref;
-      status.authority_ref = plan.metadata.release_ref;
-      status.plan.digest = plan.digest;
-      status.plan.approval.ref = plan.metadata.approval_ref;
-      writeStatus(fixture.repo, plan, status);
-    }
-  }
+    summary: `Plan revision ${metadata.revision} is approved.`,
+  });
   return {
+    ...temporary,
+    metadata,
+    parsed,
     plan,
-    head: commitAll(fixture.repo, `approved ${release} baseline`),
+    planCommit,
+    approval,
+    target,
+    admission: testProductExclusionAdmission(repo),
   };
 }
 
-export function prepareReleaseMove(fixture, label) {
-  git(fixture.repo, 'switch', '-q', 'release-wt/v1.0.0');
-  write(fixture.repo, `notes/${label}.txt`, `${label}\n`);
-  return commitAll(fixture.repo, label);
-}
-
-export function materializeTrack(fixture, trackId) {
-  const track = fixture.plan.metadata.tracks.find((item) => item.id === trackId);
-  const admission = testProductExclusionAdmission(fixture.repo);
-  const materialization = {
-    base_commit: fixture.release,
-    dependencies: track.depends_on.map((dependencyId) => {
-      const dependency = fixture.plan.metadata.tracks.find((item) => item.id === dependencyId);
-      return {
-        track_id: dependencyId,
-        frozen_head: resolveRef(fixture.repo, dependency.ref),
-      };
-    }),
-  };
-  const statuses = {};
-  const changes = {};
-  for (const work of track.work) {
-    const status = bindStatus(initialWorkStatus({
-      workId: work.id,
-      trackId,
-      materialization,
-    }), fixture.plan);
-    statuses[work.id] = status;
-    changes[workStatusPath(fixture.plan, work.id)] = `${JSON.stringify(status)}\n`;
+function plannedSlice(fixture, sliceID) {
+  for (const track of fixture.parsed.metadata.tracks) {
+    const item = track.slices.find(({ id }) => id === sliceID);
+    if (item) return { track, item };
   }
-  git(fixture.repo, 'switch', '-q', 'main');
-  unsafeCommitRecordTransition(fixture.repo, {
-    ref: fixture.plan.metadata.release_ref,
-    expectedHead: fixture.release,
-    message: `materialize ${trackId}`,
-    recordPathAdmission: admission,
-    productExclusionAdmission: admission,
-    changes,
-    createRef: { ref: track.ref },
-  });
-  fixture.release = resolveRef(fixture.repo, fixture.plan.metadata.release_ref);
-  return {
-    track,
-    admission,
-    materialization,
-    statuses,
-    marker: resolveRef(fixture.repo, track.ref),
-  };
+  throw new Error(`unknown slice ${sliceID}`);
 }
 
-export function advanceToCaptain(fixture, materialized, workId) {
-  git(
-    fixture.repo,
-    'switch',
-    '-q',
-    materialized.track.ref.replace('refs/heads/', ''),
-  );
-  const bytes = Buffer.from(`# ${workId} design\n`);
-  write(fixture.repo, workDesignPath(fixture.plan, workId), bytes);
-  const status = designReady(materialized.statuses[workId], {
-    digest: digestBytes(bytes),
-    producer: `${workId}-implementer-design`,
-  });
-  writeStatus(fixture.repo, fixture.plan, status);
-  const head = commitAll(fixture.repo, `design ${workId}`);
-  return { status, head };
-}
-
-export function passEveryWork(fixture, materialized) {
-  git(
-    fixture.repo,
-    'switch',
-    '-q',
-    materialized.track.ref.replace('refs/heads/', ''),
-  );
-  let previousCandidate = materialized.materialization.base_commit;
-  const passed = {};
-  for (const work of materialized.track.work) {
-    const designBytes = Buffer.from(`# ${work.id} design\n`);
-    write(fixture.repo, workDesignPath(fixture.plan, work.id), designBytes);
-    const designed = designReady(materialized.statuses[work.id], {
-      digest: digestBytes(designBytes),
-      producer: `${work.id}-implementer-design`,
-    });
-    writeStatus(fixture.repo, fixture.plan, designed);
-    commitAll(fixture.repo, `design ${work.id}`);
-
-    const proceeded = captainResult(designed, 'proceed');
-    proceeded.captain.invocation = `${work.id}-captain`;
-    writeStatus(fixture.repo, fixture.plan, proceeded);
-    commitAll(fixture.repo, `captain proceeds ${work.id}`);
-
-    write(fixture.repo, work.scope.include[0], `${work.id} product\n`);
-    const candidate = commitAll(fixture.repo, `implement ${work.id}`);
-    const identity = productTreeIdentity(fixture.repo, candidate, materialized.admission);
-    const proofBytes = Buffer.from(`# ${work.id} proof\n`);
-    write(fixture.repo, workProofPath(fixture.plan, work.id), proofBytes);
-    const implemented = proofReady(proceeded, {
-      digest: digestBytes(proofBytes),
-      producer: `${work.id}-implementer-code`,
-      candidate,
-      candidateTree: identity.candidateTree,
-      productTree: identity.productTree,
-    });
-    implemented.proof.base_commit = previousCandidate;
-    writeStatus(fixture.repo, fixture.plan, implemented);
-    commitAll(fixture.repo, `proof ${work.id}`);
-
-    const verifiedStatus = verified(implemented, 'pass');
-    verifiedStatus.verification.invocation = `${work.id}-verifier`;
-    writeStatus(fixture.repo, fixture.plan, verifiedStatus);
-    commitAll(fixture.repo, `verify ${work.id}`);
-    passed[work.id] = verifiedStatus;
-    previousCandidate = candidate;
+function switchTrack(fixture, trackID) {
+  const branch = `track/${fixture.metadata.release}/${trackID}`;
+  try {
+    git(fixture.repo, 'switch', '-q', branch);
+  } catch {
+    git(fixture.repo, 'switch', '-q', '-c', branch, fixture.approval.oid);
   }
-  return { passed, candidate: previousCandidate };
 }
 
-export function composeSingleWorkTrack(fixture, trackId) {
-  const materialized = materializeTrack(fixture, trackId);
-  const [work] = materialized.track.work;
-  const designed = advanceToCaptain(fixture, materialized, work.id).status;
-  const proceeded = captainResult(designed, 'proceed');
-  proceeded.captain.invocation = `${work.id}-captain`;
-  writeStatus(fixture.repo, fixture.plan, proceeded);
-  commitAll(fixture.repo, `captain proceeds ${work.id}`);
-
-  write(fixture.repo, work.scope.include[0], `${work.id} product\n`);
-  const candidate = commitAll(fixture.repo, `implement ${work.id}`);
-  const identity = productTreeIdentity(fixture.repo, candidate, materialized.admission);
-  const proofBytes = Buffer.from(`# ${work.id} proof\n`);
-  write(fixture.repo, workProofPath(fixture.plan, work.id), proofBytes);
-  const implemented = proofReady(proceeded, {
-    digest: digestBytes(proofBytes),
-    producer: `${work.id}-implementer-code`,
-    candidate,
-    candidateTree: identity.candidateTree,
-    productTree: identity.productTree,
-  });
-  implemented.proof.base_commit = materialized.materialization.base_commit;
-  writeStatus(fixture.repo, fixture.plan, implemented);
-  commitAll(fixture.repo, `proof ${work.id}`);
-  const passed = verified(implemented, 'pass');
-  passed.verification.invocation = `${work.id}-verifier`;
-  writeStatus(fixture.repo, fixture.plan, passed);
-  const frozenHead = commitAll(fixture.repo, `verify ${work.id}`);
-
-  git(fixture.repo, 'switch', '-q', `release-wt/${fixture.plan.metadata.release}`);
-  const expectedRelease = resolveRef(fixture.repo, fixture.plan.metadata.release_ref);
-  git(
-    fixture.repo,
-    'merge',
-    '-q',
-    '--no-ff',
-    '-m',
-    `compose ${trackId}`,
-    materialized.track.ref.replace('refs/heads/', ''),
-  );
-  const composition = resolveRef(fixture.repo, fixture.plan.metadata.release_ref);
-  const complete = mergedWork(passed);
-  complete.merge.frozen_track_head = frozenHead;
-  complete.merge.expected_target = expectedRelease;
-  complete.merge.observed_target = expectedRelease;
-  complete.merge.result_commit = composition;
-  writeStatus(fixture.repo, fixture.plan, complete);
-  const transfer = commitAll(fixture.repo, `transfer ${trackId} authority`);
-  fixture.release = transfer;
-  return {
-    ...materialized,
-    candidate,
-    frozenHead,
-    composition,
-    transfer,
-    passed,
-    complete,
+export function passSlice(fixture, sliceID, {
+  attempt = 1,
+  inputs = {},
+  implementerChecks = 'implementer checks',
+  verifierChecks = 'verifier checks',
+} = {}) {
+  const { track, item } = plannedSlice(fixture, sliceID);
+  switchTrack(fixture, track.id);
+  const common = {
+    version: 1,
+    release: fixture.metadata.release,
+    slice: sliceID,
+    attempt,
+    plan: fixture.plan,
+    contract: fixture.parsed.metadata.contracts[sliceID],
   };
-}
-
-export function oneTrackMetadata() {
-  const metadata = makePlanMetadata();
-  metadata.tracks = [{
-    ...metadata.tracks[0],
-    work: [metadata.tracks[0].work[0]],
-  }];
-  return metadata;
-}
-
-export function prepareAssembly(fixture, composed) {
-  git(fixture.repo, 'switch', '-q', `release-wt/${fixture.plan.metadata.release}`);
-  const candidate = resolveRef(fixture.repo, fixture.plan.metadata.release_ref);
-  const identity = productTreeIdentity(fixture.repo, candidate, composed.admission);
-  const proofBytes = Buffer.from('# Assembly proof\n\nThe composed outcome passes as a whole.\n');
-  const assembly = initialAssemblyStatus();
-  assembly.release = fixture.plan.metadata.release;
-  assembly.owner_ref = fixture.plan.metadata.release_ref;
-  assembly.authority_ref = fixture.plan.metadata.release_ref;
-  assembly.target_ref = fixture.plan.metadata.target_ref;
-  assembly.plan.digest = fixture.plan.digest;
-  assembly.plan.approval.ref = fixture.plan.metadata.approval_ref;
-  assembly.proof.digest = digestBytes(proofBytes);
-  assembly.proof.repository = fixture.plan.metadata.repository;
-  assembly.proof.base_commit = candidate;
-  assembly.proof.candidate_commit = candidate;
-  assembly.proof.candidate_tree = identity.candidateTree;
-  assembly.proof.product_tree = identity.productTree;
-  assembly.proof.plan_digest = fixture.plan.digest;
-  assembly.proof.approval_digest = assembly.plan.approval.digest;
-  assembly.proof.components = [{
-    track_id: composed.track.id,
-    head: composed.frozenHead,
-  }];
-  write(fixture.repo, assemblyProofPath(fixture.plan), proofBytes);
-  write(
-    fixture.repo,
-    assemblyStatusPath(fixture.plan),
-    `${JSON.stringify(assembly)}\n`,
-  );
-  fixture.release = commitAll(fixture.repo, 'prepare assembly');
-  return { assembly, candidate, proofBytes };
-}
-
-export function passAssembly(fixture, prepared) {
-  const passed = verified(prepared.assembly, 'pass');
-  passed.verification.invocation = 'assembly-verifier';
-  write(
-    fixture.repo,
-    assemblyStatusPath(fixture.plan),
-    `${JSON.stringify(passed)}\n`,
-  );
-  fixture.release = commitAll(fixture.repo, 'verify assembly');
-  return { ...prepared, passed };
-}
-
-export function mergeAssembly(fixture, composed, passed) {
-  const integration = unsafeApplyExactComposition(fixture.repo, {
-    targetRef: fixture.plan.metadata.target_ref,
-    expectedHead: fixture.target,
-    candidate: passed.candidate,
-    productExclusionAdmission: composed.admission,
+  const design = appendReceipt(fixture.repo, {
+    ...common,
+    role: 'implementer',
+    result: 'designed',
+    binds: fixture.approval.oid,
+    summary: `Design ${sliceID}.`,
   });
-  const complete = mergedAssembly(passed.passed);
-  complete.release = fixture.plan.metadata.release;
-  complete.owner_ref = fixture.plan.metadata.release_ref;
-  complete.authority_ref = fixture.plan.metadata.release_ref;
-  complete.target_ref = fixture.plan.metadata.target_ref;
-  complete.merge.expected_target = fixture.target;
-  complete.merge.observed_target = fixture.target;
-  complete.merge.result_commit = integration.result;
-  write(
+  const captain = appendReceipt(fixture.repo, {
+    ...common,
+    role: 'captain',
+    result: 'proceed',
+    binds: design.oid,
+    summary: `Proceed with ${sliceID}.`,
+  });
+  write(fixture.repo, item.scope.include[0], `${sliceID} product\n`);
+  const candidate = commitAll(fixture.repo, `implement ${sliceID}`);
+  const identity = productTreeIdentity(fixture.repo, candidate, fixture.admission);
+  const implemented = appendReceipt(fixture.repo, {
+    ...common,
+    role: 'implementer',
+    result: 'candidate',
+    binds: captain.oid,
+    base: fixture.target,
+    candidate,
+    product_tree: identity.productTree,
+    inputs,
+    checks: digestBytes(Buffer.from(implementerChecks)),
+    summary: `${sliceID} candidate.`,
+  });
+  const verified = appendReceipt(fixture.repo, {
+    ...common,
+    role: 'verifier',
+    result: 'pass',
+    binds: implemented.oid,
+    candidate,
+    product_tree: identity.productTree,
+    inputs,
+    checks: digestBytes(Buffer.from(verifierChecks)),
+    summary: `${sliceID} passes.`,
+  });
+  return { design, captain, candidate, identity, implemented, verified };
+}
+
+export function designSlice(fixture, sliceID, { attempt = 1, binds = fixture.approval.oid } = {}) {
+  const { track } = plannedSlice(fixture, sliceID);
+  switchTrack(fixture, track.id);
+  return appendReceipt(fixture.repo, {
+    version: 1,
+    release: fixture.metadata.release,
+    slice: sliceID,
+    role: 'implementer',
+    result: 'designed',
+    attempt,
+    plan: fixture.plan,
+    contract: fixture.parsed.metadata.contracts[sliceID],
+    binds,
+    summary: `Design ${sliceID}.`,
+  });
+}
+
+export function revisePlan(fixture, mutate, { moveTarget = false } = {}) {
+  let target = fixture.target;
+  if (moveTarget) {
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, `target-${fixture.metadata.revision + 1}.txt`, 'advance\n');
+    target = commitAll(fixture.repo, 'advance target');
+  }
+  git(fixture.repo, 'switch', '-q', `release-wt/${fixture.metadata.release}`);
+  const metadata = structuredClone(fixture.metadata);
+  metadata.revision += 1;
+  metadata.previous_plan = fixture.plan;
+  metadata.approval_ref = `approval://${metadata.release}/${metadata.revision}`;
+  mutate?.(metadata);
+  const parsed = parsePlanBytes(planBytes(metadata));
+  write(fixture.repo, `.baton/releases/${metadata.release}/plan.md`, parsed.bytes);
+  const planCommit = commitAll(fixture.repo, `plan revision ${metadata.revision}`);
+  const plan = git(
     fixture.repo,
-    assemblyStatusPath(fixture.plan),
-    `${JSON.stringify(complete)}\n`,
+    'rev-parse',
+    `HEAD:.baton/releases/${metadata.release}/plan.md`,
   );
-  fixture.release = commitAll(fixture.repo, 'record release merge');
-  return { ...passed, complete, integration };
+  const approval = appendReceipt(fixture.repo, {
+    version: 1,
+    release: metadata.release,
+    role: 'planner',
+    result: 'approved',
+    plan,
+    binds: planCommit,
+    target,
+    summary: `Plan revision ${metadata.revision} is approved.`,
+  });
+  Object.assign(fixture, {
+    metadata,
+    parsed,
+    plan,
+    planCommit,
+    approval,
+    target,
+  });
+  return fixture;
 }
