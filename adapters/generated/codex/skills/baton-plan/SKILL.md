@@ -4,7 +4,7 @@ description: "Create or revise an externally approved Baton plan. Use when start
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.2
+package-version: 1.0.0-rc.3
 operation-version: baton.operation/v1
 operation-sha256: sha256:e5c3ace4177cb10c9b0d3b5e569aa7cbe43bfdb3b7f4a17071a925a5ba3b77d3
 -->

@@ -13,7 +13,7 @@ const BASELINE = Object.freeze({
   fixed_words: 56_973,
 });
 
-test('RC2 overhead is reproducible and remains below every published budget', async () => {
+test('RC3 overhead is reproducible and remains below every published budget', async () => {
   const report = await measureOverhead();
   assert.equal(report.schema_version, 'baton.overhead-report/v1');
   assert.equal(report.pass, true);
@@ -25,7 +25,7 @@ test('RC2 overhead is reproducible and remains below every published budget', as
   });
   assert.equal(report.baseline.normal_work_happy_path.fixed_words, BASELINE.fixed_words);
   assert.equal(report.baseline.verified, true);
-  assert.equal(report.current.version, '1.0.0-rc.2');
+  assert.equal(report.current.version, '1.0.0-rc.3');
   assert.deepEqual(report.current.authored_schemas, ['work-status-v1.json']);
   assert.equal(report.current.logical_handoffs.length, 4);
   assert.equal(report.current.operations.length, 5);

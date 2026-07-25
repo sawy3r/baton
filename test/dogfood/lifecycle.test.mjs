@@ -9,7 +9,7 @@ test('the composed kit dogfoods the complete three-track real-Git lifecycle', {
   const result = await runDogfood();
 
   assert.equal(result.schema_version, 'baton.dogfood-result/v1');
-  assert.equal(result.package_version, '1.0.0-rc.2');
+  assert.equal(result.package_version, '1.0.0-rc.3');
   assert.match(result.plan_digest, /^sha256:[0-9a-f]{64}$/);
   assert.match(result.package_digest, /^sha256:[0-9a-f]{64}$/);
   assert.deepEqual(result.responsibility_invocations, {

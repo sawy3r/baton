@@ -4,7 +4,7 @@ description: "Design or implement one authoritative Baton work item. Use for an 
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.2
+package-version: 1.0.0-rc.3
 operation-version: baton.operation/v1
 operation-sha256: sha256:2444bead5b1a32188003ce515ac8862bd04d373b740bd89646a86ac5341c2f88
 -->

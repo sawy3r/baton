@@ -1,4 +1,4 @@
-# Install Baton RC2
+# Install Baton RC3
 
 Baton installs the same protocol, records, operations, and local board for
 Claude Code and Codex. The host-specific files are thin Skills around identical
@@ -18,7 +18,7 @@ below. The installer needs only:
 This is the easiest route. Open Claude Code or Codex and paste:
 
 ```text
-Install Baton v1.0.0-rc.2 for this coding agent. Clone
+Install Baton v1.0.0-rc.3 for this coding agent. Clone
 https://github.com/sawy3r/baton at that exact tag, read the root INSTALL.md,
 and install it for this tool—Claude Code or Codex—at user scope. Run the
 matching installer with --dry-run and show me the exact actions first. After I
@@ -29,12 +29,12 @@ provider credentials. If this host is not supported, stop and tell me.
 ```
 
 The prompt pins the reviewed release and makes the dry-run the approval point.
-The ready-made RC2 installers support Claude Code and Codex. Baton itself is
+The ready-made RC3 installers support Claude Code and Codex. Baton itself is
 platform-agnostic, but the agent should not invent an unreviewed host adapter.
 
 ## Install it yourself
 
-Clone Baton at `v1.0.0-rc.2`, run the commands below from that checkout, and
+Clone Baton at `v1.0.0-rc.3`, run the commands below from that checkout, and
 preview every install before applying it.
 
 ## User install
@@ -202,14 +202,14 @@ Only a Claude **user** install can migrate Baton v0.16. The installer recognizes
 the exact audited v0.16 package: 79 known support files, eight known commands,
 and the exact legacy block at the end of `CLAUDE.md`.
 
-On an exact match, one transaction preserves preimages, installs RC2, removes
+On an exact match, one transaction preserves preimages, installs RC3, removes
 only those known legacy commands and block, and leaves unrelated commands and
 the preceding instruction bytes unchanged. If any managed byte, path, or block
 differs, installation stops with `LEGACY_FINGERPRINT_MISMATCH` before mutation.
 The installer does not guess how to migrate a modified setup.
 
 This moves the local host package; it does not reinterpret old Baton delivery
-records as RC2 records.
+records as RC3 records.
 
 ## Roll back or uninstall
 

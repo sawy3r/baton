@@ -256,7 +256,7 @@ async function measureCurrent(root) {
   const version = (await readFile(join(root, 'VERSION'), 'utf8')).trim();
   const observedOperations = OPERATIONS.map(({ name }) => name);
   if (!isDeepStrictEqual(observedOperations, EXPECTED_OPERATIONS)) {
-    fail('current canonical operation inventory differs from the five RC2 operations');
+    fail('current canonical operation inventory differs from the five RC3 operations');
   }
 
   const rendered = await renderGenerated({ bundleRoot: root });

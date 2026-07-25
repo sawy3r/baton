@@ -15,7 +15,7 @@ function sha256(bytes) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 }
 
-test('the RC2 manifest inventories executable portable and unrun engine profiles truthfully', async () => {
+test('the RC3 manifest inventories executable portable and unrun engine profiles truthfully', async () => {
   const version = (await readFile(path.join(ROOT, 'VERSION'), 'utf8')).trim();
   const manifest = JSON.parse(
     await readFile(path.join(ROOT, 'conformance/manifest.json'), 'utf8'),

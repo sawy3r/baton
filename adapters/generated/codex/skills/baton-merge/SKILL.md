@@ -4,7 +4,7 @@ description: "Deterministically compose a Baton track, prepare assembly, or inte
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.2
+package-version: 1.0.0-rc.3
 operation-version: baton.operation/v1
 operation-sha256: sha256:94b8fb6026c903569cd375cafd11d27868759072dde256265556c710387ae62c
 -->
