@@ -123,7 +123,7 @@ back, rotate providers, or turn a model response into a Baton verdict.
 ## RC3 evidence
 
 The current release candidate is
-[`v1.0.0-rc.3`](docs/releases/v1.0.0-rc.3.md). Its portable profile passes 142
+[`v1.0.0-rc.3`](docs/releases/v1.0.0-rc.3.md). Its portable profile passes 143
 Node tests plus strict Python validation, one schema, generated-package parity,
 real-Git dogfood, installer isolation, board security and performance, and all
 nine measured overhead budgets.

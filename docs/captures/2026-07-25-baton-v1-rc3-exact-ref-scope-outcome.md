@@ -6,13 +6,13 @@ Release: `v1.0.0-rc.3`
 Branch: `fix/v1.0.0-rc.3-exact-refs`
 Target: `main`
 Exact base: `890238ef063bb53cf51fb3359f1ff527f14846c6`
-Product candidate: `56f9d4745d0704c3f21741d218ccd7c0094ea5fc`
-Product candidate tree: `16ca20e144fa61fd39d9a3ef98832949f5f4b27b`
+Initial product commit: `56f9d4745d0704c3f21741d218ccd7c0094ea5fc`
+Gap-closure implementation head: `f48818da7b3fd1df9c936e42b4a259dc5bc69362`
+Gap-closure tree: `08eff65cb1259bdc7d29deb81c4a413fdb63a30a`
 Approved design:
 `sha256:725f0c93f8981a5c7f413de900ed0672900b6b7e10cf652404b484a103ac1e3c`
 Captain: `PROCEED`
-Implementer:
-`codex:/root/baton_rc3_implementer/v1.0.0-rc.3/exact-ref-cas/design/1`
+Implementer: `codex:/root/baton_ref_audit`
 
 ## Approved scope
 
@@ -89,11 +89,11 @@ Observed checks:
 
 ```text
 PASS  node --test test/records/git-trust-adversarial.test.mjs
-      24 tests
+      25 tests
 PASS  node --test test/records/*.test.mjs
-      77 tests
+      78 tests
 PASS  complete portable Node command
-      142 tests
+      143 tests
 PASS  isolated-venv conformance/check.py
       7 strict JSON cases, 1 schema, 2 positive and 6 negative fixtures
 PASS  node scripts/generate-adapters.mjs --check
@@ -107,22 +107,37 @@ PASS  RC2-to-RC3 diff under operations/ and schemas/
       no changed bytes
 ```
 
-Captain's deterministic condition was observed for both injected pre-commit
-kill and timeout. Each fixture recorded that the exact loose-ref lock existed
-after `prepare: ok`, recorded the actual Git transaction child PID, then proved
-the child no longer existed, the exact `.lock` was absent, the target remained
-at the complete pre-vector, and a new cooperative compare-and-set succeeded.
+The true after-capture race matrix covers create, update, and verify against
+both resolving and dangling aliases. Every cell preserves the raced alias,
+referent, paired ref, and their raw reflog bytes. Git 2.43 refuses
+create-over-resolving and update-over-dangling during prepare. The other four
+cells reach exact prepared locks, prove a cooperative Git update fails against
+the lock, and then abort at the helper's representation recheck.
 
-Post-commit injected non-zero exit, SIGKILL, extra output, parser failure, and
-parent cleanup failure all reconciled to the desired exact refs and returned
-success. Repeating the exact transaction returned success without another ref
-or reflog mutation.
+Captain's deterministic condition covers injected pre-commit SIGKILL, timeout,
+early exit, malformed/extra/missing acknowledgement, forced inspection error,
+and bounded stdout/stderr overflow. Every row recorded a prepared exact lock
+and actual Git transaction PID, then proved Git-child exit, lock release, the
+complete pre-vector, and a successful follow-on compare-and-set. This matrix
+exposed and corrected a cleanup bug: killing Git directly on stderr overflow
+could strand a loose `.lock`; the helper now aborts through its pipe/EOF path.
 
-Mixed pre/post, third OID, symbolic alias, and reconciliation-failure fixtures
-returned the existing public code with the recovery-required ambiguity
-message. The deterministic ABA fixture committed and reverted before
-reconciliation; it returned the snapshot-scoped all-pre result while its
-reflog proved why no historical non-movement claim is made.
+Post-commit injected non-zero exit, SIGKILL, distinct timeout, extra and
+oversized stdout/stderr, parser failure, and parent cleanup failure all
+reconciled to the desired exact refs and returned success. Repeating the exact
+transaction returned success without another ref or reflog mutation.
+
+Mixed pre/post, third OID, symbolic alias, unexpected presence, unexpected
+absence, broken direct ref, direct non-commit ref, and
+reconciliation-failure fixtures returned the existing public code with the
+recovery-required ambiguity message. A helper-side counter proved exactly one
+helper invocation and no internal retry for every row. Wrong OID widths,
+duplicate refs, 129 operations, and an oversized closed helper request fail
+before effects.
+
+The deterministic ABA fixture committed and reverted before reconciliation;
+it returned the snapshot-scoped all-pre result while its reflog proved why no
+historical non-movement claim is made.
 
 ## Immutable identities
 
@@ -148,20 +163,20 @@ Generated support package:
 ```text
 version: 1.0.0-rc.3
 Claude/Codex parity:
-sha256:5faf93152eab01a625b3c3a3460d1f1554429c6461cfbf03be0ec6ba3fd901d3
+sha256:e5927a82f7c8a0daf3aa1196e7aa56231044449bb141cc2d7efd1cc8cca209bd
 ```
 
 ## Archive and publication
 
-The release-maintenance commit is:
+The earlier pre-gap-audit release-maintenance commit was:
 
 ```text
 e06ebb121ca696be583ab7aa579439e63540deac
 tree 8a5e3e97d228b5b96f6c440799c9099beea3c8e2
 ```
 
-Two independently generated provisional archives from that exact commit were
-byte-identical:
+Two independently generated provisional archives from that exact pre-gap
+commit were byte-identical:
 
 ```text
 baton-1.0.0-rc.3.tar.gz
@@ -177,9 +192,10 @@ only its pre-existing `.git` directory. The complete Node profile separately
 passed both hosts' isolated user- and project-scope installer, dry-run, no-op,
 rollback, uninstall, interruption, and migration fixtures.
 
-This capture update is evidence-only and therefore follows the archived
-release-maintenance commit. The final Verifier must bind and rebuild the exact
-review tip rather than treating this provisional checksum as a tag checksum.
+That archive is now **SUPERSEDED** by the gap-closure implementation and is
+retained here only as historical provisional evidence. It is not an RC3 review
+or tag checksum. The exact post-gap review-tip archive must be rebuilt after
+the regenerated release truth is committed.
 
 Node 22 CI, protected merge, post-merge rerun, annotated tag, GitHub
 prerelease, asset download, public checksum verification, website work, and

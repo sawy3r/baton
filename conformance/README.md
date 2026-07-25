@@ -30,7 +30,7 @@ The current portable result is:
 PASS  7 strict JSON cases
 PASS  1 Draft 2020-12 schema
 PASS  2 positive and 6 negative status fixtures
-PASS  142 Node tests
+PASS  143 Node tests
 PASS  10 generated adapters from 5 canonical operations
 PASS  all 9 overhead budgets
 ```
