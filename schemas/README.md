@@ -1,29 +1,38 @@
-# Baton RC2 schema
+# Baton receipt schema
 
-Baton RC2 has one authored JSON Schema:
+Baton's authored JSON Schema is
+[`receipt-v1.json`](receipt-v1.json). It bounds the compact receipt envelope
+and its role-specific evidence fields. The reference validator additionally
+enforces canonical one-line JSON, allowed role/result pairs, required evidence
+for each result, and exact detail hashing.
 
-- [`work-status-v1.json`](work-status-v1.json) validates the sole durable
-  current projection for either one planned work item or the assembled release.
+One receipt is stored in the final `Baton-Receipt:` trailer of a metadata-only
+Git commit:
 
-The other three handoffs are exact Markdown:
+```text
+<subject>
 
-- `plan.md` contains one closed strict-JSON `baton-plan-v1` metadata block;
-- `design.md` records the Implementer’s approach and evidence plan; and
-- `proof.md` binds acceptance evidence to one exact candidate.
+Baton-Detail-Begin
+<exact role detail bytes>
+Baton-Detail-End
 
-Plan metadata is parsed by the reference record validator; it is deliberately
-not a second JSON Schema.
+Baton-Receipt: <canonical receipt-v1 JSON>
+```
 
-Schema validity alone cannot prove a Baton transition. The reference record and
-Git actions additionally enforce plan and approval digests, responsibility
-separation, exact handoff bytes, state transitions, ref ownership, candidate
-and product identity, track composition, assembly components, and target
-compare-and-set behavior.
+The plan is not a second JSON Schema. `plan.md` begins with one closed
+`baton-plan-v2` strict-JSON block and then explanatory Markdown. The reference
+validator binds the exact complete file as a Git blob, derives each slice
+contract, and checks the forward-only `revision` / `previous_plan` chain.
 
-`baton.board/v1` is a read-only projection contract produced from captured refs
-and records. It is not another status schema, an editable database, or an action
-surface.
+Schema validity alone cannot prove a Baton result. The reference records and
+Git actions also enforce approval, role separation, plan and contract binding,
+attempt ordering, candidate and product-tree identity, dependency inputs,
+metadata-only receipt commits, fresh verification, deterministic composition,
+and target compare-and-set.
 
-See the [RC2 walkthrough](../examples/README.md) for work and assembly status
-examples in context. Executable positive and negative fixtures live in
+The board has no authored status schema. It is a read-only projection derived
+from the current plan, valid receipts, and captured Git objects.
+
+See the [lightweight walkthrough](../examples/README.md) for compact receipt
+commits in context. Executable positive and negative fixtures live in
 [`../conformance/fixtures/`](../conformance/fixtures/).

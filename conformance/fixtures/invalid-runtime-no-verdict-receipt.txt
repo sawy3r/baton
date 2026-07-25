@@ -1,0 +1,7 @@
+baton(S1): runtime no verdict
+
+Baton-Detail-Begin
+Runner timed out before a model verdict.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","candidate":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","checks":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","contract":"sha256:b97ff3e4960d4594fa5bd078d65126541c6385ebed10d74bc21659b297145cef","detail":"sha256:21ecaa6068de34aa5d5594aea8ebbe83e8f0b2a7ac040c2a4efa86c976d1612e","inputs":{},"plan":"981de418ca5cc98104f794d3ccfe914f47e63894","product_tree":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","release":"portable-receipts","result":"no_verdict","role":"verifier","slice":"S1","summary":"The runner timed out.","version":1}

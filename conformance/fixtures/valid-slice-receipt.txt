@@ -1,0 +1,7 @@
+baton(S1): verifier pass attempt 1
+
+Baton-Detail-Begin
+Fresh verification checked A1 and the normalized candidate checks.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","candidate":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","checks":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","contract":"sha256:b97ff3e4960d4594fa5bd078d65126541c6385ebed10d74bc21659b297145cef","detail":"sha256:cae4c71002889656a1009ce53f256892f862d120dcd946012a4626b611feb219","inputs":{},"plan":"981de418ca5cc98104f794d3ccfe914f47e63894","product_tree":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","release":"portable-receipts","result":"pass","role":"verifier","slice":"S1","summary":"The exact candidate passed fresh verification.","version":1}

@@ -1,0 +1,7 @@
+baton(release): merged
+
+Baton-Detail-Begin
+Target compare-and-set advanced to the exact passed assembly candidate.
+Baton-Detail-End
+
+Baton-Receipt: {"binds":"7777777777777777777777777777777777777777","candidate":"7777777777777777777777777777777777777777","detail":"sha256:225d3e6ffa91d774c7330ae18fbaadca069f9ffcc0df5dfb0ce2cbc5e934c8a0","inputs":{"T1":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},"plan":"981de418ca5cc98104f794d3ccfe914f47e63894","product_tree":"sha256:9999999999999999999999999999999999999999999999999999999999999999","release":"portable-receipts","result":"merged","result_commit":"7777777777777777777777777777777777777777","role":"merge","summary":"The exact passed assembly candidate was merged.","target":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","version":1}

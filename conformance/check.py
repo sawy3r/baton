@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Run Baton's portable strict-JSON and work-status-v1 conformance checks."""
+"""Run Baton's portable strict-JSON, plan-v2, and receipt-v1 checks."""
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import math
 import subprocess
 import sys
@@ -18,12 +18,12 @@ from jsonschema.exceptions import SchemaError
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "conformance" / "fixtures"
-SCHEMAS = ROOT / "schemas"
-STATUS_SCHEMA = SCHEMAS / "work-status-v1.json"
-STATUS_VALIDATOR = ROOT / "reference" / "records" / "records.mjs"
+RECEIPT_SCHEMA = ROOT / "schemas" / "receipt-v1.json"
+RECORD_VALIDATOR = ROOT / "conformance" / "validate.mjs"
 MANIFEST = ROOT / "conformance" / "manifest.json"
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 REQUIRED_JSONSCHEMA_VERSION = "4.10.3"
+RECEIPT_TRAILER = b"Baton-Receipt: "
 
 STRICT_CASES = (
     ("raw-valid-edge.json", True, None),
@@ -35,27 +35,34 @@ STRICT_CASES = (
     ("raw-invalid-unsafe-exponent.json", False, "unsafe_integer"),
 )
 
-VALID_STATUS_FIXTURES = (
-    "valid-work-status.json",
-    "valid-assembly-status.json",
+VALID_PLAN_FIXTURES = (
+    "valid-plan-v2.md",
+    "valid-plan-revision-v2.md",
 )
 
-INVALID_SCHEMA_FIXTURES = (
-    "invalid-active-status.json",
-    "invalid-no-verdict-outcome.json",
-    "invalid-unknown-field-status.json",
-    "invalid-malformed-digest-status.json",
-    "invalid-ref-status.json",
+INVALID_PLAN_FIXTURES = (
+    ("invalid-plan-broken-revision-v2.md", "INVALID_FIELD"),
 )
 
-INVALID_SEMANTIC_FIXTURES = (
-    "invalid-semantic-stale-proof-status.json",
+VALID_RECEIPT_FIXTURES = (
+    "valid-slice-receipt.txt",
+    "valid-assembly-receipt.txt",
+)
+
+INVALID_SCHEMA_RECEIPT_FIXTURES = (
+    "invalid-unknown-field-receipt.txt",
+    "invalid-runtime-no-verdict-receipt.txt",
+)
+
+INVALID_SEMANTIC_RECEIPT_FIXTURES = (
+    ("invalid-role-result-receipt.txt", "INVALID_FIELD"),
+    ("invalid-stale-detail-receipt.txt", "STALE_BINDING"),
 )
 
 REFERENCE_SUITES = (
+    "test/records/receipts.test.mjs",
+    "test/records/receipt-git.test.mjs",
     "test/records/actions.test.mjs",
-    "test/records/schema.test.mjs",
-    "test/records/transition.test.mjs",
     "test/records/git-topology.test.mjs",
     "test/records/product-tree.test.mjs",
     "test/records/hardening.test.mjs",
@@ -66,21 +73,28 @@ PORTABLE_COMMANDS = (
     "python3 conformance/check.py",
     "node --test test/records/*.test.mjs test/operations/*.test.mjs "
     "test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs "
-    "test/driver/*.test.mjs test/dogfood/*.test.mjs test/release/*.test.mjs",
+    "test/release/*.test.mjs",
 )
 
 PORTABLE_CASES = (
     (
-        "strict-plan-status-and-sole-schema",
+        "strict-plan-v2-and-receipt-v1",
         (
             "conformance/check.py",
-            "test/records/schema.test.mjs",
-            "test/records/transition.test.mjs",
+            REFERENCE_SUITES[0],
+            REFERENCE_SUITES[1],
         ),
     ),
     (
-        "owner-aware-git-topology-and-cas",
-        REFERENCE_SUITES[0:1] + REFERENCE_SUITES[3:],
+        "forward-revision-stable-attempts-and-selective-invalidation",
+        (
+            REFERENCE_SUITES[2],
+            "test/board/oracle.test.mjs",
+        ),
+    ),
+    (
+        "fixed-git-boundary-reconciliation-and-exact-composition",
+        REFERENCE_SUITES[2:],
     ),
     (
         "operations-generated-adapters-and-install",
@@ -91,22 +105,12 @@ PORTABLE_CASES = (
         ),
     ),
     (
-        "oracle-terminal-webui-and-performance",
+        "git-derived-oracle-terminal-and-performance",
         (
-            "test/board/cli.test.mjs",
             "test/board/oracle.test.mjs",
             "test/board/terminal.test.mjs",
-            "test/board/web.test.mjs",
             "test/board/performance.test.mjs",
         ),
-    ),
-    (
-        "role-neutral-fake-driver",
-        ("test/driver/fake-driver.test.mjs",),
-    ),
-    (
-        "real-git-manual-dogfood",
-        ("test/dogfood/*.test.mjs",),
     ),
     (
         "release-overhead-and-manifest-truth",
@@ -122,7 +126,7 @@ AUTONOMOUS_CASES = (
     "role-instruction-credential-workspace-process-isolation",
     "clean-read-only-fresh-verifier-dispatch",
     "one-writer-per-track-with-independent-track-concurrency",
-    "durable-invocation-attempt-and-effect-identity",
+    "procedural-retry-and-git-reconciliation-without-verdict",
     "crash-recovery-at-every-effect-boundary",
     "timeout-cancellation-cleanup-and-bounded-retry",
     "dependency-scheduling-and-one-serial-worker-per-track",
@@ -214,14 +218,37 @@ def strict_load(path: Path) -> Any:
     return strict_load_bytes(path.read_bytes())
 
 
-def semantic_validation(path: Path) -> subprocess.CompletedProcess[str]:
+def receipt_instance(path: Path) -> Any:
+    data = path.read_bytes()
+    if b"\r" in data or not data.endswith(b"\n"):
+        raise StrictJSONError(
+            "invalid_receipt_commit",
+            "receipt commit must be LF-only and end with LF",
+        )
+    trailer = data[:-1].split(b"\n")[-1]
+    if not trailer.startswith(RECEIPT_TRAILER):
+        raise StrictJSONError(
+            "invalid_receipt_commit",
+            "receipt commit lacks a final Baton-Receipt trailer",
+        )
+    return strict_load_bytes(trailer[len(RECEIPT_TRAILER) :])
+
+
+def reference_validation(kind: str, path: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["node", str(STATUS_VALIDATOR), "status", str(path)],
+        ["node", str(RECORD_VALIDATOR), kind, str(path)],
         cwd=ROOT,
         check=False,
         capture_output=True,
         text=True,
     )
+
+
+def reference_error(result: subprocess.CompletedProcess[str]) -> str | None:
+    if result.returncode == 0:
+        return None
+    lines = result.stderr.strip().splitlines()
+    return lines[0] if lines else "VALIDATION_ERROR"
 
 
 def expected_manifest() -> dict[str, Any]:
@@ -234,7 +261,7 @@ def expected_manifest() -> dict[str, Any]:
         if error is not None:
             case["error"] = error
         strict_cases.append(case)
-    schema_digest = "sha256:" + hashlib.sha256(STATUS_SCHEMA.read_bytes()).hexdigest()
+    schema_digest = "sha256:" + hashlib.sha256(RECEIPT_SCHEMA.read_bytes()).hexdigest()
     return {
         "schema_version": "baton.conformance-manifest/v2",
         "baton_version": (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
@@ -243,23 +270,43 @@ def expected_manifest() -> dict[str, Any]:
                 "status": "EXECUTABLE",
                 "commands": list(PORTABLE_COMMANDS),
                 "record_contract": {
-                    "schema": {
-                        "path": "schemas/work-status-v1.json",
-                        "digest": schema_digest,
+                    "plan": {
+                        "format": "baton.plan/v2",
+                        "valid_fixtures": [
+                            f"conformance/fixtures/{name}"
+                            for name in VALID_PLAN_FIXTURES
+                        ],
+                        "invalid_fixtures": [
+                            {
+                                "instance": f"conformance/fixtures/{name}",
+                                "error": error,
+                            }
+                            for name, error in INVALID_PLAN_FIXTURES
+                        ],
+                    },
+                    "receipt": {
+                        "representation": "Baton-Receipt Git trailer",
+                        "schema": {
+                            "path": "schemas/receipt-v1.json",
+                            "digest": schema_digest,
+                        },
+                        "valid_fixtures": [
+                            f"conformance/fixtures/{name}"
+                            for name in VALID_RECEIPT_FIXTURES
+                        ],
+                        "invalid_schema_fixtures": [
+                            f"conformance/fixtures/{name}"
+                            for name in INVALID_SCHEMA_RECEIPT_FIXTURES
+                        ],
+                        "invalid_semantic_fixtures": [
+                            {
+                                "instance": f"conformance/fixtures/{name}",
+                                "error": error,
+                            }
+                            for name, error in INVALID_SEMANTIC_RECEIPT_FIXTURES
+                        ],
                     },
                     "strict_json_cases": strict_cases,
-                    "valid_status_fixtures": [
-                        f"conformance/fixtures/{name}"
-                        for name in VALID_STATUS_FIXTURES
-                    ],
-                    "invalid_schema_fixtures": [
-                        f"conformance/fixtures/{name}"
-                        for name in INVALID_SCHEMA_FIXTURES
-                    ],
-                    "invalid_semantic_fixtures": [
-                        f"conformance/fixtures/{name}"
-                        for name in INVALID_SEMANTIC_FIXTURES
-                    ],
                 },
                 "cases": [
                     {"id": case_id, "suites": list(suites)}
@@ -282,6 +329,29 @@ def expected_manifest() -> dict[str, Any]:
     }
 
 
+def manifest_paths(manifest: dict[str, Any]) -> list[str]:
+    portable = manifest["profiles"]["portable_kit"]
+    contract = portable["record_contract"]
+    plan = contract["plan"]
+    receipt = contract["receipt"]
+    return [
+        *[case["instance"] for case in contract["strict_json_cases"]],
+        *plan["valid_fixtures"],
+        *[case["instance"] for case in plan["invalid_fixtures"]],
+        receipt["schema"]["path"],
+        *receipt["valid_fixtures"],
+        *receipt["invalid_schema_fixtures"],
+        *[case["instance"] for case in receipt["invalid_semantic_fixtures"]],
+        portable["measurements"]["baseline"],
+        manifest["profiles"]["autonomous_engine"]["adapter_contract"],
+        *[
+            suite
+            for case in portable["cases"]
+            for suite in case["suites"]
+        ],
+    ]
+
+
 def run() -> list[str]:
     failures: list[str] = []
 
@@ -301,31 +371,10 @@ def run() -> list[str]:
     if manifest != expected:
         failures.append("conformance manifest does not match the executable fixture inventory")
         return failures
-    portable = manifest["profiles"]["portable_kit"]
-    record_contract = portable["record_contract"]
-    manifest_paths = [
-        case["instance"] for case in record_contract["strict_json_cases"]
-    ] + [
-        record_contract["schema"]["path"],
-        *record_contract["valid_status_fixtures"],
-        *record_contract["invalid_schema_fixtures"],
-        *record_contract["invalid_semantic_fixtures"],
-        portable["measurements"]["baseline"],
-        manifest["profiles"]["autonomous_engine"]["adapter_contract"],
-        *[
-            path
-            for case in portable["cases"]
-            for path in case["suites"]
-        ],
-    ]
-    for relative_path in manifest_paths:
-        if "*" in relative_path:
-            matches = list(ROOT.glob(relative_path))
-            if not matches or any(not match.is_file() for match in matches):
-                failures.append(
-                    f"conformance manifest pattern has no file matches: {relative_path}"
-                )
-        elif not (ROOT / relative_path).is_file():
+
+    for relative_path in manifest_paths(manifest):
+        path = ROOT / relative_path
+        if not path.is_file():
             failures.append(f"conformance manifest path does not exist: {relative_path}")
     if failures:
         return failures
@@ -345,58 +394,64 @@ def run() -> list[str]:
                 f"error={expected_error}, got {actual_error or 'valid'}"
             )
 
-    authored_schemas = sorted(SCHEMAS.glob("*.json"))
-    if authored_schemas != [STATUS_SCHEMA]:
-        relative = ", ".join(path.relative_to(ROOT).as_posix() for path in authored_schemas)
-        failures.append(
-            "schema inventory: expected only schemas/work-status-v1.json, "
-            f"got {relative or 'none'}"
-        )
-        return failures
-
     try:
-        schema = strict_load(STATUS_SCHEMA)
+        schema = strict_load(RECEIPT_SCHEMA)
         Draft202012Validator.check_schema(schema)
     except (OSError, StrictJSONError, SchemaError) as error:
-        failures.append(f"work-status-v1 schema: {error}")
+        failures.append(f"receipt-v1 schema: {error}")
         return failures
     validator = Draft202012Validator(schema)
 
-    for name in VALID_STATUS_FIXTURES:
+    for name in VALID_PLAN_FIXTURES:
+        result = reference_validation("plan", FIXTURES / name)
+        if result.returncode != 0:
+            failures.append(
+                f"{name}: reference rejection: {reference_error(result)}"
+            )
+
+    for name, expected_error in INVALID_PLAN_FIXTURES:
+        result = reference_validation("plan", FIXTURES / name)
+        actual_error = reference_error(result)
+        if actual_error != expected_error:
+            failures.append(
+                f"{name}: expected {expected_error}, got {actual_error or 'valid'}"
+            )
+
+    for name in VALID_RECEIPT_FIXTURES:
         path = FIXTURES / name
         try:
-            instance = strict_load(path)
+            instance = receipt_instance(path)
         except (OSError, StrictJSONError) as error:
-            failures.append(f"{name}: strict JSON rejection: {error}")
+            failures.append(f"{name}: receipt extraction rejection: {error}")
             continue
-        errors = sorted(
-            validator.iter_errors(instance),
-            key=lambda error: tuple(str(part) for part in error.path),
-        )
+        errors = list(validator.iter_errors(instance))
         if errors:
             failures.append(f"{name}: schema rejection: {errors[0].message}")
             continue
-        result = semantic_validation(path)
+        result = reference_validation("receipt-commit", path)
         if result.returncode != 0:
-            detail = result.stderr.strip() or result.stdout.strip() or "unknown rejection"
-            failures.append(f"{name}: semantic rejection: {detail}")
+            failures.append(
+                f"{name}: reference rejection: {reference_error(result)}"
+            )
 
-    for name in INVALID_SCHEMA_FIXTURES:
+    for name in INVALID_SCHEMA_RECEIPT_FIXTURES:
         path = FIXTURES / name
         try:
-            instance = strict_load(path)
+            instance = receipt_instance(path)
         except (OSError, StrictJSONError) as error:
-            failures.append(f"{name}: fixture is not strict JSON: {error}")
+            failures.append(f"{name}: receipt extraction rejection: {error}")
             continue
         if not list(validator.iter_errors(instance)):
             failures.append(f"{name}: unexpectedly schema-valid")
+        if reference_validation("receipt-commit", path).returncode == 0:
+            failures.append(f"{name}: unexpectedly accepted by the reference validator")
 
-    for name in INVALID_SEMANTIC_FIXTURES:
+    for name, expected_error in INVALID_SEMANTIC_RECEIPT_FIXTURES:
         path = FIXTURES / name
         try:
-            instance = strict_load(path)
+            instance = receipt_instance(path)
         except (OSError, StrictJSONError) as error:
-            failures.append(f"{name}: fixture is not strict JSON: {error}")
+            failures.append(f"{name}: receipt extraction rejection: {error}")
             continue
         errors = list(validator.iter_errors(instance))
         if errors:
@@ -405,14 +460,17 @@ def run() -> list[str]:
                 f"got schema rejection: {errors[0].message}"
             )
             continue
-        result = semantic_validation(path)
-        if result.returncode == 0:
-            failures.append(f"{name}: unexpectedly semantically valid")
+        result = reference_validation("receipt-commit", path)
+        actual_error = reference_error(result)
+        if actual_error != expected_error:
+            failures.append(
+                f"{name}: expected {expected_error}, got {actual_error or 'valid'}"
+            )
 
     if not failures:
         print(
-            "PASS 7 strict JSON cases, 1 Draft 2020-12 schema, "
-            "2 positive status fixtures, and 6 negative status fixtures"
+            "PASS 7 strict JSON cases, 1 Draft 2020-12 receipt schema, "
+            "3 plan fixtures, and 6 receipt fixtures"
         )
     return failures
 

@@ -1,0 +1,7 @@
+baton(S1): invalid captain pass
+
+Baton-Detail-Begin
+Decision: pass.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","contract":"sha256:b97ff3e4960d4594fa5bd078d65126541c6385ebed10d74bc21659b297145cef","detail":"sha256:7072806b2d5507dbcbe5810fdbf0b392d4d2b3383e592d120570230b52d289a9","plan":"981de418ca5cc98104f794d3ccfe914f47e63894","release":"portable-receipts","result":"pass","role":"captain","slice":"S1","summary":"Captain cannot issue PASS.","version":1}

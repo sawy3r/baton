@@ -1,0 +1,7 @@
+baton(plan): approved revision 1
+
+Baton-Detail-Begin
+Protected approval resolved at approval://checkout-recovery/1.
+Baton-Detail-End
+
+Baton-Receipt: {"binds":"b614893f77b74f188230f37cdd5698b122abca3e","detail":"sha256:189393f78b5df6ffc3495520edddcb5b2599b5089481b4543a44a78566c40fe2","plan":"b614893f77b74f188230f37cdd5698b122abca3e","release":"checkout-recovery","result":"approved","role":"planner","summary":"The service owner approved plan revision 1.","target":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","version":1}

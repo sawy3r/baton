@@ -2,10 +2,11 @@
 {
   "schema_version": "baton.plan/v2",
   "release": "checkout-recovery",
-  "revision": 3,
+  "revision": 1,
+  "previous_plan": null,
   "repository": "acme/checkout",
   "target_ref": "refs/heads/main",
-  "approval_ref": "approval://checkout-recovery/3",
+  "approval_ref": "approval://checkout-recovery/1",
   "tracks": [
     {
       "id": "T1",
@@ -13,7 +14,7 @@
       "slices": [
         {
           "id": "S1",
-          "outcome": "A timed-out checkout can be retried without a duplicate charge or hydration error.",
+          "outcome": "A timed-out checkout can be retried without a duplicate charge.",
           "scope": {
             "include": ["src/checkout", "test/checkout"],
             "exclude": ["src/checkout/provider-adapter"]
@@ -22,16 +23,9 @@
             {
               "id": "A1",
               "text": "Repeating one checkout key returns one charge identity."
-            },
-            {
-              "id": "A2",
-              "text": "The retry path hydrates without a client or server error."
             }
           ],
-          "checks": [
-            "npm test -- checkout-retry",
-            "npm test -- checkout-hydration"
-          ],
+          "checks": ["npm test -- checkout-retry"],
           "constraints": ["Do not change the payment-provider contract."],
           "depends_on": [],
           "consumes": []
@@ -51,8 +45,8 @@
           },
           "acceptance": [
             {
-              "id": "A3",
-              "text": "The runbook identifies the retry key and safe stop condition."
+              "id": "A2",
+              "text": "The runbook identifies the retry key and the stop condition."
             }
           ],
           "checks": ["npm test -- runbook-links"],
@@ -68,30 +62,40 @@
 
 # Goal
 
-Make checkout timeout recovery safe for customers and operators.
+Make timeout recovery safe for both customers and operators.
 
 # Authority
 
-The checkout service owner approves revision 3 through
-`approval://checkout-recovery/3`.
+The checkout service owner approves these exact bytes through
+`approval://checkout-recovery/1`.
 
-# Revision
+# Scope
 
-Revision 2 corrected internal metadata without changing either slice identity.
-Revision 3 added the hydration acceptance and check to S1 after its first
-candidate failed verification. S2 is retained because its contract and
-consumed inputs are unchanged.
+T1 owns checkout retry behavior and tests. T2 owns only the recovery runbook.
+The payment-provider contract is excluded.
 
-# Scope and acceptance
+# Acceptance
 
-S1 owns checkout retry behavior, hydration, and tests. S2 owns only the recovery
-runbook. The payment-provider contract is excluded.
+A1 observes charge identity across a repeated checkout key. A2 checks that the
+operator instructions name the same key and a safe stop condition.
 
-# Tracks, slices, and inputs
+# Ordered tracks and slices
 
-T1/S1 and T2/S2 are independent and consume no output from each other.
+T1/S1 and T2/S2 are independent. Slice attempts remain serial within either
+track.
 
-# Checks and constraints
+# Dependencies and inputs
 
-Each slice retains raw check output. No provider-contract change or invented
-operator control is allowed.
+The tracks have no dependency edge, their scopes do not overlap, and neither
+slice consumes the other slice's passed product tree.
+
+# Checks
+
+Each candidate receipt binds the normalized result of its named check. The raw
+output remains engine evidence rather than a second protocol artefact.
+
+# Constraints
+
+No provider-contract change or invented operator control is allowed. Merge may
+advance the target only to the exact assembly candidate covered by the current
+fresh-context PASS.

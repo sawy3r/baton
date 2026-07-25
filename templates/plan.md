@@ -3,6 +3,7 @@
   "schema_version": "baton.plan/v2",
   "release": "release-id",
   "revision": 1,
+  "previous_plan": null,
   "repository": "owner/repository",
   "target_ref": "refs/heads/main",
   "approval_ref": "approval://release-id/1",
@@ -25,7 +26,7 @@
             }
           ],
           "checks": ["project-check-command"],
-          "constraints": [],
+          "constraints": ["Merge only the exact candidate that passes verification."],
           "depends_on": [],
           "consumes": []
         }
@@ -44,20 +45,34 @@ State the approved release outcome and why it matters.
 Name the external decision-maker and protected approval reference that binds
 these exact bytes.
 
-# Revision
+For revision 1, set `previous_plan` to `null`. Every later revision increments
+`revision` and sets `previous_plan` to the exact Git blob object of the prior
+bytes at this same repository path.
 
-Explain what changed, which slices are retained, and why any changed consumed
-input invalidates the named dependency closure.
+# Scope
 
-# Scope and acceptance
+Summarise included and excluded product surfaces without repeating metadata.
 
-Summarise included and excluded product surfaces and how each acceptance
-identifier is observable.
+# Acceptance
 
-# Tracks, slices, and inputs
+Explain how each acceptance identifier is observable.
 
-Explain ordering, parallel-safe boundaries, dependencies, and consumed inputs.
+# Ordered tracks and slices
 
-# Checks and constraints
+Describe why the ordering and track boundaries are safe.
 
-Describe required checks, durable raw output, and non-negotiable limits.
+# Dependencies and inputs
+
+Call out dependency edges, consumed slice outputs, shared boundaries, and
+ownership assumptions. A revision invalidates only changed contracts and the
+actual consumers of changed passed product trees.
+
+# Checks
+
+Describe the required checks. Their normalized result digest belongs in the
+candidate and Verifier receipts; raw output may stay in the engine evidence
+store.
+
+# Constraints
+
+Record non-negotiable safety, compatibility, and delivery limits.

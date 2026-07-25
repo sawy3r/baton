@@ -1,65 +1,85 @@
-# Walkthrough: revise one release without replacing it
+# Lightweight walkthrough: one release, two tracks
 
-This platform-agnostic example follows one `checkout-recovery` release with two
-stable slices:
+This platform-neutral example follows the `checkout-recovery` release from one
+approved plan to an exact merge. It uses stable slice identities and compact
+machine-written receipts without assuming a particular engine.
 
 ```text
-approved plan revision
+approved plan
   ├─ T1 / S1: retry-safe checkout ─┐
   └─ T2 / S2: recovery runbook ───┤
-                                  └─ assembly verification -> exact Merge
+                                  └─ assembly -> fresh Verifier -> exact merge
 ```
 
-The durable protocol input is [`walkthrough/plan.md`](walkthrough/plan.md).
-[`walkthrough/approval.txt`](walkthrough/approval.txt) stands in for protected
-external approval over those exact bytes. Git holds the product and plan
-history. A machine writer appends compact receipts for the responsibility
-boundaries.
+The checked-in files are deliberately small:
 
-## One stable revision lineage
+```text
+walkthrough/
+├── approval.txt
+├── plan.md
+└── receipts/
+    ├── 01-plan-approved.txt
+    ├── 02-S1-designed.txt
+    ├── 03-S1-proceed.txt
+    ├── 04-S1-candidate.txt
+    ├── 05-S1-pass.txt
+    ├── 06-S2-designed.txt
+    ├── 07-S2-proceed.txt
+    ├── 08-S2-candidate.txt
+    ├── 09-S2-pass.txt
+    ├── 10-assembly-candidate.txt
+    ├── 11-assembly-pass.txt
+    └── 12-merged.txt
+```
 
-Suppose the first design attempt for S1 omitted an internal metadata detail.
-Captain returns `REVISE`. The Implementer supplies another design TL;DR on S1;
-the release and slice identities do not change.
+Every receipt file is an exact illustrative Git commit message. The detail
+section carries the short role output; the final `Baton-Receipt:` trailer is
+canonical one-line JSON and hashes those exact detail bytes. Sworn writes this
+record after checking the role output and Git bindings.
 
-After `PROCEED`, the first S1 candidate exposes a hydration defect. The fresh
-Verifier returns `FAIL`. The Implementer creates another implementation attempt
-on S1 and the fresh Verifier checks the replacement candidate. S2 remains
-trusted because its contract and consumed inputs did not change.
+The `plan` field in every receipt is the actual Git blob object of
+[`plan.md`](walkthrough/plan.md), and each slice `contract` is the digest
+derived from that plan. The remaining object IDs and evidence digests are
+stable illustrative values because this documentation directory is not a
+standalone Git delivery history.
 
-If fixing hydration changed an input declared by S2, the next plan revision
-would invalidate S2 as part of the real dependency closure. Filename proximity
-or a newer timestamp is not enough.
+## The normal path
 
-## What each boundary keeps
+The external decision in
+[`approval.txt`](walkthrough/approval.txt) authorises the exact plan object.
+`01-plan-approved.txt` records that protected decision without turning planning
+into approval.
 
-The exact receipt serialization belongs to the reference kit, but the meanings
-are fixed:
+For each ready slice, the Implementer returns a design TL;DR, the Captain binds
+its decision to that immutable object, and the Implementer later records the
+candidate plus normalized checks. A fresh-context Verifier binds PASS to the
+same candidate, product tree, inputs, and checks:
 
-- approval binds the exact plan revision;
-- design binds the plan, slice, and design attempt;
-- Captain binds that design and returns `PROCEED`, `REVISE`, or `ESCALATE`;
-- implementation binds the exact candidate, checks, and evidence;
-- fresh verification binds that candidate and returns `PASS`, `FAIL`, or
-  `BLOCKED`; and
-- Merge binds current `PASS`, the expected target, observed target, and result.
+```text
+designed -> proceed -> candidate -> pass
+```
 
-Roles return decisions and evidence. They do not hand-author status, proof
-bundles, or receipt files.
+The candidate diff, tests, code comments, and ordinary commit history carry the
+implementation evidence. There is no hand-authored `design.md`, `proof.md`, or
+`status.json`.
 
-## Operational failure is separate
+Once both independent tracks pass, Merge prepares one deterministic assembly
+candidate. A fresh Verifier checks the exact track input pins, then the final
+merge receipt records the target compare-and-set result. If an input, target,
+or candidate changes, the assembly PASS is stale and cannot authorise merge.
 
-A runner interruption, duplicate dispatch, stale board, or known completed Git
-effect produces no Baton verdict. The surrounding engine retries or reconciles
-it from durable facts. It cannot turn a runtime event into approval, `PROCEED`,
-`PASS`, or `MERGED`.
+## Revisions and derived state
 
-## Whole-product verification
+The plan stays at one release path. Revision 1 uses `previous_plan: null`; a
+later revision increments `revision` and points `previous_plan` at the prior
+plan blob. Stable slice IDs remain. An unchanged slice contract and unchanged
+consumed product-tree pins retain PASS, so changing one independent slice does
+not restart the other.
 
-Work `PASS` advances a slice; it does not certify the release. After the two
-track candidates are composed, another fresh, read-only Verifier checks the
-complete product. Merge then integrates only that exact assembled candidate
-against the expected target.
+No board snapshot is stored. The reference oracle rescans the current plan,
+first-parent receipt commits, and Git objects to derive the most advanced
+trustworthy state. A missing cached view or interrupted runner therefore cannot
+manufacture approval, `proceed`, `pass`, or `merged`.
 
-The board is derived from the plan, receipts, and Git, so no board snapshot is
-stored as delivery truth.
+Executable plan and receipt fixtures live in
+[`../conformance/fixtures/`](../conformance/fixtures/).

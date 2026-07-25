@@ -1,0 +1,7 @@
+baton(S1): verifier pass attempt 1
+
+Baton-Detail-Begin
+Fresh verification observed one provider call and one charge identity across the repeated key.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","candidate":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","checks":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","contract":"sha256:c862740b165f99eae38cd9778dbbe4ec18067cbc17ffdc3e7394d47ef94f6269","detail":"sha256:7acd60677abcb8a74082169c7b1564aa99728538ba3bb39a00061e2cb3b470c8","inputs":{},"plan":"b614893f77b74f188230f37cdd5698b122abca3e","product_tree":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","release":"checkout-recovery","result":"pass","role":"verifier","slice":"S1","summary":"S1 satisfies A1 at the exact candidate.","version":1}

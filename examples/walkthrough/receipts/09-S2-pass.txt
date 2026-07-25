@@ -1,0 +1,7 @@
+baton(S2): verifier pass attempt 1
+
+Baton-Detail-Begin
+Fresh verification found the required key, retry step, and safe stop condition.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"1111111111111111111111111111111111111111","candidate":"1111111111111111111111111111111111111111","checks":"sha256:4444444444444444444444444444444444444444444444444444444444444444","contract":"sha256:8811b98b0635ec64fcd8ed8b35ade5763c46e7392a42a493e1b57a50a9f3d6ac","detail":"sha256:1f05bd738109d3310631573d9c2121471cb4d38fd5429db20b391b437e531d21","inputs":{},"plan":"b614893f77b74f188230f37cdd5698b122abca3e","product_tree":"sha256:3333333333333333333333333333333333333333333333333333333333333333","release":"checkout-recovery","result":"pass","role":"verifier","slice":"S2","summary":"S2 satisfies A2 at the exact candidate.","version":1}
