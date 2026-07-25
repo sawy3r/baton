@@ -28,6 +28,32 @@ Baton defines the approved topology and durable delivery truth. Sworn executes
 and supervises it. The GUI projects both without becoming a second scheduler,
 state machine, or source of truth.
 
+## 2026-07-26 amendment — one relay, one team
+
+The shared product model is:
+
+> Baton is how the work is handed off. Sworn is the team that carries it.
+
+Baton's browser board defaults to a direct, read-only visualisation of the
+approved delivery graph. Its visual metaphor is a relay: the plan is the start,
+tracks are lanes, slices are legs and exchange points, dependency and
+consumption edges are cross-lane feeds, assembly is the final exchange, and
+Merge is the finish. It is not a conductor's baton, editable DAG canvas,
+Kanban board, or collection of generic dashboard cards.
+
+Sworn reuses that exact topology and adds the operational team: assigned
+agents, drivers and role-selected models, active invocations, timing, retries,
+budgets, observations, and typed controls. A Sworn agent is “sworn in” to one
+bounded invocation containing the exact plan, responsibility, slice,
+candidate, capabilities, driver/model selection, and budget before it carries
+that relay leg.
+
+This language creates no new Baton state, receipt, role, gate, or ceremony.
+“Sworn in” is the human product description of the runtime claim and dispatch
+envelope the engine already requires. The resulting interface should feel like
+an intentional editorial race and timing instrument, not medieval world
+building or a generic generated application.
+
 ## Product definition
 
 The interface should make an autonomous release understandable at a glance:
@@ -142,20 +168,24 @@ remain visibly distinct.
 The Baton responsibility is the primary label for active work. Driver and model
 are secondary execution details.
 
-### The Baton line
+### The Baton relay graph
 
-The signature navigation element is a branching and rejoining Baton line:
+The signature navigation element is a branching and rejoining delivery graph:
 
 - Plan begins the line;
 - Delivery branches into the authored tracks;
-- each track shows serial slice progress and at most one current slice;
+- each track forms a relay lane with serial slices and at most one current leg;
 - independent tracks may visibly advance in parallel;
+- declared dependencies and consumed slice outputs remain visible as graph
+  edges;
 - track heads rejoin at release composition;
 - final assembly verification follows composition; and
-- Merge terminates the line.
+- Merge is the finish.
 
-This is structural navigation, not a decorative dependency graph. Sworn should
-not default to an arbitrary node canvas, generic Kanban board, or DAG editor.
+This is the actual approved topology rendered as structural navigation, not a
+decorative graph. Baton defaults to its read-only relay view. Sworn adds
+runtime and control overlays without becoming an arbitrary node canvas,
+generic Kanban board, or DAG editor.
 
 ### Responsive and asynchronous use
 
@@ -220,10 +250,12 @@ Timeout means `outcome unknown; reconciling`, not permission to assume success.
 
 ## Baton board versus Sworn cockpit
 
-Baton still ships its small, platform-agnostic, read-only board:
+Baton still ships its small, platform-agnostic, read-only graph board:
 
 - one branch-aware oracle;
 - JSON, terminal, and dependency-light local WebUI projections;
+- a relay view of the plan's tracks, slices, ordering, dependencies,
+  consumption, assembly, and Merge;
 - no runner, account, Sworn installation, or hosted service required; and
 - no mutation routes.
 
