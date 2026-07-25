@@ -89,19 +89,22 @@ a fresh Verifier then checks the complete assembled product before final Merge.
 
 ## Get started
 
-Clone an exact reviewed release, preview the matching installer, then apply it:
+The easiest route is to ask Claude Code or Codex:
+
+```text
+Install Baton v1.0.0-rc.4 for me.
+
+Clone the exact tag, read its INSTALL.md, show me the matching user-scope
+dry-run, and wait for my approval before applying it.
+```
+
+If you prefer the shell, clone the reviewed tag and preview the matching
+installer yourself:
 
 ```sh
 git clone --branch v1.0.0-rc.4 --depth 1 https://github.com/sawy3r/baton.git
 cd baton
-
-# Claude Code
-./install-claude.sh --user --dry-run
-./install-claude.sh --user --yes
-
-# Codex
-./install-codex.sh --user --dry-run
-./install-codex.sh --user --yes
+./install-codex.sh --user --dry-run    # or ./install-claude.sh
 ```
 
 Project-local installs are also supported. See [INSTALL.md](INSTALL.md), then

@@ -15,7 +15,25 @@ Do not edit agent instruction files to install Baton. The only supported
 instruction-file mutation is the exact audited Claude v0.16 migration described
 below.
 
-## Claude Code
+## Ask your agent to install it
+
+The easiest route is to paste this into Claude Code or Codex:
+
+```text
+Install Baton v1.0.0-rc.4 for me.
+
+Clone the exact v1.0.0-rc.4 tag from https://github.com/sawy3r/baton.git,
+read its INSTALL.md, and use the installer that matches this tool. Show me the
+user-scope dry-run first and wait for my approval before applying it. Do not
+edit my instruction files or install Sworn.
+```
+
+The agent should stop after the dry-run. Approving that preview authorises the
+matching `--yes` install; it does not authorise unrelated changes.
+
+## Install it yourself
+
+### Claude Code
 
 Preview and install at user scope:
 
@@ -47,7 +65,7 @@ Project scope uses:
 .claude/.baton-install/
 ```
 
-## Codex
+### Codex
 
 Preview and install at user scope:
 
