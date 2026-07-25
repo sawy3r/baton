@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -23,6 +27,7 @@ import {
   resolveProductExclusionAdmission,
   resolveRecordPathAdmission,
   resolveRef,
+  unsafeAtomicUpdateRefs,
   unsafeRunGit,
 } from '../../reference/records/git.mjs';
 import {
@@ -35,6 +40,114 @@ import {
 
 function throwsCode(operation, code) {
   assert.throws(operation, (error) => error?.code === code);
+}
+
+function throwsCodeMessage(operation, code, pattern) {
+  assert.throws(
+    operation,
+    (error) => error?.code === code && pattern.test(error.message),
+  );
+}
+
+function optionalBytes(absolutePath) {
+  return existsSync(absolutePath) ? readFileSync(absolutePath) : null;
+}
+
+function looseRefSnapshot(repo, ref) {
+  const relative = ref.replace(/^refs\//, '');
+  return Object.freeze({
+    ref: optionalBytes(path.join(repo, '.git', 'refs', relative)),
+    reflog: optionalBytes(path.join(repo, '.git', 'logs', 'refs', relative)),
+  });
+}
+
+const GIT_MODULE_URL = new URL('../../reference/records/git.mjs', import.meta.url);
+
+function replaceExactlyOnce(source, search, replacement) {
+  const first = source.indexOf(search);
+  assert.notEqual(first, -1, `missing instrumentation seam: ${search.slice(0, 80)}`);
+  assert.equal(
+    source.indexOf(search, first + search.length),
+    -1,
+    `duplicate instrumentation seam: ${search.slice(0, 80)}`,
+  );
+  return `${source.slice(0, first)}${replacement}${source.slice(first + search.length)}`;
+}
+
+function runInstrumentedAtomic(repo, operations, replacements, repeats = 1) {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'baton-ref-fault-module-'));
+  let source = readFileSync(GIT_MODULE_URL, 'utf8');
+  for (const [search, replacement] of replacements) {
+    source = replaceExactlyOnce(source, search, replacement);
+  }
+  writeFileSync(path.join(sandbox, 'git.mjs'), source);
+  writeFileSync(
+    path.join(sandbox, 'runner.mjs'),
+    `import {
+  configureEngineGitExecutable,
+  unsafeAtomicUpdateRefs,
+} from './git.mjs';
+configureEngineGitExecutable(${JSON.stringify(gitExecutablePath())});
+const operations = ${JSON.stringify(operations)};
+try {
+  const receipts = [];
+  for (let attempt = 0; attempt < ${repeats}; attempt += 1) {
+    receipts.push(unsafeAtomicUpdateRefs(${JSON.stringify(repo)}, operations));
+  }
+  process.stdout.write(JSON.stringify({ ok: true, receipts }));
+} catch (error) {
+  process.stdout.write(JSON.stringify({
+    ok: false,
+    code: error?.code ?? null,
+    message: error?.message ?? String(error),
+    cause: error?.cause?.message ?? null,
+  }));
+}
+`,
+  );
+  try {
+    const rendered = execFileSync(
+      process.execPath,
+      [path.join(sandbox, 'runner.mjs')],
+      {
+        cwd: repo,
+        encoding: 'utf8',
+        env: {
+          LANG: 'C',
+          LC_ALL: 'C',
+          PATH: path.dirname(process.execPath),
+        },
+        maxBuffer: 4 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    return { result: JSON.parse(rendered), sandbox };
+  } catch (error) {
+    rmSync(sandbox, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function waitFor(predicate, label, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      assert.fail(`timed out waiting for ${label}`);
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+  }
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ESRCH') return false;
+    throw error;
+  }
 }
 
 function divergentMergeFixture(attributes) {
@@ -583,6 +696,685 @@ test('head capture is bounded, exact, ordered, and deeply frozen', () => {
       'INVALID_REF_BATCH',
     );
   } finally {
+    fixture.cleanup();
+  }
+});
+
+test('head capture rejects non-commit, resolving, dangling, and broken exact refs', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'commit.txt', 'commit\n');
+    const commit = commitAll(fixture.repo, 'capture representation base');
+    git(fixture.repo, 'branch', 'capture/direct', commit);
+    git(
+      fixture.repo,
+      'symbolic-ref',
+      'refs/heads/capture/resolving',
+      'refs/heads/capture/direct',
+    );
+    git(
+      fixture.repo,
+      'symbolic-ref',
+      'refs/heads/capture/dangling',
+      'refs/heads/capture/absent-referent',
+    );
+    write(fixture.repo, 'blob.txt', 'blob\n');
+    const blob = git(fixture.repo, 'hash-object', '-w', 'blob.txt');
+    writeFileSync(
+      path.join(fixture.repo, '.git', 'refs', 'heads', 'capture', 'blob'),
+      `${blob}\n`,
+    );
+    writeFileSync(
+      path.join(fixture.repo, '.git', 'refs', 'heads', 'capture', 'broken'),
+      `${'1'.repeat(40)}\n`,
+    );
+
+    assert.deepEqual(
+      captureHeadRefs(fixture.repo, [
+        'refs/heads/capture/direct',
+        'refs/heads/capture/missing',
+      ]),
+      [
+        { ref: 'refs/heads/capture/direct', head: commit },
+        { ref: 'refs/heads/capture/missing', head: null },
+      ],
+    );
+    for (const ref of ['blob', 'resolving', 'dangling', 'broken']) {
+      throwsCode(
+        () => captureHeadRefs(fixture.repo, [`refs/heads/capture/${ref}`]),
+        'INVALID_HEAD_OBJECT',
+      );
+    }
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('exact create, update, and verify effects reconcile and retry idempotently', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'base.txt', 'base\n');
+    const base = commitAll(fixture.repo, 'atomic base');
+    git(fixture.repo, 'branch', 'atomic/update', base);
+    write(fixture.repo, 'next.txt', 'next\n');
+    const next = commitAll(fixture.repo, 'atomic next');
+    const operations = [
+      {
+        kind: 'update',
+        ref: 'refs/heads/atomic/update',
+        expectedHead: base,
+        newHead: next,
+      },
+      { kind: 'create', ref: 'refs/heads/atomic/create', newHead: next },
+      { kind: 'verify', ref: 'refs/heads/main', expectedHead: next },
+      { kind: 'verify', ref: 'refs/heads/atomic/missing', expectedHead: null },
+    ];
+
+    const first = unsafeAtomicUpdateRefs(fixture.repo, operations);
+    assert.deepEqual(first, operations);
+    assert.equal(Object.isFrozen(first), true);
+    assert.equal(first.every(Object.isFrozen), true);
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/atomic/update'), next);
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/atomic/create'), next);
+    const beforeRetry = {
+      update: looseRefSnapshot(fixture.repo, 'refs/heads/atomic/update'),
+      create: looseRefSnapshot(fixture.repo, 'refs/heads/atomic/create'),
+      main: looseRefSnapshot(fixture.repo, 'refs/heads/main'),
+    };
+
+    assert.deepEqual(unsafeAtomicUpdateRefs(fixture.repo, operations), operations);
+    assert.deepEqual(
+      {
+        update: looseRefSnapshot(fixture.repo, 'refs/heads/atomic/update'),
+        create: looseRefSnapshot(fixture.repo, 'refs/heads/atomic/create'),
+        main: looseRefSnapshot(fixture.repo, 'refs/heads/main'),
+      },
+      beforeRetry,
+    );
+    assert.deepEqual(
+      unsafeAtomicUpdateRefs(fixture.repo, [
+        { kind: 'verify', ref: 'refs/heads/main', expectedHead: next },
+        { kind: 'verify', ref: 'refs/heads/atomic/missing', expectedHead: null },
+        {
+          kind: 'update',
+          ref: 'refs/heads/atomic/create',
+          expectedHead: next,
+          newHead: next,
+        },
+      ]),
+      [
+        { kind: 'verify', ref: 'refs/heads/main', expectedHead: next },
+        { kind: 'verify', ref: 'refs/heads/atomic/missing', expectedHead: null },
+        {
+          kind: 'update',
+          ref: 'refs/heads/atomic/create',
+          expectedHead: next,
+          newHead: next,
+        },
+      ],
+    );
+    assert.deepEqual(looseRefSnapshot(fixture.repo, 'refs/heads/main'), beforeRetry.main);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('exact ref transactions preserve SHA-256 widths and ignore inherited Node injection', () => {
+  const repo = mkdtempSync(path.join(tmpdir(), 'baton-sha256-ref-test-'));
+  const priorNodeOptions = process.env.NODE_OPTIONS;
+  try {
+    git(repo, 'init', '-q', '--object-format=sha256', '-b', 'main');
+    git(repo, 'config', 'user.name', 'Baton Test');
+    git(repo, 'config', 'user.email', 'baton-test@example.invalid');
+    write(repo, 'base.txt', 'base\n');
+    const base = commitAll(repo, 'SHA-256 base');
+    assert.equal(base.length, 64);
+    git(repo, 'branch', 'sha256/update', base);
+    write(repo, 'next.txt', 'next\n');
+    const next = commitAll(repo, 'SHA-256 next');
+    process.env.NODE_OPTIONS = '--require=/definitely/not/a/baton/module.cjs';
+    const operations = [
+      {
+        kind: 'update',
+        ref: 'refs/heads/sha256/update',
+        expectedHead: base,
+        newHead: next,
+      },
+      { kind: 'create', ref: 'refs/heads/sha256/create', newHead: next },
+      { kind: 'verify', ref: 'refs/heads/main', expectedHead: next },
+    ];
+    assert.deepEqual(unsafeAtomicUpdateRefs(repo, operations), operations);
+    assert.equal(resolveRef(repo, 'refs/heads/sha256/update'), next);
+    assert.equal(resolveRef(repo, 'refs/heads/sha256/create'), next);
+  } finally {
+    if (priorNodeOptions === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = priorNodeOptions;
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('resolving and dangling aliases refuse create, update, and verify atomically', () => {
+  for (const aliasKind of ['resolving', 'dangling']) {
+    for (const operationKind of ['create', 'update', 'verify']) {
+      const fixture = temporaryRepository();
+      try {
+        write(fixture.repo, 'base.txt', 'base\n');
+        const base = commitAll(fixture.repo, 'alias base');
+        git(fixture.repo, 'branch', 'alias/referent', base);
+        git(fixture.repo, 'branch', 'alias/paired', base);
+        write(fixture.repo, 'next.txt', 'next\n');
+        const next = commitAll(fixture.repo, 'alias next');
+        const target = `refs/heads/alias/${aliasKind}-${operationKind}`;
+        const referent = aliasKind === 'resolving'
+          ? 'refs/heads/alias/referent'
+          : `refs/heads/alias/missing-${operationKind}`;
+        git(fixture.repo, 'symbolic-ref', target, referent);
+        const targetOperation = operationKind === 'create'
+          ? { kind: 'create', ref: target, newHead: next }
+          : operationKind === 'update'
+            ? { kind: 'update', ref: target, expectedHead: base, newHead: next }
+            : {
+                kind: 'verify',
+                ref: target,
+                expectedHead: aliasKind === 'resolving' ? base : null,
+              };
+        const before = {
+          target: looseRefSnapshot(fixture.repo, target),
+          referent: looseRefSnapshot(fixture.repo, referent),
+          paired: looseRefSnapshot(fixture.repo, 'refs/heads/alias/paired'),
+        };
+
+        throwsCodeMessage(
+          () => unsafeAtomicUpdateRefs(fixture.repo, [
+            targetOperation,
+            {
+              kind: 'update',
+              ref: 'refs/heads/alias/paired',
+              expectedHead: base,
+              newHead: next,
+            },
+          ]),
+          'ATOMIC_REF_UPDATE_FAILED',
+          /ambiguous outcome.*recovery is required before retry/u,
+        );
+        assert.deepEqual(
+          {
+            target: looseRefSnapshot(fixture.repo, target),
+            referent: looseRefSnapshot(fixture.repo, referent),
+            paired: looseRefSnapshot(fixture.repo, 'refs/heads/alias/paired'),
+          },
+          before,
+          `${aliasKind} ${operationKind} changed an exact ref or reflog`,
+        );
+        assert.equal(resolveRef(fixture.repo, 'refs/heads/alias/paired'), base);
+        if (aliasKind === 'resolving') {
+          assert.equal(resolveRef(fixture.repo, referent), base);
+        }
+      } finally {
+        fixture.cleanup();
+      }
+    }
+  }
+});
+
+test('prepared exact locks expose raced aliases to the helper before commit', () => {
+  for (const aliasKind of ['resolving', 'dangling']) {
+    const fixture = temporaryRepository();
+    let sandbox;
+    try {
+      write(fixture.repo, 'base.txt', 'base\n');
+      const base = commitAll(fixture.repo, `${aliasKind} locked base`);
+      git(fixture.repo, 'branch', 'locked/referent', base);
+      write(fixture.repo, 'next.txt', 'next\n');
+      const next = commitAll(fixture.repo, `${aliasKind} locked next`);
+      const target = `refs/heads/locked/${aliasKind}`;
+      const referent = aliasKind === 'resolving'
+        ? 'refs/heads/locked/referent'
+        : 'refs/heads/locked/missing';
+      git(fixture.repo, 'symbolic-ref', target, referent);
+      const proofFile = path.join(fixture.repo, `${aliasKind}-prepared`);
+      const operation = aliasKind === 'resolving'
+        ? { kind: 'update', ref: target, expectedHead: base, newHead: next }
+        : { kind: 'verify', ref: target, expectedHead: null };
+      const before = {
+        target: looseRefSnapshot(fixture.repo, target),
+        referent: looseRefSnapshot(fixture.repo, referent),
+      };
+      const invocation = runInstrumentedAtomic(
+        fixture.repo,
+        [operation],
+        [[
+          [
+            "    if (await stdout.next() !== 'prepare: ok') {",
+            "      throw new Error('exact-ref Git protocol rejected prepare');",
+            '    }',
+            '    recheckPreparedRefState(request);',
+          ].join('\n'),
+          [
+            "    if (await stdout.next() !== 'prepare: ok') {",
+            "      throw new Error('exact-ref Git protocol rejected prepare');",
+            '    }',
+            `    writeFileSync(${JSON.stringify(proofFile)}, 'prepared');`,
+            '    recheckPreparedRefState(request);',
+          ].join('\n'),
+        ]],
+      );
+      sandbox = invocation.sandbox;
+      assert.equal(readFileSync(proofFile, 'utf8'), 'prepared');
+      assert.equal(invocation.result.code, 'ATOMIC_REF_UPDATE_FAILED');
+      assert.match(
+        invocation.result.message,
+        /ambiguous outcome.*recovery is required before retry/u,
+      );
+      assert.deepEqual(
+        {
+          target: looseRefSnapshot(fixture.repo, target),
+          referent: looseRefSnapshot(fixture.repo, referent),
+        },
+        before,
+      );
+    } finally {
+      if (sandbox) rmSync(sandbox, { recursive: true, force: true });
+      fixture.cleanup();
+    }
+  }
+});
+
+test('pre-commit helper kill and timeout abort Git, reap it, and release the exact lock', async () => {
+  const seam = [
+    '    recheckPreparedRefState(request);\n'
+      + "    await writeProtocolLine(child, 'commit');",
+  ];
+  for (const mode of ['kill', 'timeout']) {
+    const fixture = temporaryRepository();
+    let sandbox;
+    try {
+      write(fixture.repo, 'base.txt', 'base\n');
+      const base = commitAll(fixture.repo, `${mode} base`);
+      git(fixture.repo, 'branch', 'fault/target', base);
+      write(fixture.repo, 'next.txt', 'next\n');
+      const next = commitAll(fixture.repo, `${mode} next`);
+      const pidFile = path.join(fixture.repo, `${mode}-git-child.pid`);
+      const proofFile = path.join(fixture.repo, `${mode}-prepared.json`);
+      const lockPath = path.join(
+        fixture.repo,
+        '.git',
+        'refs',
+        'heads',
+        'fault',
+        'target.lock',
+      );
+      const fault = mode === 'kill'
+        ? "    process.kill(process.pid, 'SIGKILL');"
+        : '    await new Promise(() => {});';
+      const replacement = [
+        '    recheckPreparedRefState(request);',
+        `    writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));`,
+        `    writeFileSync(${JSON.stringify(proofFile)}, JSON.stringify({`,
+        '      pid: child.pid,',
+        `      lockHeld: existsSync(${JSON.stringify(lockPath)}),`,
+        '    }));',
+        fault,
+        "    await writeProtocolLine(child, 'commit');",
+      ].join('\n');
+      const replacements = [[seam[0], replacement]];
+      if (mode === 'timeout') {
+        replacements.push([
+          'const REF_HELPER_TIMEOUT_MS = 10_000;',
+          'const REF_HELPER_TIMEOUT_MS = 750;',
+        ]);
+      }
+      const invocation = runInstrumentedAtomic(
+        fixture.repo,
+        [{
+          kind: 'update',
+          ref: 'refs/heads/fault/target',
+          expectedHead: base,
+          newHead: next,
+        }],
+        replacements,
+      );
+      sandbox = invocation.sandbox;
+      assert.deepEqual(
+        {
+          ok: invocation.result.ok,
+          code: invocation.result.code,
+          message: invocation.result.message,
+        },
+        {
+          ok: false,
+          code: 'ATOMIC_REF_UPDATE_FAILED',
+          message: 'exact Baton ref transaction lost without partial advancement',
+        },
+      );
+      assert.equal(resolveRef(fixture.repo, 'refs/heads/fault/target'), base);
+      const prepared = JSON.parse(readFileSync(proofFile, 'utf8'));
+      assert.equal(prepared.lockHeld, true, `${mode} did not reach a prepared exact lock`);
+      assert.equal(Number(readFileSync(pidFile, 'utf8')), prepared.pid);
+      await waitFor(
+        () => !processExists(prepared.pid),
+        `${mode} Git transaction child exit`,
+      );
+      await waitFor(
+        () => !existsSync(lockPath),
+        `${mode} exact ref lock release`,
+      );
+      git(
+        fixture.repo,
+        'update-ref',
+        'refs/heads/fault/target',
+        next,
+        base,
+      );
+      assert.equal(resolveRef(fixture.repo, 'refs/heads/fault/target'), next);
+    } finally {
+      if (sandbox) rmSync(sandbox, { recursive: true, force: true });
+      fixture.cleanup();
+    }
+  }
+});
+
+test('post-commit transport and cleanup faults reconcile as idempotent success', async () => {
+  const afterCommit = '    committed = true;\n    child.stdin.end();';
+  const cleanup = [
+    'function cleanupRefTransactionHooks(hooksDirectory) {',
+    '  rmSync(hooksDirectory, { recursive: true, force: true });',
+    '}',
+  ].join('\n');
+  const scenarios = [
+    {
+      name: 'non-zero helper exit',
+      replacements: [[
+        afterCommit,
+        "    committed = true;\n    process.exitCode = 97;\n    child.stdin.end();",
+      ]],
+    },
+    {
+      name: 'killed helper',
+      replacements: [[
+        afterCommit,
+        "    committed = true;\n    process.kill(process.pid, 'SIGKILL');\n    child.stdin.end();",
+      ]],
+    },
+    {
+      name: 'extra helper output',
+      replacements: [[
+        afterCommit,
+        "    committed = true;\n"
+          + "    process.stdout.write('unexpected helper output\\\\n');\n"
+          + '    child.stdin.end();',
+      ]],
+    },
+    {
+      name: 'post-ack parser failure',
+      replacements: [[
+        afterCommit,
+        "    committed = true;\n"
+          + "    throw new Error('injected malformed commit acknowledgement');\n"
+          + '    child.stdin.end();',
+      ]],
+    },
+    {
+      name: 'parent cleanup failure',
+      replacements: [[
+        cleanup,
+        'function cleanupRefTransactionHooks() {\n'
+          + "  throw new Error('injected cleanup failure');\n"
+          + '}',
+      ]],
+    },
+  ];
+  for (const scenario of scenarios) {
+    const fixture = temporaryRepository();
+    let sandbox;
+    try {
+      write(fixture.repo, 'base.txt', 'base\n');
+      const base = commitAll(fixture.repo, `${scenario.name} base`);
+      git(fixture.repo, 'branch', 'fault/target', base);
+      write(fixture.repo, 'next.txt', 'next\n');
+      const next = commitAll(fixture.repo, `${scenario.name} next`);
+      const operation = {
+        kind: 'update',
+        ref: 'refs/heads/fault/target',
+        expectedHead: base,
+        newHead: next,
+      };
+      const invocation = runInstrumentedAtomic(
+        fixture.repo,
+        [operation],
+        scenario.replacements,
+      );
+      sandbox = invocation.sandbox;
+      assert.equal(invocation.result.ok, true, scenario.name);
+      assert.deepEqual(invocation.result.receipts, [[operation]], scenario.name);
+      assert.equal(resolveRef(fixture.repo, operation.ref), next, scenario.name);
+      const lockPath = path.join(
+        fixture.repo,
+        '.git',
+        'refs',
+        'heads',
+        'fault',
+        'target.lock',
+      );
+      await waitFor(() => !existsSync(lockPath), `${scenario.name} lock release`);
+      const beforeRetry = looseRefSnapshot(fixture.repo, operation.ref);
+      assert.deepEqual(unsafeAtomicUpdateRefs(fixture.repo, [operation]), [operation]);
+      assert.deepEqual(looseRefSnapshot(fixture.repo, operation.ref), beforeRetry);
+    } finally {
+      if (sandbox) rmSync(sandbox, { recursive: true, force: true });
+      fixture.cleanup();
+    }
+  }
+});
+
+test('pure verify succeeds when helper transport is lost after commit acknowledgement', () => {
+  const fixture = temporaryRepository();
+  let sandbox;
+  try {
+    write(fixture.repo, 'verify.txt', 'verify\n');
+    const head = commitAll(fixture.repo, 'verify transport base');
+    const operation = {
+      kind: 'verify',
+      ref: 'refs/heads/main',
+      expectedHead: head,
+    };
+    const invocation = runInstrumentedAtomic(
+      fixture.repo,
+      [operation],
+      [[
+        '    committed = true;\n    child.stdin.end();',
+        "    committed = true;\n    process.kill(process.pid, 'SIGKILL');\n    child.stdin.end();",
+      ]],
+    );
+    sandbox = invocation.sandbox;
+    assert.equal(invocation.result.ok, true);
+    assert.deepEqual(invocation.result.receipts, [[operation]]);
+    assert.equal(resolveRef(fixture.repo, operation.ref), head);
+  } finally {
+    if (sandbox) rmSync(sandbox, { recursive: true, force: true });
+    fixture.cleanup();
+  }
+});
+
+test('mixed, third, alias, and reconciliation failures require authoritative recovery', () => {
+  const reconciliationSeam = [
+    '  let observed = null;',
+    '  let reconciliationError = null;',
+    '  try {',
+  ].join('\n');
+  const scenarios = [
+    {
+      name: 'third OID',
+      operationCount: 1,
+      injection: ({ target, third }) => (
+        `  execFileSync(gitExecutablePath(), [`
+        + `'update-ref', ${JSON.stringify(target)}, ${JSON.stringify(third)}`
+        + `], { cwd: repo, stdio: ['ignore', 'ignore', 'ignore'] });`
+      ),
+    },
+    {
+      name: 'symbolic alias',
+      operationCount: 1,
+      injection: ({ target, referent }) => (
+        `  execFileSync(gitExecutablePath(), [`
+        + `'symbolic-ref', ${JSON.stringify(target)}, ${JSON.stringify(referent)}`
+        + `], { cwd: repo, stdio: ['ignore', 'ignore', 'ignore'] });`
+      ),
+    },
+    {
+      name: 'mixed pre and post',
+      operationCount: 2,
+      injection: ({ target, base, next }) => (
+        `  execFileSync(gitExecutablePath(), [`
+        + `'update-ref', ${JSON.stringify(target)}, ${JSON.stringify(base)}, `
+        + `${JSON.stringify(next)}`
+        + `], { cwd: repo, stdio: ['ignore', 'ignore', 'ignore'] });`
+      ),
+    },
+  ];
+  for (const scenario of scenarios) {
+    const fixture = temporaryRepository();
+    let sandbox;
+    try {
+      write(fixture.repo, 'base.txt', 'base\n');
+      const base = commitAll(fixture.repo, `${scenario.name} base`);
+      git(fixture.repo, 'branch', 'fault/target', base);
+      git(fixture.repo, 'branch', 'fault/paired', base);
+      write(fixture.repo, 'next.txt', 'next\n');
+      const next = commitAll(fixture.repo, `${scenario.name} next`);
+      write(fixture.repo, 'third.txt', 'third\n');
+      const third = commitAll(fixture.repo, `${scenario.name} third`);
+      git(fixture.repo, 'branch', 'fault/referent', third);
+      const operations = [{
+        kind: 'update',
+        ref: 'refs/heads/fault/target',
+        expectedHead: base,
+        newHead: next,
+      }];
+      if (scenario.operationCount === 2) {
+        operations.push({
+          kind: 'update',
+          ref: 'refs/heads/fault/paired',
+          expectedHead: base,
+          newHead: next,
+        });
+      }
+      const injection = scenario.injection({
+        target: 'refs/heads/fault/target',
+        referent: 'refs/heads/fault/referent',
+        base,
+        next,
+        third,
+      });
+      const invocation = runInstrumentedAtomic(
+        fixture.repo,
+        operations,
+        [[
+          reconciliationSeam,
+          `  let observed = null;\n`
+            + `  let reconciliationError = null;\n`
+            + `${injection}\n`
+            + '  try {',
+        ]],
+      );
+      sandbox = invocation.sandbox;
+      assert.deepEqual(
+        {
+          ok: invocation.result.ok,
+          code: invocation.result.code,
+        },
+        { ok: false, code: 'ATOMIC_REF_UPDATE_FAILED' },
+        scenario.name,
+      );
+      assert.match(
+        invocation.result.message,
+        /ambiguous outcome.*recovery is required before retry/u,
+        scenario.name,
+      );
+    } finally {
+      if (sandbox) rmSync(sandbox, { recursive: true, force: true });
+      fixture.cleanup();
+    }
+  }
+
+  const fixture = temporaryRepository();
+  let sandbox;
+  try {
+    write(fixture.repo, 'base.txt', 'base\n');
+    const base = commitAll(fixture.repo, 'reconciliation failure base');
+    git(fixture.repo, 'branch', 'fault/target', base);
+    write(fixture.repo, 'next.txt', 'next\n');
+    const next = commitAll(fixture.repo, 'reconciliation failure next');
+    const invocation = runInstrumentedAtomic(
+      fixture.repo,
+      [{
+        kind: 'update',
+        ref: 'refs/heads/fault/target',
+        expectedHead: base,
+        newHead: next,
+      }],
+      [[
+        '    observed = captureHeadRefs(\n',
+        "    throw new Error('injected reconciliation failure');\n"
+          + '    observed = captureHeadRefs(\n',
+      ]],
+    );
+    sandbox = invocation.sandbox;
+    assert.equal(invocation.result.code, 'ATOMIC_REF_UPDATE_FAILED');
+    assert.match(
+      invocation.result.message,
+      /ambiguous outcome.*recovery is required before retry/u,
+    );
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/fault/target'), next);
+  } finally {
+    if (sandbox) rmSync(sandbox, { recursive: true, force: true });
+    fixture.cleanup();
+  }
+});
+
+test('all-pre reconciliation is snapshot-scoped and does not claim ABA history', () => {
+  const fixture = temporaryRepository();
+  let sandbox;
+  try {
+    write(fixture.repo, 'base.txt', 'base\n');
+    const base = commitAll(fixture.repo, 'ABA base');
+    git(fixture.repo, 'branch', 'fault/target', base);
+    write(fixture.repo, 'next.txt', 'next\n');
+    const next = commitAll(fixture.repo, 'ABA next');
+    const target = 'refs/heads/fault/target';
+    const invocation = runInstrumentedAtomic(
+      fixture.repo,
+      [{ kind: 'update', ref: target, expectedHead: base, newHead: next }],
+      [[
+        [
+          '  let observed = null;',
+          '  let reconciliationError = null;',
+          '  try {',
+        ].join('\n'),
+        `  let observed = null;\n`
+          + `  let reconciliationError = null;\n`
+          + `  execFileSync(gitExecutablePath(), [`
+          + `'update-ref', ${JSON.stringify(target)}, ${JSON.stringify(base)}, `
+          + `${JSON.stringify(next)}`
+          + `], { cwd: repo, stdio: ['ignore', 'ignore', 'ignore'] });\n`
+          + '  try {',
+      ]],
+    );
+    sandbox = invocation.sandbox;
+    assert.equal(invocation.result.code, 'ATOMIC_REF_UPDATE_FAILED');
+    assert.equal(
+      invocation.result.message,
+      'exact Baton ref transaction lost without partial advancement',
+    );
+    assert.equal(resolveRef(fixture.repo, target), base);
+    const reflog = readFileSync(
+      path.join(fixture.repo, '.git', 'logs', 'refs', 'heads', 'fault', 'target'),
+      'utf8',
+    );
+    assert.match(reflog, new RegExp(`${base} ${next}`, 'u'));
+    assert.match(reflog, new RegExp(`${next} ${base}`, 'u'));
+  } finally {
+    if (sandbox) rmSync(sandbox, { recursive: true, force: true });
     fixture.cleanup();
   }
 });
