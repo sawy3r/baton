@@ -4,7 +4,7 @@ description: "Return the Captain decision over one exact Baton plan revision, sl
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.4
+package-version: 1.0.0-rc.5
 operation-version: baton.operation/v2
 operation-sha256: sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381
 -->

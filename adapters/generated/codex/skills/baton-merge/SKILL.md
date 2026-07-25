@@ -4,7 +4,7 @@ description: "Mechanically compose passed Baton candidates or integrate the exac
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.4
+package-version: 1.0.0-rc.5
 operation-version: baton.operation/v2
 operation-sha256: sha256:ccc995fd1b38814858f5fcf1122c61409acbbd281596cb259c6de4ba18a6df1b
 -->

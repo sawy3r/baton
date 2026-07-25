@@ -4,7 +4,7 @@ description: "Propose an externally approved Baton plan or forward-only revision
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.4
+package-version: 1.0.0-rc.5
 operation-version: baton.operation/v2
 operation-sha256: sha256:91197ccfdda4475b09f70d50e6dd1fe248f7135625172618051b81dc98016088
 -->

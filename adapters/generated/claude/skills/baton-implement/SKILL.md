@@ -4,7 +4,7 @@ description: "Design or implement one eligible Baton slice attempt without cross
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.4
+package-version: 1.0.0-rc.5
 operation-version: baton.operation/v2
 operation-sha256: sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1
 -->

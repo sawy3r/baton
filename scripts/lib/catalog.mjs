@@ -5,6 +5,39 @@ export const GENERATED_MANIFEST_VERSION = 'baton.generated-adapters/v1';
 export const INSTALL_MANIFEST_VERSION = 'baton.install/v1';
 export const TRANSACTION_VERSION = 'baton.transaction/v1';
 
+export const PRIOR_INSTALL_PACKAGES = Object.freeze([
+  Object.freeze({
+    package_version: '1.0.0-rc.2',
+    package_digest: 'sha256:676c630c6a4ef3f752d604efaa5e51958adec0d8580b74cec7fb1e689b1d3436',
+    generator_version: 'baton.adapter-generator/v1',
+    operation_version: 'baton.operation/v1',
+    ownership_fingerprints: Object.freeze({
+      claude: 'sha256:39c59469d2ce5e06dcbff61bb25218a2c4eb2571f07ca246cd3627c0000313d3',
+      codex: 'sha256:8c309008a03881660bbd88dc42e5f2cc652d08213ff5cb046ac22c471e3b8766',
+    }),
+  }),
+  Object.freeze({
+    package_version: '1.0.0-rc.3',
+    package_digest: 'sha256:e5927a82f7c8a0daf3aa1196e7aa56231044449bb141cc2d7efd1cc8cca209bd',
+    generator_version: 'baton.adapter-generator/v1',
+    operation_version: 'baton.operation/v1',
+    ownership_fingerprints: Object.freeze({
+      claude: 'sha256:d9f8a6ea77aeced3b8cedb99743d1f72ad864a67dd1542fd1e4e75cd5a9f26ab',
+      codex: 'sha256:1c7a4ec037f468fe64cf785a431648a0c2903904614600f2f8205250f191cc2a',
+    }),
+  }),
+  Object.freeze({
+    package_version: '1.0.0-rc.4',
+    package_digest: 'sha256:9aecab587b22a275e661828329f3f4550e8299756fafd459c15b3509aa57f283',
+    generator_version: 'baton.adapter-generator/v1',
+    operation_version: 'baton.operation/v2',
+    ownership_fingerprints: Object.freeze({
+      claude: 'sha256:900d25d362d59db81c04686c8bcf841421ac685d642b65d42a4607fec0016076',
+      codex: 'sha256:d219ba9421a9d1d62b4dc8f7af45c15ef1297cb0465d9ba919cbdc6451d2a64b',
+    }),
+  }),
+]);
+
 export const OPERATIONS = Object.freeze([
   Object.freeze({
     name: 'baton-plan',
