@@ -1,5 +1,13 @@
 # Baton roadmap
 
+## RC5 — make upgrades boring
+
+`v1.0.0-rc.5` keeps the RC4 protocol unchanged and repairs its installer
+boundary. Exact RC2, RC3, and RC4 packages can advance transactionally only
+after their complete ownership claims and installed bytes are proved. Unknown
+or altered predecessor manifests still fail before mutation. Rollback examples
+also name the required `latest` selector.
+
 ## RC4 — keep the trusted loop small
 
 `v1.0.0-rc.4` corrects the procedural overhead that grew through earlier

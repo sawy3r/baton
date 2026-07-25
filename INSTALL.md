@@ -20,9 +20,9 @@ below.
 The easiest route is to paste this into Claude Code or Codex:
 
 ```text
-Install Baton v1.0.0-rc.4 for me.
+Install Baton v1.0.0-rc.5 for me.
 
-Clone the exact v1.0.0-rc.4 tag from https://github.com/sawy3r/baton.git,
+Clone the exact v1.0.0-rc.5 tag from https://github.com/sawy3r/baton.git,
 read its INSTALL.md, and use the installer that matches this tool. Show me the
 user-scope dry-run first and wait for my approval before applying it. Do not
 edit my instruction files or install Sworn.
@@ -151,20 +151,21 @@ GET only.
 ## Repeat, upgrade, rollback, and uninstall
 
 Every install owns an exact manifest. Repeating the same install is a no-op.
-An upgrade replaces only bytes owned by the previous Baton manifest and stops
-on a collision, modified managed file, symlink, unsupported layout, or changed
+RC5 directly upgrades exact, unmodified RC2, RC3, or RC4 installs. An upgrade
+replaces only bytes owned by the previous Baton manifest and stops on a
+collision, modified managed file, symlink, unsupported layout, or changed
 instruction block.
 
 Preview rollback or uninstall before applying it:
 
 ```sh
-./install-claude.sh --user --rollback --dry-run
-./install-claude.sh --user --rollback --yes
+./install-claude.sh --user --rollback latest --dry-run
+./install-claude.sh --user --rollback latest --yes
 ./install-claude.sh --user --uninstall --dry-run
 ./install-claude.sh --user --uninstall --yes
 
-./install-codex.sh --user --rollback --dry-run
-./install-codex.sh --user --rollback --yes
+./install-codex.sh --user --rollback latest --dry-run
+./install-codex.sh --user --rollback latest --yes
 ./install-codex.sh --user --uninstall --dry-run
 ./install-codex.sh --user --uninstall --yes
 ```

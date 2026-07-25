@@ -14,6 +14,7 @@ import { isAbsolute, dirname, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { checkGenerated } from './generate-adapters.mjs';
 import { OPERATIONS, SUPPORT_FILES } from './lib/catalog.mjs';
 import {
   assertNoUnownedContent,
@@ -192,7 +193,9 @@ async function createdDirectories(paths, priorManifest) {
     });
   }
   const created = new Map(
-    priorManifest?.created_directories.map((entry) => [`${entry.root}:${entry.path}`, entry]) ?? [],
+    (priorManifest?.created_directories ?? [])
+      .map((entry) => [`${entry.root}:${entry.path}`, entry])
+      .filter(([identity]) => candidates.has(identity)),
   );
   for (const [identity, candidate] of candidates) {
     if (!(await maybeLstat(candidate.absolute))) {
@@ -205,15 +208,14 @@ async function createdDirectories(paths, priorManifest) {
 }
 
 async function loadGeneratedManifest(bundleRoot) {
-  let manifest;
   try {
-    manifest = JSON.parse(
-      await readFile(join(bundleRoot, 'adapters', 'generated', 'generated-manifest.json'), 'utf8'),
-    );
+    return await checkGenerated({
+      bundleRoot,
+      outputRoot: join(bundleRoot, 'adapters', 'generated'),
+    });
   } catch (error) {
-    fail('PACKAGE_MISMATCH', 'cannot read the generated adapter manifest', error);
+    fail('PACKAGE_MISMATCH', 'generated package does not match source and catalog', error);
   }
-  return manifest;
 }
 
 async function writeContent(path, bytes, mode = 0o644) {
@@ -289,7 +291,16 @@ async function checkpoint(options, name) {
   if (options.checkpoint) await options.checkpoint(name);
 }
 
-async function performInstall({ paths, bundleRoot, prior, legacy, desired, actions, options }) {
+async function performInstall({
+  paths,
+  bundleRoot,
+  generatedManifest,
+  prior,
+  legacy,
+  desired,
+  actions,
+  options,
+}) {
   const stage = await prepareStage({ desired, paths });
   const affected = [
     paths.supportRoot,
@@ -306,8 +317,8 @@ async function performInstall({ paths, bundleRoot, prior, legacy, desired, actio
     });
     await checkpoint(options, 'prepared');
     if (prior) {
-      await verifyOwnedFiles(prior.value, paths);
-      await assertNoUnownedContent(prior.value, paths);
+      await verifyOwnedFiles(prior.value, paths, generatedManifest);
+      await assertNoUnownedContent(prior.value, paths, generatedManifest);
     }
     if (legacy.state === 'exact') {
       const currentLegacy = await inspectLegacyClaude({ bundleRoot, paths });
@@ -377,7 +388,7 @@ async function removeCreatedLauncherRoot(manifest, paths) {
   }
 }
 
-async function performUninstall({ paths, prior, actions, options }) {
+async function performUninstall({ paths, generatedManifest, prior, actions, options }) {
   const affected = [
     paths.supportRoot,
     ...OPERATIONS.map(({ name }) => join(paths.launcherRoot, name)),
@@ -390,8 +401,8 @@ async function performUninstall({ paths, prior, actions, options }) {
   });
   try {
     await checkpoint(options, 'prepared');
-    await verifyOwnedFiles(prior.value, paths);
-    await assertNoUnownedContent(prior.value, paths);
+    await verifyOwnedFiles(prior.value, paths, generatedManifest);
+    await assertNoUnownedContent(prior.value, paths, generatedManifest);
     for (const [index, { name }] of OPERATIONS.entries()) {
       await rm(join(paths.launcherRoot, name), { recursive: true, force: true });
       await checkpoint(options, `launcher-${index + 1}`);
@@ -479,11 +490,12 @@ export async function runInstaller(argv, options = {}) {
     }
   }
 
-  const prior = await readInstallManifest(paths);
+  const generatedManifest = await loadGeneratedManifest(bundleRoot);
+  const prior = await readInstallManifest(paths, generatedManifest);
   if (parsed.operation === 'rollback') {
     if (prior) {
-      await verifyOwnedFiles(prior.value, paths);
-      await assertNoUnownedContent(prior.value, paths);
+      await verifyOwnedFiles(prior.value, paths, generatedManifest);
+      await assertNoUnownedContent(prior.value, paths, generatedManifest);
     }
     const plan = await planRollback({ paths, allowed, selector: parsed.rollback });
     if (parsed.dryRun) {
@@ -510,23 +522,28 @@ export async function runInstaller(argv, options = {}) {
 
   if (parsed.operation === 'uninstall') {
     if (!prior) fail('NOT_INSTALLED', 'no Baton install manifest exists at the target');
-    await verifyOwnedFiles(prior.value, paths);
-    await assertNoUnownedContent(prior.value, paths);
+    await verifyOwnedFiles(prior.value, paths, generatedManifest);
+    await assertNoUnownedContent(prior.value, paths, generatedManifest);
     const actions = uninstallActions(paths, prior.value);
     if (parsed.dryRun) return { paths, dryRun: true, actions, recovered };
-    const transactionId = await performUninstall({ paths, prior, actions, options });
+    const transactionId = await performUninstall({
+      paths,
+      generatedManifest,
+      prior,
+      actions,
+      options,
+    });
     return { paths, dryRun: false, actions, transactionId, recovered };
   }
 
   if (prior) {
-    await verifyOwnedFiles(prior.value, paths);
-    await assertNoUnownedContent(prior.value, paths);
+    await verifyOwnedFiles(prior.value, paths, generatedManifest);
+    await assertNoUnownedContent(prior.value, paths, generatedManifest);
   }
   const legacy = prior
     ? { state: 'none', commandPaths: [], prefix: null }
     : await inspectLegacyClaude({ bundleRoot, paths });
   const directories = await createdDirectories(paths, prior?.value);
-  const generatedManifest = await loadGeneratedManifest(bundleRoot);
   const desired = await buildDesiredInstall({
     bundleRoot,
     paths,
@@ -557,6 +574,7 @@ export async function runInstaller(argv, options = {}) {
   const transactionId = await performInstall({
     paths,
     bundleRoot,
+    generatedManifest,
     prior,
     legacy,
     desired,

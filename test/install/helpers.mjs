@@ -19,9 +19,11 @@ import {
   OPERATIONS,
   SUPPORT_FILES,
 } from '../../scripts/lib/catalog.mjs';
-import { sha256 } from '../../scripts/lib/digest.mjs';
+import { digestEntries, sha256, stableJSON } from '../../scripts/lib/digest.mjs';
+import { ownershipFingerprint } from '../../scripts/lib/manifest.mjs';
 
 export const ROOT = resolve(import.meta.dirname, '../..');
+const INSTALL_HISTORY_ROOT = join(import.meta.dirname, 'fixtures', 'history');
 
 export async function temporaryFixture(t, prefix = 'baton-install-') {
   const root = await mkdtemp(join(tmpdir(), prefix));
@@ -60,6 +62,80 @@ export function targets(host, scope, home, repository = null) {
     launcherRoot: join(base, '.agents', 'skills'),
     stateRoot: join(base, '.codex', '.baton-install'),
   };
+}
+
+function createdDirectoryClaims(ownedFiles) {
+  const claims = new Map([
+    ['support:', { root: 'support', path: '' }],
+    ['launcher:', { root: 'launcher', path: '' }],
+  ]);
+  for (const file of ownedFiles) {
+    let parent = dirname(file.path).replaceAll('\\', '/');
+    while (parent !== '.' && parent !== '') {
+      claims.set(`${file.root}:${parent}`, { root: file.root, path: parent });
+      parent = dirname(parent).replaceAll('\\', '/');
+    }
+  }
+  return [...claims.values()].sort((left, right) => (
+    Buffer.from(`${left.root}:${left.path}`).compare(Buffer.from(`${right.root}:${right.path}`))
+  ));
+}
+
+export async function installHistoricalPackage({
+  version,
+  host,
+  scope,
+  home,
+  repository = null,
+}) {
+  const history = JSON.parse(
+    await readFile(join(INSTALL_HISTORY_ROOT, 'index.json'), 'utf8'),
+  );
+  if (history.schema_version !== 'baton.install-history-fixture/v1') {
+    throw new Error('unsupported install-history fixture');
+  }
+  const record = history.packages.find((candidate) => candidate.package_version === version);
+  const hostRecord = record?.hosts?.[host];
+  if (!record || !hostRecord) throw new Error(`missing ${version}/${host} fixture`);
+  const target = targets(host, scope, home, repository);
+  const ownedFiles = hostRecord.owned_files.map(({ blob, ...file }) => file);
+  if (ownershipFingerprint(host, ownedFiles) !== hostRecord.ownership_fingerprint) {
+    throw new Error(`${version}/${host} fixture ownership fingerprint differs`);
+  }
+  if (
+    digestEntries(ownedFiles.filter(({ root }) => root === 'support'))
+    !== record.package_digest
+  ) {
+    throw new Error(`${version}/${host} fixture package digest differs`);
+  }
+  for (const entry of hostRecord.owned_files) {
+    const bytes = await readFile(join(INSTALL_HISTORY_ROOT, 'blobs', entry.blob));
+    if (sha256(bytes) !== entry.digest || entry.blob !== entry.digest.slice('sha256:'.length)) {
+      throw new Error(`${version}/${host}/${entry.path} fixture blob differs`);
+    }
+    const root = entry.root === 'support' ? target.supportRoot : target.launcherRoot;
+    await writeMode(join(root, entry.path), bytes, Number.parseInt(entry.mode, 8));
+  }
+  const manifest = {
+    schema_version: 'baton.install/v1',
+    host,
+    scope,
+    package_version: record.package_version,
+    package_digest: record.package_digest,
+    generator_version: record.generator_version,
+    operation_version: record.operation_version,
+    support_root: target.supportRoot,
+    launcher_root: target.launcherRoot,
+    owned_files: ownedFiles,
+    owned_instruction_blocks: [],
+    created_directories: createdDirectoryClaims(ownedFiles),
+  };
+  await writeMode(
+    join(target.supportRoot, 'install-manifest.json'),
+    stableJSON(manifest),
+    0o644,
+  );
+  return { history, record, hostRecord, manifest, target };
 }
 
 async function maybeLstat(path) {

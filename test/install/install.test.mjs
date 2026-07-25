@@ -13,18 +13,19 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 
-import { runInstaller } from '../../scripts/install.mjs';
+import { parseArguments, runInstaller } from '../../scripts/install.mjs';
 import {
   OPERATIONS,
   PORTABLE_RUNTIME_FILES,
   SUPPORT_FILES,
 } from '../../scripts/lib/catalog.mjs';
-import { sha256 } from '../../scripts/lib/digest.mjs';
+import { sha256, stableJSON } from '../../scripts/lib/digest.mjs';
 import { baselineFixture } from '../board/helpers.mjs';
 import {
   assertInstalled,
   environment,
   initializeRepository,
+  installHistoricalPackage,
   installSyntheticLegacy,
   ROOT,
   snapshot,
@@ -104,6 +105,15 @@ async function transactionCount(stateRoot) {
     if (error.code === 'ENOENT') return 0;
     throw error;
   }
+}
+
+async function managedSnapshot(target) {
+  return {
+    support: await snapshot(target.supportRoot),
+    launchers: await Promise.all(
+      OPERATIONS.map(({ name }) => snapshot(join(target.launcherRoot, name))),
+    ),
+  };
 }
 
 test('checked-in legacy identity freezes 8 commands, 79 package files, and the exact block', async () => {
@@ -194,6 +204,262 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
       });
       await assert.rejects(lstat(target.supportRoot), { code: 'ENOENT' });
       assert.equal(await readFile(foreign, 'utf8'), 'foreign\n');
+    }
+  }
+});
+
+test('pinned RC2, RC3, and RC4 packages upgrade, roll back exactly, and re-upgrade', async (t) => {
+  const currentVersion = (await readFile(join(ROOT, 'VERSION'), 'utf8')).trim();
+  for (const version of ['1.0.0-rc.2', '1.0.0-rc.3', '1.0.0-rc.4']) {
+    for (const host of ['claude', 'codex']) {
+      for (const scope of ['user', 'project']) {
+        const fixture = await temporaryFixture(t, `baton-upgrade-${version}-${host}-${scope}-`);
+        const repository = scope === 'project'
+          ? initializeRepository(join(fixture.home, 'project'))
+          : null;
+        const env = environment(fixture.home);
+        const baseArguments = argumentsFor(host, scope, repository);
+        const { target } = await installHistoricalPackage({
+          version,
+          host,
+          scope,
+          home: fixture.home,
+          repository,
+        });
+        const foreign = join(target.launcherRoot, 'foreign-skill', 'SKILL.md');
+        await writeMode(foreign, Buffer.from('foreign skill\n'), 0o644);
+        const before = await managedSnapshot(target);
+        const foreignBefore = await snapshot(foreign);
+
+        const preview = await runInstaller([...baseArguments, '--dry-run'], {
+          env,
+          cwd: repository ?? fixture.home,
+          isTTY: false,
+        });
+        assert.equal(preview.actions.length, 7, `${version}/${host}/${scope} preview`);
+
+        const upgraded = await runInstaller([...baseArguments, '--yes'], {
+          env,
+          cwd: repository ?? fixture.home,
+          isTTY: false,
+        });
+        assert.equal(upgraded.actions.length, 7, `${version}/${host}/${scope} upgrade`);
+        assert.equal(
+          (await assertInstalled(target, host, scope)).package_version,
+          currentVersion,
+        );
+        assert.deepEqual(await snapshot(foreign), foreignBefore);
+
+        const repeated = await runInstaller([...baseArguments, '--yes'], {
+          env,
+          cwd: repository ?? fixture.home,
+          isTTY: false,
+        });
+        assert.equal(repeated.noOp, true);
+
+        const rolledBack = await runInstaller(
+          [...baseArguments, '--rollback', 'latest', '--yes'],
+          {
+            env,
+            cwd: repository ?? fixture.home,
+            isTTY: false,
+          },
+        );
+        assert.equal(rolledBack.rolledBack, upgraded.transactionId);
+        assert.deepEqual(await managedSnapshot(target), before);
+        assert.deepEqual(await snapshot(foreign), foreignBefore);
+
+        const reupgraded = await runInstaller([...baseArguments, '--yes'], {
+          env,
+          cwd: repository ?? fixture.home,
+          isTTY: false,
+        });
+        assert.equal(reupgraded.actions.length, 7);
+        assert.equal(
+          (await assertInstalled(target, host, scope)).package_version,
+          currentVersion,
+        );
+        assert.equal(
+          (await runInstaller([...baseArguments, '--yes'], {
+            env,
+            cwd: repository ?? fixture.home,
+            isTTY: false,
+          })).noOp,
+          true,
+        );
+      }
+    }
+  }
+});
+
+test('unsupported or altered predecessor claims fail with zero installer mutation', async (t) => {
+  const cases = [
+    {
+      name: 'owned-byte',
+      code: 'MODIFIED_OWNED_FILE',
+      mutate: async ({ manifest, target }) => {
+        const file = manifest.owned_files.find(({ root }) => root === 'support');
+        await writeMode(join(target.supportRoot, file.path), Buffer.from('altered\n'), 0o644);
+      },
+    },
+    {
+      name: 'renamed-path',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        manifest.owned_files.find(({ root }) => root === 'support').path += '.renamed';
+      },
+    },
+    {
+      name: 'mode',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        manifest.owned_files.find(({ root }) => root === 'support').mode = '0600';
+      },
+    },
+    {
+      name: 'digest',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        manifest.owned_files.find(({ root }) => root === 'support').digest = `sha256:${'0'.repeat(64)}`;
+      },
+    },
+    {
+      name: 'operation-attribution',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        const file = manifest.owned_files.find(({ operation }) => operation === 'baton-plan');
+        file.operation = 'baton-merge';
+      },
+    },
+    {
+      name: 'created-directory',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        manifest.created_directories.push({ root: 'support', path: 'foreign' });
+      },
+    },
+    {
+      name: 'unknown-tuple',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        manifest.package_version = '9.9.9-unknown';
+      },
+    },
+    {
+      name: 'missing-entry',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        manifest.owned_files.pop();
+      },
+    },
+    {
+      name: 'extra-entry',
+      code: 'INVALID_MANIFEST',
+      mutate: async ({ manifest }) => {
+        const launcher = manifest.owned_files.find(({ root }) => root === 'launcher');
+        manifest.owned_files.push({ ...launcher, path: `${launcher.path}.extra` });
+      },
+    },
+  ];
+  for (const scenario of cases) {
+    const fixture = await temporaryFixture(t, `baton-upgrade-reject-${scenario.name}-`);
+    const repository = initializeRepository(join(fixture.home, 'project'));
+    const env = environment(fixture.home);
+    const installed = await installHistoricalPackage({
+      version: '1.0.0-rc.3',
+      host: 'codex',
+      scope: 'project',
+      home: fixture.home,
+      repository,
+    });
+    const manifest = structuredClone(installed.manifest);
+    await scenario.mutate({ manifest, target: installed.target });
+    if (scenario.name !== 'owned-byte') {
+      await writeFile(
+        join(installed.target.supportRoot, 'install-manifest.json'),
+        stableJSON(manifest),
+      );
+    }
+    const before = await snapshot(fixture.home);
+    await rejectCode(
+      runInstaller(
+        argumentsFor('codex', 'project', repository, ['--yes']),
+        { env, cwd: repository, isTTY: false },
+      ),
+      scenario.code,
+    );
+    assert.deepEqual(await snapshot(fixture.home), before, scenario.name);
+  }
+});
+
+test('the current generated package is verified before its identity is trusted', async (t) => {
+  const identity = await syntheticLegacyBundle(t);
+  const adapter = join(
+    identity.bundle,
+    'adapters',
+    'generated',
+    'codex',
+    'skills',
+    'baton-plan',
+    'SKILL.md',
+  );
+  await writeFile(adapter, Buffer.from('altered generated adapter\n'));
+  const fixture = await temporaryFixture(t, 'baton-generated-identity-');
+  const before = await snapshot(fixture.home);
+  await rejectCode(
+    runInstaller(['--host', 'codex', '--user', '--yes'], {
+      env: environment(fixture.home),
+      cwd: fixture.home,
+      isTTY: false,
+      bundleRoot: identity.bundle,
+    }),
+    'PACKAGE_MISMATCH',
+  );
+  assert.deepEqual(await snapshot(fixture.home), before);
+});
+
+test('the current install manifest cannot widen its owned topology', async (t) => {
+  const fixture = await temporaryFixture(t, 'baton-current-topology-');
+  const env = environment(fixture.home);
+  const target = targets('codex', 'user', fixture.home);
+  const arguments_ = ['--host', 'codex', '--user', '--yes'];
+  await runInstaller(arguments_, {
+    env,
+    cwd: fixture.home,
+    isTTY: false,
+  });
+  const manifestPath = join(target.supportRoot, 'install-manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.owned_files.find(({ root }) => root === 'launcher').path = 'baton-plan/RENAMED.md';
+  await writeFile(manifestPath, stableJSON(manifest));
+  const before = await snapshot(fixture.home);
+  await rejectCode(
+    runInstaller(arguments_, {
+      env,
+      cwd: fixture.home,
+      isTTY: false,
+    }),
+    'INVALID_MANIFEST',
+  );
+  assert.deepEqual(await snapshot(fixture.home), before);
+});
+
+test('documented rollback examples include a valid selector', async () => {
+  const install = await readFile(join(ROOT, 'INSTALL.md'), 'utf8');
+  for (const host of ['claude', 'codex']) {
+    for (const confirmation of ['--dry-run', '--yes']) {
+      const command = `./install-${host}.sh --user --rollback latest ${confirmation}`;
+      assert.match(install, new RegExp(command.replaceAll('.', '\\.')));
+      const parsed = parseArguments([
+        '--host',
+        host,
+        '--user',
+        '--rollback',
+        'latest',
+        confirmation,
+      ]);
+      assert.equal(parsed.operation, 'rollback');
+      assert.equal(parsed.rollback, 'latest');
     }
   }
 });

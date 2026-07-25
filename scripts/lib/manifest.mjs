@@ -11,6 +11,7 @@ import {
   INSTALL_MANIFEST_VERSION,
   OPERATIONS,
   OPERATION_VERSION,
+  PRIOR_INSTALL_PACKAGES,
   SUPPORT_FILES,
 } from './catalog.mjs';
 import { digestEntries, sha256, stableJSON } from './digest.mjs';
@@ -64,7 +65,91 @@ function operationMap(generatedManifest) {
   ]));
 }
 
-export function validateInstallManifest(value, paths) {
+function samePackageIdentity(left, right) {
+  return [
+    'package_version',
+    'package_digest',
+    'generator_version',
+    'operation_version',
+  ].every((field) => left[field] === right[field]);
+}
+
+export function ownershipFingerprint(host, ownedFiles) {
+  const normalized = [...ownedFiles]
+    .map((file) => ({
+      root: file.root,
+      path: file.path,
+      mode: file.mode,
+      digest: file.digest,
+      operation: file.operation,
+      operation_digest: file.operation_digest,
+    }))
+    .sort((left, right) => (
+      Buffer.from(`${left.root}:${left.path}`).compare(
+        Buffer.from(`${right.root}:${right.path}`),
+      )
+    ));
+  return sha256(stableJSON({ host, owned_files: normalized }));
+}
+
+function validateCurrentOwnership(value, generatedManifest) {
+  const operations = operationMap(generatedManifest);
+  const expected = new Map();
+  for (const path of SUPPORT_FILES) {
+    const operation = OPERATIONS.find((candidate) => candidate.source === path);
+    expected.set(`support:${path}`, {
+      root: 'support',
+      path,
+      mode: '0644',
+      operation: operation?.name ?? null,
+      operation_digest: operation ? operations.get(operation.name)?.digest : null,
+      digest: null,
+    });
+  }
+  for (const operation of OPERATIONS) {
+    const adapter = generatedManifest.adapters.find((candidate) => (
+      candidate.host === value.host && candidate.operation === operation.name
+    ));
+    expected.set(`launcher:${operation.name}/SKILL.md`, {
+      root: 'launcher',
+      path: `${operation.name}/SKILL.md`,
+      mode: '0644',
+      operation: operation.name,
+      operation_digest: operations.get(operation.name)?.digest,
+      digest: adapter?.digest ?? null,
+    });
+  }
+  if (value.owned_files.length !== expected.size) {
+    fail('INVALID_MANIFEST', 'current install manifest ownership topology is invalid');
+  }
+  for (const file of value.owned_files) {
+    const identity = `${file.root}:${file.path}`;
+    const wanted = expected.get(identity);
+    if (
+      !wanted
+      || wanted.mode !== file.mode
+      || wanted.operation !== file.operation
+      || wanted.operation_digest !== file.operation_digest
+      || (wanted.digest !== null && wanted.digest !== file.digest)
+    ) {
+      fail('INVALID_MANIFEST', `current install manifest ownership differs at ${identity}`);
+    }
+  }
+}
+
+function allowedCreatedDirectories(ownedFiles) {
+  const allowed = new Set(['support:', 'launcher:']);
+  for (const file of ownedFiles) {
+    let parent = dirname(file.path).replaceAll('\\', '/');
+    while (parent !== '.' && parent !== '') {
+      allowed.add(`${file.root}:${parent}`);
+      parent = dirname(parent).replaceAll('\\', '/');
+    }
+  }
+  return allowed;
+}
+
+export function validateInstallManifest(value, paths, generatedManifest) {
   exactKeys(
     value,
     [
@@ -96,9 +181,6 @@ export function validateInstallManifest(value, paths) {
     fail('INVALID_MANIFEST', 'package_version is required');
   }
   digest(value.package_digest, 'package_digest');
-  if (value.generator_version !== GENERATOR_VERSION || value.operation_version !== OPERATION_VERSION) {
-    fail('INVALID_MANIFEST', 'generator or operation version is unsupported');
-  }
   if (!Array.isArray(value.owned_files) || value.owned_files.length === 0) {
     fail('INVALID_MANIFEST', 'owned_files must be non-empty');
   }
@@ -135,6 +217,7 @@ export function validateInstallManifest(value, paths) {
   if (!Array.isArray(value.created_directories)) {
     fail('INVALID_MANIFEST', 'created_directories must be an array');
   }
+  const allowedDirectories = allowedCreatedDirectories(value.owned_files);
   const directories = new Set();
   for (const [index, directory] of value.created_directories.entries()) {
     exactKeys(directory, ['root', 'path'], `created_directories[${index}]`);
@@ -146,12 +229,47 @@ export function validateInstallManifest(value, paths) {
     }
     const identity = `${directory.root}:${directory.path}`;
     if (directories.has(identity)) fail('INVALID_MANIFEST', `duplicate directory ${identity}`);
+    if (!allowedDirectories.has(identity)) {
+      fail('INVALID_MANIFEST', `created_directories[${index}] is outside owned topology`);
+    }
     directories.add(identity);
+  }
+  const observedPackageDigest = digestEntries(
+    value.owned_files.filter(({ root }) => root === 'support'),
+  );
+  if (observedPackageDigest !== value.package_digest) {
+    fail('INVALID_MANIFEST', 'package_digest does not bind the support ownership entries');
+  }
+  const currentIdentity = {
+    package_version: generatedManifest?.package_version,
+    package_digest: generatedManifest?.package_digest,
+    generator_version: generatedManifest?.generator_version,
+    operation_version: generatedManifest?.operation_version,
+  };
+  if (samePackageIdentity(value, currentIdentity)) {
+    if (
+      currentIdentity.generator_version !== GENERATOR_VERSION
+      || currentIdentity.operation_version !== OPERATION_VERSION
+    ) {
+      fail('PACKAGE_MISMATCH', 'current generated package identity is unsupported');
+    }
+    validateCurrentOwnership(value, generatedManifest);
+    return value;
+  }
+  const prior = PRIOR_INSTALL_PACKAGES.find((candidate) => (
+    samePackageIdentity(value, candidate)
+  ));
+  if (
+    !prior
+    || ownershipFingerprint(value.host, value.owned_files)
+      !== prior.ownership_fingerprints[value.host]
+  ) {
+    fail('INVALID_MANIFEST', 'installed package identity or ownership is unsupported');
   }
   return value;
 }
 
-export async function readInstallManifest(paths) {
+export async function readInstallManifest(paths, generatedManifest) {
   const manifestPath = join(paths.supportRoot, INSTALL_MANIFEST_NAME);
   let bytes;
   try {
@@ -166,7 +284,7 @@ export async function readInstallManifest(paths) {
   } catch (error) {
     fail('INVALID_MANIFEST', 'install manifest is not valid JSON', error);
   }
-  validateInstallManifest(value, paths);
+  validateInstallManifest(value, paths, generatedManifest);
   return { value, bytes, path: manifestPath };
 }
 
@@ -259,7 +377,7 @@ export async function buildDesiredInstall({
     owned_instruction_blocks: [],
     created_directories: createdDirectories,
   };
-  validateInstallManifest(manifest, paths);
+  validateInstallManifest(manifest, paths, generatedManifest);
   return {
     manifest,
     manifestBytes: stableJSON(manifest),
@@ -271,8 +389,8 @@ function rootFor(paths, root) {
   return root === 'support' ? paths.supportRoot : paths.launcherRoot;
 }
 
-export async function verifyOwnedFiles(manifest, paths) {
-  validateInstallManifest(manifest, paths);
+export async function verifyOwnedFiles(manifest, paths, generatedManifest) {
+  validateInstallManifest(manifest, paths, generatedManifest);
   for (const file of manifest.owned_files) {
     const absolute = join(rootFor(paths, file.root), file.path);
     const info = await maybeLstat(absolute);
@@ -324,8 +442,8 @@ function parentDirectories(paths) {
   return result;
 }
 
-export async function assertNoUnownedContent(manifest, paths) {
-  validateInstallManifest(manifest, paths);
+export async function assertNoUnownedContent(manifest, paths, generatedManifest) {
+  validateInstallManifest(manifest, paths, generatedManifest);
   const supportExpected = manifest.owned_files
     .filter(({ root }) => root === 'support')
     .map(({ path }) => path);

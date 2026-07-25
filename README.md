@@ -92,7 +92,7 @@ a fresh Verifier then checks the complete assembled product before final Merge.
 The easiest route is to ask Claude Code or Codex:
 
 ```text
-Install Baton v1.0.0-rc.4 for me.
+Install Baton v1.0.0-rc.5 for me.
 
 Clone the exact tag, read its INSTALL.md, show me the matching user-scope
 dry-run, and wait for my approval before applying it.
@@ -102,7 +102,7 @@ If you prefer the shell, clone the reviewed tag and preview the matching
 installer yourself:
 
 ```sh
-git clone --branch v1.0.0-rc.4 --depth 1 https://github.com/sawy3r/baton.git
+git clone --branch v1.0.0-rc.5 --depth 1 https://github.com/sawy3r/baton.git
 cd baton
 ./install-codex.sh --user --dry-run    # or ./install-claude.sh
 ```
