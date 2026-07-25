@@ -14,6 +14,7 @@ import {
 } from '../records/state.mjs';
 
 export const BOARD_VERSION = 'baton.board/v1';
+export const GRAPH_VERSION = 'baton.graph/v1';
 
 const RELEASE_PREFIX = 'refs/heads/release-wt/';
 const MAX_RELEASES = 32;
@@ -206,6 +207,135 @@ function projectAssembly(state, allTracksReady) {
   });
 }
 
+function sliceGraphState(slice, projected) {
+  if (slice.retained) return 'retained';
+  if (slice.pass) return 'passed';
+  if (slice.outcome === 'stale') return 'stale';
+  if (slice.status === 'blocked') return 'blocked';
+  return projected.next_operation ? 'ready' : 'waiting';
+}
+
+function assemblyGraphState(item, nextOperation) {
+  if (item.pass?.receipt && Object.hasOwn(item.pass.receipt, 'slice')) {
+    return 'not_required';
+  }
+  if (item.pass) return 'passed';
+  if (item.outcome === 'stale') return 'stale';
+  if (item.status === 'blocked') return 'blocked';
+  return nextOperation ? 'ready' : 'waiting';
+}
+
+function graphEdges(state, nodeRanks) {
+  const edges = new Map();
+  function add(from, to, kind) {
+    const key = `${from}\u0000${to}`;
+    if (!edges.has(key)) edges.set(key, { from, to, kinds: new Set() });
+    edges.get(key).kinds.add(kind);
+  }
+  const sliceID = (work) => `slice:${work}`;
+  const tracks = new Map(state.tracks.map((track) => [track.id, track]));
+
+  for (const track of state.tracks) {
+    for (let index = 1; index < track.slices.length; index += 1) {
+      add(
+        sliceID(track.slices[index - 1].location.slice.id),
+        sliceID(track.slices[index].location.slice.id),
+        'serial',
+      );
+    }
+    const first = sliceID(track.slices[0].location.slice.id);
+    for (const dependency of track.depends_on) {
+      const prerequisite = tracks.get(dependency);
+      add(
+        sliceID(prerequisite.slices.at(-1).location.slice.id),
+        first,
+        'track_dependency',
+      );
+    }
+    for (const slice of track.slices) {
+      const work = slice.location.slice;
+      for (const dependency of work.depends_on) {
+        add(sliceID(dependency), sliceID(work.id), 'depends_on');
+      }
+      for (const dependency of work.consumes) {
+        add(sliceID(dependency), sliceID(work.id), 'consumes');
+      }
+    }
+    add(sliceID(track.slices.at(-1).location.slice.id), 'assembly', 'assembly');
+  }
+  add('assembly', 'merge', 'verified_before_merge');
+
+  const incoming = new Set([...edges.values()].map(({ to }) => to));
+  for (const track of state.tracks) {
+    for (const slice of track.slices) {
+      const id = sliceID(slice.location.slice.id);
+      if (!incoming.has(id)) add('plan', id, 'start');
+    }
+  }
+
+  return [...edges.values()]
+    .map(({ from, to, kinds }) => frozen({
+      from,
+      to,
+      kinds: frozen([...kinds].sort((left, right) => (
+        Buffer.from(left).compare(Buffer.from(right))
+      ))),
+    }))
+    .sort((left, right) => (
+      nodeRanks.get(left.from) - nodeRanks.get(right.from)
+      || nodeRanks.get(left.to) - nodeRanks.get(right.to)
+    ));
+}
+
+function projectGraph(state, tracks, assembly, planNextOperation) {
+  const nodes = [frozen({
+    id: 'plan',
+    kind: 'plan',
+    state: state.plan.target_stale ? 'revision_required' : 'approved',
+    next_operation: planNextOperation,
+  })];
+  const slices = new Map(state.slices.map((slice) => [
+    slice.location.slice.id,
+    slice,
+  ]));
+  for (const track of tracks.tracks) {
+    for (const work of track.work) {
+      nodes.push(frozen({
+        id: `slice:${work.id}`,
+        kind: 'slice',
+        track: track.id,
+        work: work.id,
+        state: sliceGraphState(slices.get(work.id), work),
+        next_operation: work.next_operation,
+      }));
+    }
+  }
+  const passApplicable = Boolean(state.assembly.pass);
+  const mergeReady = passApplicable && Boolean(assembly.next_operation);
+  nodes.push(frozen({
+    id: 'assembly',
+    kind: 'assembly',
+    state: assemblyGraphState(state.assembly, assembly.next_operation),
+    next_operation: passApplicable ? null : assembly.next_operation,
+  }));
+  nodes.push(frozen({
+    id: 'merge',
+    kind: 'merge',
+    state: state.assembly.status === 'complete'
+      ? 'complete'
+      : mergeReady ? 'ready' : 'waiting',
+    next_operation: state.assembly.status === 'complete' || !mergeReady
+      ? null
+      : assembly.next_operation,
+  }));
+  const nodeRanks = new Map(nodes.map((node, index) => [node.id, index]));
+  return frozen({
+    schema_version: GRAPH_VERSION,
+    nodes: frozen(nodes),
+    edges: frozen(graphEdges(state, nodeRanks)),
+  });
+}
+
 function releaseStatus(state, tracks) {
   if (state.assembly.status === 'complete') return 'complete';
   if (
@@ -222,8 +352,11 @@ function projectState(state) {
   const tracks = projectTracks(state);
   const allTracksReady = [...tracks.ready.values()].every(Boolean);
   const assembly = projectAssembly(state, allTracksReady);
+  const planNextOperation = state.plan.target_stale
+    ? operation('planner', 'release', state.release)
+    : null;
   const nextOperations = state.plan.target_stale
-    ? [operation('planner', 'release', state.release)]
+    ? [planNextOperation]
     : allTracksReady
       ? assembly.next_operation ? [assembly.next_operation] : []
       : tracks.next_operations;
@@ -243,6 +376,7 @@ function projectState(state) {
     status: releaseStatus(state, tracks),
     tracks: tracks.tracks,
     assembly,
+    graph: projectGraph(state, tracks, assembly, planNextOperation),
     next_operations: frozen(nextOperations.filter(Boolean)),
   });
 }
@@ -264,6 +398,7 @@ function invalidRelease(discovered, error, repository) {
     status: 'invalid',
     tracks: frozen([]),
     assembly: null,
+    graph: null,
     next_operations: frozen([]),
   });
 }
