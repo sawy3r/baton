@@ -72,7 +72,7 @@ class TestNode {
   }
 }
 
-function executeClient(client, board) {
+function executeClient(client, board, secondBoard) {
   const createdTags = [];
   const roots = {
     board: new TestNode('main'),
@@ -83,6 +83,10 @@ function executeClient(client, board) {
       return roots[id] ?? null;
     },
     createElement(tag) {
+      createdTags.push(tag);
+      return new TestNode(tag);
+    },
+    createElementNS(_namespace, tag) {
       createdTags.push(tag);
       return new TestNode(tag);
     },
@@ -99,10 +103,12 @@ function executeClient(client, board) {
     document,
     fetch: async () => {
       requestCount += 1;
-      if (requestCount > 1) throw new Error('expected refresh failure');
+      if (requestCount > 1 && secondBoard === undefined) {
+        throw new Error('expected refresh failure');
+      }
       return {
         ok: true,
-        json: async () => board,
+        json: async () => requestCount > 1 ? secondBoard : board,
       };
     },
     window: {
@@ -129,6 +135,12 @@ function nodeSnapshot(node) {
     value: node.value,
     children: node.children.map(nodeSnapshot),
   };
+}
+
+function descendants(node, predicate, found = []) {
+  if (predicate(node)) found.push(node);
+  node.children.forEach((child) => descendants(child, predicate, found));
+  return found;
 }
 
 test('server exposes only the fixed GET surface with exact security headers', async () => {
@@ -255,6 +267,11 @@ test('shell, client, and stylesheet remain static and executable-sink free', asy
     assert.match(client, /replaceChildren/);
     assert.match(client, /setInterval\(refresh, 15000\)/);
     assert.match(client, /showing last committed view/);
+    assert.match(client, /baton\.graph\/v1/);
+    assert.doesNotMatch(
+      client,
+      /work\.status|work\.next_role|work\.next_operation|track\.composition|track\.depends_on/,
+    );
   } finally {
     await running.close();
   }
@@ -280,6 +297,14 @@ test('client renders repository text literally and retains the last view after r
     rendered.repository = corpus;
     rendered.releases[0].release = corpus;
     rendered.releases[0].tracks[0].work[0].id = corpus;
+    const graphNode = rendered.releases[0].graph.nodes
+      .find((node) => node.id === 'slice:W1');
+    graphNode.id = `slice:${corpus}`;
+    graphNode.work = corpus;
+    rendered.releases[0].graph.edges.forEach((edge) => {
+      if (edge.from === 'slice:W1') edge.from = graphNode.id;
+      if (edge.to === 'slice:W1') edge.to = graphNode.id;
+    });
     const execution = executeClient(client, rendered);
     await new Promise((resolve) => setImmediate(resolve));
 
@@ -288,7 +313,8 @@ test('client renders repository text literally and retains the last view after r
     assert.match(execution.board.textContent, /<script>/);
     assert.match(execution.board.textContent, /<svg onload/);
     assert.equal(execution.createdTags.includes('script'), false);
-    assert.equal(execution.createdTags.includes('svg'), false);
+    assert.equal(execution.createdTags.includes('svg'), true);
+    assert.equal(execution.createdTags.includes('foreignObject'), false);
     assert.deepEqual(execution.interval()?.milliseconds, 15000);
 
     const committedView = nodeSnapshot(execution.board);
@@ -299,6 +325,76 @@ test('client renders repository text literally and retains the last view after r
       execution.freshness.textContent,
       'Refresh failed · showing last committed view',
     );
+  } finally {
+    await running.close();
+  }
+});
+
+test('malformed graph refresh retains the last complete committed view', async () => {
+  const running = await startBoardServer({
+    port: 0,
+    project: () => BOARD,
+  });
+  try {
+    const client = (await fetchLocal(running, { path: '/app.js' })).body;
+    const malformed = JSON.parse(JSON.stringify(BOARD));
+    malformed.releases[0].graph.edges[0].from = 'missing-node';
+    const execution = executeClient(client, BOARD, malformed);
+    await new Promise((resolve) => setImmediate(resolve));
+    const committedView = nodeSnapshot(execution.board);
+
+    await execution.interval().callback();
+
+    assert.equal(execution.requestCount(), 2);
+    assert.deepEqual(nodeSnapshot(execution.board), committedView);
+    assert.equal(
+      execution.freshness.textContent,
+      'Refresh failed · showing last committed view',
+    );
+  } finally {
+    await running.close();
+  }
+});
+
+test('client renders the release as a semantic relay graph with explicit relationships', async () => {
+  const running = await startBoardServer({
+    port: 0,
+    project: () => BOARD,
+  });
+  try {
+    const client = (await fetchLocal(running, { path: '/app.js' })).body;
+    const rendered = JSON.parse(JSON.stringify(BOARD));
+    rendered.releases[0].plan_revision = 2;
+    rendered.releases[0].graph.edges
+      .find((edge) => edge.from === 'slice:W1' && edge.to === 'slice:W2')
+      .kinds.push('consumes');
+    const execution = executeClient(client, rendered);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.match(execution.board.textContent, /Release relay/);
+    assert.match(execution.board.textContent, /Leg 01W1/);
+    assert.match(execution.board.textContent, /after W1 · uses W1/);
+    assert.match(execution.board.textContent, /Depends on W1/);
+    assert.match(execution.board.textContent, /Consumes W1/);
+    assert.match(execution.board.textContent, /Final exchangeAssembly/);
+    assert.match(execution.board.textContent, /FinishMergewaiting/);
+    assert.match(execution.board.textContent, /Leg 01W2waiting/);
+
+    const semanticTags = new Set(descendants(
+      execution.board,
+      (node) => ['ol', 'li', 'details', 'summary'].includes(node.tag),
+    ).map((node) => node.tag));
+    assert.deepEqual([...semanticTags].sort(), ['details', 'li', 'ol', 'summary']);
+    const graphRegions = descendants(
+      execution.board,
+      (node) => node.attributes.role === 'region' && /relay graph/.test(node.attributes['aria-label']),
+    );
+    assert.equal(graphRegions.length, 1);
+    const decorativeGraphs = descendants(
+      execution.board,
+      (node) => node.tag === 'svg' && node.attributes['aria-hidden'] === 'true',
+    );
+    assert.equal(decorativeGraphs.length, 1);
   } finally {
     await running.close();
   }

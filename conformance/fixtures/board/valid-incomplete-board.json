@@ -16,6 +16,89 @@
       "target_ref": "refs/heads/main",
       "target_head": "2222222222222222222222222222222222222222",
       "status": "in_progress",
+      "graph": {
+        "schema_version": "baton.graph/v1",
+        "nodes": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "state": "approved",
+            "next_operation": null
+          },
+          {
+            "id": "slice:W1",
+            "kind": "slice",
+            "track": "T1",
+            "work": "W1",
+            "state": "ready",
+            "next_operation": {
+              "operation": "baton-implement",
+              "scope": "work",
+              "release": "v1.0.0",
+              "track": "T1",
+              "work": "W1"
+            }
+          },
+          {
+            "id": "slice:W2",
+            "kind": "slice",
+            "track": "T2",
+            "work": "W2",
+            "state": "waiting",
+            "next_operation": null
+          },
+          {
+            "id": "assembly",
+            "kind": "assembly",
+            "state": "waiting",
+            "next_operation": null
+          },
+          {
+            "id": "merge",
+            "kind": "merge",
+            "state": "waiting",
+            "next_operation": null
+          }
+        ],
+        "edges": [
+          {
+            "from": "plan",
+            "to": "slice:W1",
+            "kinds": [
+              "start"
+            ]
+          },
+          {
+            "from": "slice:W1",
+            "to": "slice:W2",
+            "kinds": [
+              "track_dependency",
+              "depends_on"
+            ]
+          },
+          {
+            "from": "slice:W1",
+            "to": "assembly",
+            "kinds": [
+              "assembly"
+            ]
+          },
+          {
+            "from": "slice:W2",
+            "to": "assembly",
+            "kinds": [
+              "assembly"
+            ]
+          },
+          {
+            "from": "assembly",
+            "to": "merge",
+            "kinds": [
+              "verified_before_merge"
+            ]
+          }
+        ]
+      },
       "tracks": [
         {
           "id": "T1",
