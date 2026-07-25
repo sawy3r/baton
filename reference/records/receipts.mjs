@@ -494,6 +494,31 @@ export function validatePlanMetadata(value) {
   }
   assertAcyclic(sliceIDs, sliceEdges, 'slice dependencies');
 
+  // The executable delivery graph also contains edges that are implicit in
+  // the plan shape. A slice is ordered after the previous slice in its track,
+  // and the first slice in a dependent track waits for the final slice in
+  // every prerequisite track. Validate those edges together with depends_on
+  // and consumes so individually acyclic layers cannot form a combined
+  // deadlock.
+  const tracksByID = new Map(parsedTracks.map((track) => [track.id, track]));
+  const deliveryEdges = new Map([...sliceIDs].map((sliceID) => [sliceID, new Set()]));
+  for (const track of parsedTracks) {
+    for (let index = 0; index < track.slices.length; index += 1) {
+      const slice = track.slices[index];
+      const dependencies = deliveryEdges.get(slice.id);
+      for (const dependency of [...slice.depends_on, ...slice.consumes]) {
+        dependencies.add(dependency);
+      }
+      if (index > 0) dependencies.add(track.slices[index - 1].id);
+    }
+    const firstSlice = track.slices[0];
+    for (const dependencyID of track.depends_on) {
+      const dependencyTrack = tracksByID.get(dependencyID);
+      deliveryEdges.get(firstSlice.id).add(dependencyTrack.slices.at(-1).id);
+    }
+  }
+  assertAcyclic(sliceIDs, deliveryEdges, 'delivery graph');
+
   for (let leftIndex = 0; leftIndex < parsedTracks.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < parsedTracks.length; rightIndex += 1) {
       const left = parsedTracks[leftIndex];

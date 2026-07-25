@@ -19,6 +19,14 @@
             {
               "instance": "conformance/fixtures/invalid-plan-broken-revision-v2.md",
               "error": "INVALID_FIELD"
+            },
+            {
+              "instance": "conformance/fixtures/invalid-plan-serial-cycle-v2.md",
+              "error": "DEPENDENCY_CYCLE"
+            },
+            {
+              "instance": "conformance/fixtures/invalid-plan-cross-layer-cycle-v2.md",
+              "error": "DEPENDENCY_CYCLE"
             }
           ]
         },

@@ -42,6 +42,8 @@ VALID_PLAN_FIXTURES = (
 
 INVALID_PLAN_FIXTURES = (
     ("invalid-plan-broken-revision-v2.md", "INVALID_FIELD"),
+    ("invalid-plan-serial-cycle-v2.md", "DEPENDENCY_CYCLE"),
+    ("invalid-plan-cross-layer-cycle-v2.md", "DEPENDENCY_CYCLE"),
 )
 
 VALID_RECEIPT_FIXTURES = (
@@ -468,7 +470,7 @@ def run() -> list[str]:
     if not failures:
         print(
             "PASS 7 strict JSON cases, 1 Draft 2020-12 receipt schema, "
-            "3 plan fixtures, and 6 receipt fixtures"
+            "5 plan fixtures, and 6 receipt fixtures"
         )
     return failures
 

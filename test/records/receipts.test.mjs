@@ -151,6 +151,30 @@ test('plan validation rejects broken revision, dependency, and parallel ownershi
   const duplicate = planMetadata();
   duplicate.tracks[1].slices[0].id = 'S1';
   throwsCode(() => parsePlanBytes(planBytes(duplicate)), 'DUPLICATE_IDENTITY');
+
+  const serialCycle = planMetadata();
+  serialCycle.tracks = [{
+    id: 'T1',
+    depends_on: [],
+    slices: [
+      {
+        ...serialCycle.tracks[0].slices[0],
+        depends_on: ['S2'],
+      },
+      {
+        ...serialCycle.tracks[1].slices[0],
+        depends_on: [],
+        consumes: [],
+      },
+    ],
+  }];
+  throwsCode(() => parsePlanBytes(planBytes(serialCycle)), 'DEPENDENCY_CYCLE');
+
+  const crossLayerCycle = planMetadata();
+  crossLayerCycle.tracks[0].depends_on = ['T2'];
+  crossLayerCycle.tracks[1].depends_on = [];
+  crossLayerCycle.tracks[1].slices[0].consumes = [];
+  throwsCode(() => parsePlanBytes(planBytes(crossLayerCycle)), 'DEPENDENCY_CYCLE');
 });
 
 test('receipt JSON is strict, canonical, bounded, and role-aware', () => {
