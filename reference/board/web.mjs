@@ -79,9 +79,7 @@ function stateClass(value) {
 }
 
 function statePill(value) {
-  const state = element('span', stateClass(value), text(value));
-  state.setAttribute('aria-label', 'State: ' + text(value));
-  return state;
+  return element('span', stateClass(value), text(value));
 }
 
 function labelledValue(label, value, mono) {
@@ -459,6 +457,7 @@ function relayMap(release) {
   title.append(element('h3', 'relay-title', 'Release relay'));
   heading.append(title);
   const legend = element('div', 'graph-legend');
+  legend.setAttribute('role', 'group');
   legend.setAttribute('aria-label', 'Relationship legend');
   legend.append(legendItem('handoff', 'Handoff'));
   legend.append(legendItem('depends', 'Depends on'));
@@ -948,7 +947,7 @@ body {
   --baton-dark: #8f3024;
   --pass: #27705b;
   --pass-soft: #d9ebe3;
-  --caution: #ae741e;
+  --caution: #8a5610;
   --caution-soft: #f2e6ce;
   --fault: #a53d47;
   --fault-soft: #f3dee0;
