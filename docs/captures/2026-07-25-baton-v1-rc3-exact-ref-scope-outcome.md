@@ -153,8 +153,35 @@ sha256:5faf93152eab01a625b3c3a3460d1f1554429c6461cfbf03be0ec6ba3fd901d3
 
 ## Archive and publication
 
-Provisional candidate archive reproduction is recorded after the release
-maintenance commit exists. Node 22 CI, protected merge, post-merge rerun,
-annotated tag, GitHub prerelease, asset download, checksum verification,
-website work, and Sworn re-pin are `NOT RUN` in this implementation handoff.
-They must not be inferred from the portable candidate checks above.
+The release-maintenance commit is:
+
+```text
+e06ebb121ca696be583ab7aa579439e63540deac
+tree 8a5e3e97d228b5b96f6c440799c9099beea3c8e2
+```
+
+Two independently generated provisional archives from that exact commit were
+byte-identical:
+
+```text
+baton-1.0.0-rc.3.tar.gz
+210 entries
+sha256:218d7c3930da7ba2c0d08543c569d8d8550f4052f2fdadf63cb14b25bf8b1a90
+```
+
+The archive retained executable modes on both installers and contained the
+expected exact-ref implementation and RC3 release note. Safe extraction
+succeeded. Claude Code and Codex project-scope dry-runs from the extracted
+package each reported seven intended actions and left the isolated target with
+only its pre-existing `.git` directory. The complete Node profile separately
+passed both hosts' isolated user- and project-scope installer, dry-run, no-op,
+rollback, uninstall, interruption, and migration fixtures.
+
+This capture update is evidence-only and therefore follows the archived
+release-maintenance commit. The final Verifier must bind and rebuild the exact
+review tip rather than treating this provisional checksum as a tag checksum.
+
+Node 22 CI, protected merge, post-merge rerun, annotated tag, GitHub
+prerelease, asset download, public checksum verification, website work, and
+Sworn re-pin are `NOT RUN` in this implementation handoff. They must not be
+inferred from the portable candidate checks above.
