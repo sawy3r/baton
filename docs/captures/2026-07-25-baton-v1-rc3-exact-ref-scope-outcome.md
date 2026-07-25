@@ -194,8 +194,35 @@ rollback, uninstall, interruption, and migration fixtures.
 
 That archive is now **SUPERSEDED** by the gap-closure implementation and is
 retained here only as historical provisional evidence. It is not an RC3 review
-or tag checksum. The exact post-gap review-tip archive must be rebuilt after
-the regenerated release truth is committed.
+or tag checksum.
+
+The regenerated post-gap release-truth source is:
+
+```text
+9a37a6cf283950a7cc4e989876a2320ff726197a
+tree ed4e9cb0d3005ddd90201bd9422ae5829aae01b6
+```
+
+Two independently generated archives from that exact commit were
+byte-identical:
+
+```text
+baton-1.0.0-rc.3.tar.gz
+210 entries
+sha256:53d00f0e4afcc5ab54472eb418023a9fd3519f886f378d7be7f4c0e6931d6463
+```
+
+Both archive listings were confined to the expected top-level prefix and had
+no traversal entry. Both extracted safely, retained executable modes on the
+two installers, and contained the gap-closure exact-ref implementation and RC3
+release note. Claude Code and Codex project-scope dry-runs from each extracted
+archive reported seven intended actions. All four isolated targets retained
+only their pre-existing `.git` directory.
+
+This capture update is evidence-only and therefore follows the archived
+release-truth source. The final Verifier must bind and rebuild the exact
+immutable review tip rather than treating this provisional checksum as a tag
+checksum.
 
 Node 22 CI, protected merge, post-merge rerun, annotated tag, GitHub
 prerelease, asset download, public checksum verification, website work, and
