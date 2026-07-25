@@ -1818,6 +1818,150 @@ function commitTimestamp(repo, commit) {
   return parsed;
 }
 
+/**
+ * Create one deterministic metadata-only child without moving a ref.
+ *
+ * Baton receipts live in commit messages, so their commit must reuse the
+ * parent's exact tree. The caller still has to compare-and-swap the intended
+ * owner ref with unsafeAtomicUpdateRefs.
+ */
+export function unsafePrepareMetadataCommit(repo, {
+  expectedHead,
+  message,
+}) {
+  const expected = resolveRef(repo, expectedHead);
+  const input = Buffer.from(message);
+  if (
+    input.byteLength === 0
+    || input.byteLength > 12_288
+    || input.includes(0)
+    || input.includes(0x0d)
+  ) {
+    throw new GitRecordError(
+      'INVALID_COMMIT_MESSAGE',
+      'metadata commit message must be 1-12288 bytes of LF-only data without NUL',
+    );
+  }
+  const tree = runGit(repo, ['rev-parse', '--verify', `${expected}^{tree}`], {
+    label: 'resolve metadata commit tree',
+  }).trim();
+  const date = `@${commitTimestamp(repo, expected) + 1} +0000`;
+  const commit = runGit(repo, ['commit-tree', tree, '-p', expected], {
+    input,
+    env: {
+      GIT_AUTHOR_NAME: 'Baton Receipts',
+      GIT_AUTHOR_EMAIL: 'receipts@baton.invalid',
+      GIT_AUTHOR_DATE: date,
+      GIT_COMMITTER_NAME: 'Baton Receipts',
+      GIT_COMMITTER_EMAIL: 'receipts@baton.invalid',
+      GIT_COMMITTER_DATE: date,
+    },
+    label: 'create metadata receipt commit',
+  }).trim();
+  const parents = commitParents(repo, commit);
+  if (
+    parents.length !== 1
+    || parents[0] !== expected
+    || runGit(repo, ['rev-parse', '--verify', `${commit}^{tree}`], {
+      label: 'verify metadata commit tree',
+    }).trim() !== tree
+  ) {
+    throw new GitRecordError(
+      'INVALID_METADATA_COMMIT',
+      'prepared metadata commit did not preserve its exact parent and tree',
+    );
+  }
+  return Object.freeze({ expected, tree, commit });
+}
+
+/**
+ * Return bounded first-parent commit envelopes in newest-first order.
+ * Commit messages cannot contain NUL, so the closed NUL protocol is
+ * unambiguous and avoids one Git process per receipt.
+ */
+export function readFirstParentHistory(repo, head, { maxCount = 4096 } = {}) {
+  if (!Number.isSafeInteger(maxCount) || maxCount < 1 || maxCount > 4096) {
+    throw new GitRecordError(
+      'INVALID_HISTORY_LIMIT',
+      'first-parent history limit must be an integer from 1 to 4096',
+    );
+  }
+  const exact = resolveRef(repo, head);
+  const raw = runGit(
+    repo,
+    [
+      'log',
+      '--first-parent',
+      `--max-count=${maxCount}`,
+      '-z',
+      '--format=%H%x00%P%x00%T%x00%B%x00',
+      exact,
+    ],
+    {
+      encoding: null,
+      maxBuffer: 32 * 1024 * 1024,
+      label: 'read first-parent receipt history',
+    },
+  );
+  let rendered;
+  try {
+    rendered = new TextDecoder('utf-8', { fatal: true }).decode(raw);
+  } catch (error) {
+    throw new GitRecordError(
+      'MALFORMED_GIT_OUTPUT',
+      'first-parent history was not valid UTF-8',
+      error,
+    );
+  }
+  const fields = rendered.split('\x00');
+  if (fields.at(-1) !== '') {
+    throw new GitRecordError(
+      'MALFORMED_GIT_OUTPUT',
+      'first-parent history was not terminated',
+    );
+  }
+  fields.pop();
+  const records = [];
+  while (fields.length > 0) {
+    if (fields.length < 5) {
+      throw new GitRecordError(
+        'MALFORMED_GIT_OUTPUT',
+        'first-parent history envelope is malformed',
+      );
+    }
+    const [oid, parentsRaw, tree, message, separator] = fields.splice(0, 5);
+    if (separator !== '') {
+      throw new GitRecordError(
+        'MALFORMED_GIT_OUTPUT',
+        'first-parent history record separator is malformed',
+      );
+    }
+    if (
+      !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(oid)
+      || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(tree)
+    ) {
+      throw new GitRecordError(
+        'MALFORMED_GIT_OUTPUT',
+        'first-parent history contains an invalid object identity',
+      );
+    }
+    const parents = parentsRaw === '' ? [] : parentsRaw.split(' ');
+    if (!parents.every((parent) => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(parent))) {
+      throw new GitRecordError(
+        'MALFORMED_GIT_OUTPUT',
+        'first-parent history contains an invalid parent identity',
+      );
+    }
+    records.push(Object.freeze({
+      oid,
+      parents: Object.freeze(parents),
+      tree,
+      message: Buffer.from(message, 'utf8'),
+    }));
+  }
+  return Object.freeze(records);
+}
+
 function deterministicCompositionCommit(context, repo, targetRef, expected, candidate, tree) {
   const timestamp = Math.max(
     commitTimestamp(repo, expected),
