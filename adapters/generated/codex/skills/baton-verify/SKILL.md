@@ -4,7 +4,7 @@ description: "Independently verify Baton work or assembly evidence. Use only fro
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.2
+package-version: 1.0.0-rc.3
 operation-version: baton.operation/v1
 operation-sha256: sha256:a6f0e9b9bf95cb59e5030b7f95f72d8d3545b52ef771c7d20e7be44a20e45bed
 -->

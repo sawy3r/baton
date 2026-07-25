@@ -4,7 +4,7 @@ description: "Record the Captain decision over exact Baton plan and design bytes
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.2
+package-version: 1.0.0-rc.3
 operation-version: baton.operation/v1
 operation-sha256: sha256:ead3a7d0e22a794ca5430fdbaca5c29f3ae5d5f6fad7c102d1f2bd878f28e356
 -->

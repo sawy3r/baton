@@ -1,4 +1,4 @@
-# Baton RC2 conformance
+# Baton RC3 conformance
 
 Baton separates evidence the portable kit can produce from evidence that only a
 real autonomous engine can produce. The checked-in manifest has one profile for
@@ -6,7 +6,7 @@ each boundary.
 
 ## Portable kit
 
-RC2 is tested on Node.js 22 and 24 and Python 3.12. Install the one pinned Python
+RC3 is tested on Node.js 22 and 24 and Python 3.12. Install the one pinned Python
 dependency in a virtual environment, then run the full profile from the
 repository root:
 
@@ -30,7 +30,7 @@ The current portable result is:
 PASS  7 strict JSON cases
 PASS  1 Draft 2020-12 schema
 PASS  2 positive and 6 negative status fixtures
-PASS  132 Node tests
+PASS  143 Node tests
 PASS  10 generated adapters from 5 canonical operations
 PASS  all 9 overhead budgets
 ```
@@ -72,7 +72,7 @@ logical handoffs, not converted into an invented token estimate. A current
 invocation includes the complete generated Skill, including frontmatter and
 host bridge.
 
-RC2 measures 1,512 fixed words against 56,973 for v0.16, a ratio of 2.6539%.
+RC3 measures 1,512 fixed words against 56,973 for v0.16, a ratio of 2.6539%.
 The five operations total 1,504 words; the largest full Skill is 397 words.
 
 ## Autonomous engine
@@ -81,7 +81,7 @@ The autonomous profile contains only boundaries a library fixture or scripted
 dogfood cannot prove. Its process contract is
 [`engine-adapter.md`](engine-adapter.md).
 
-All 12 checked-in autonomous cases are `NOT RUN`. Baton RC2 does not claim that
+All 12 checked-in autonomous cases are `NOT RUN`. Baton RC3 does not claim that
 Sworn or another real engine has passed authenticated approval, writer
 scheduling, provider credential isolation, fresh-context/read-only dispatch,
 timeouts, cancellation, crash recovery, or final-effect cases.

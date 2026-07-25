@@ -5,6 +5,7 @@ import {
   existsSync,
   lstatSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
   statSync,
@@ -12,7 +13,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import {
+  execFileSync,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 export class GitRecordError extends Error {
   constructor(code, message, cause) {
@@ -35,6 +41,10 @@ const MAX_RECORD_CHANGES = 1025;
 const MAX_RECORD_VALUE_BYTES = 262_144;
 const MAX_RECORD_TOTAL_BYTES = 64 * 1024 * 1024;
 const MAX_RECORD_MESSAGE_BYTES = 1000;
+const MAX_REF_HELPER_REQUEST_BYTES = 512 * 1024;
+const MAX_REF_HELPER_OUTPUT_BYTES = 512 * 1024;
+const REF_HELPER_TIMEOUT_MS = 10_000;
+const REF_HELPER_MARKER = '--baton-exact-ref-helper-v1';
 const recordPathAdmissions = new WeakMap();
 const productExclusionAdmissions = new WeakMap();
 let configuredGitExecutable;
@@ -109,7 +119,7 @@ export function gitExecutablePath() {
   );
 }
 
-function gitEnvironment(extra = {}, internal = {}) {
+function gitEnvironmentForExecutable(executable, extra = {}, internal = {}) {
   const allowedOverrides = new Set([
     'GIT_INDEX_FILE',
     'GIT_AUTHOR_NAME',
@@ -122,7 +132,7 @@ function gitEnvironment(extra = {}, internal = {}) {
   const environment = {
     LANG: 'C',
     LC_ALL: 'C',
-    PATH: path.dirname(gitExecutablePath()),
+    PATH: path.dirname(executable),
     HOME: tmpdir(),
     XDG_CONFIG_HOME: tmpdir(),
     GIT_CONFIG_NOSYSTEM: '1',
@@ -155,10 +165,20 @@ function gitEnvironment(extra = {}, internal = {}) {
   return environment;
 }
 
-function executeGit(repo, args, options = {}, internal = {}) {
-  const hooksDirectory = mkdtempSync(path.join(tmpdir(), 'baton-git-hooks-'));
+function gitEnvironment(extra = {}, internal = {}) {
+  return gitEnvironmentForExecutable(gitExecutablePath(), extra, internal);
+}
+
+function executeGitWithHooks(
+  executable,
+  repo,
+  hooksDirectory,
+  args,
+  options = {},
+  internal = {},
+) {
   try {
-    return execFileSync(gitExecutablePath(), [
+    return execFileSync(executable, [
       '-c',
       `core.hooksPath=${hooksDirectory}`,
       '-c',
@@ -168,7 +188,7 @@ function executeGit(repo, args, options = {}, internal = {}) {
       cwd: repo,
       encoding: Object.hasOwn(options, 'encoding') ? options.encoding : 'utf8',
       input: options.input,
-      env: gitEnvironment(options.env, internal),
+      env: gitEnvironmentForExecutable(executable, options.env, internal),
       maxBuffer: options.maxBuffer ?? 128 * 1024 * 1024,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -179,6 +199,50 @@ function executeGit(repo, args, options = {}, internal = {}) {
       `${options.label ?? `git ${args[0]}`} failed${stderr ? `: ${stderr}` : ''}`,
       error,
     );
+  }
+}
+
+function executeGit(repo, args, options = {}, internal = {}) {
+  const hooksDirectory = mkdtempSync(path.join(tmpdir(), 'baton-git-hooks-'));
+  try {
+    return executeGitWithHooks(
+      gitExecutablePath(),
+      repo,
+      hooksDirectory,
+      args,
+      options,
+      internal,
+    );
+  } finally {
+    rmSync(hooksDirectory, { recursive: true, force: true });
+  }
+}
+
+function gitExitStatus(repo, args, label) {
+  const executable = gitExecutablePath();
+  const hooksDirectory = mkdtempSync(path.join(tmpdir(), 'baton-git-hooks-'));
+  try {
+    const result = spawnSync(executable, [
+      '-c',
+      `core.hooksPath=${hooksDirectory}`,
+      '-c',
+      'core.fsmonitor=false',
+      ...args,
+    ], {
+      cwd: repo,
+      encoding: null,
+      env: gitEnvironmentForExecutable(executable),
+      maxBuffer: MAX_REF_HELPER_OUTPUT_BYTES,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (result.error || result.signal || !Number.isInteger(result.status)) {
+      throw new GitRecordError(
+        'INVALID_HEAD_OBJECT',
+        `${label} failed without a trustworthy exit status`,
+        result.error,
+      );
+    }
+    return result.status;
   } finally {
     rmSync(hooksDirectory, { recursive: true, force: true });
   }
@@ -245,8 +309,9 @@ function assertExactHeadRef(ref) {
 }
 
 /**
- * Capture up to 128 exact branch heads with one Git process. Missing refs are
- * represented by null; the input order is preserved.
+ * Capture up to 128 exact branch heads in input order. Direct present refs use
+ * one batch; refs omitted by Git need bounded probes to distinguish genuine
+ * absence from a dangling symbolic ref.
  */
 export function captureHeadRefs(repo, refs) {
   if (!Array.isArray(refs) || refs.length > MAX_HEAD_REFS) {
@@ -260,15 +325,24 @@ export function captureHeadRefs(repo, refs) {
   if (new Set(exactRefs).size !== exactRefs.length) {
     throw new GitRecordError('DUPLICATE_REF', 'head capture refs must be unique');
   }
-  const raw = runGit(
-    repo,
-    [
-      'for-each-ref',
-      '--format=%(refname)%09%(objectname)%09%(objecttype)',
-      ...exactRefs,
-    ],
-    { encoding: null, label: 'capture exact branch heads' },
-  );
+  let raw;
+  try {
+    raw = runGit(
+      repo,
+      [
+        'for-each-ref',
+        '--format=%(refname)%09%(objectname)%09%(objecttype)%09%(symref)',
+        ...exactRefs,
+      ],
+      { encoding: null, label: 'capture exact branch heads' },
+    );
+  } catch (error) {
+    throw new GitRecordError(
+      'INVALID_HEAD_OBJECT',
+      'one or more captured branches do not point directly to a commit',
+      error,
+    );
+  }
   let rendered;
   try {
     rendered = new TextDecoder('utf-8', { fatal: true }).decode(raw);
@@ -283,18 +357,54 @@ export function captureHeadRefs(repo, refs) {
   const captured = new Map();
   for (const line of rendered.split('\n').filter(Boolean)) {
     const fields = line.split('\t');
-    if (fields.length !== 3) {
+    if (fields.length !== 4) {
       throw new GitRecordError('MALFORMED_GIT_OUTPUT', 'branch head capture was malformed');
     }
-    const [ref, head, type] = fields;
+    const [ref, head, type, symbolicTarget] = fields;
     if (!requested.has(ref)) continue;
-    if (type !== 'commit' || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(head)) {
+    if (
+      captured.has(ref)
+      || symbolicTarget !== ''
+      || type !== 'commit'
+      || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(head)
+    ) {
       throw new GitRecordError(
         'INVALID_HEAD_OBJECT',
         `branch ${ref} does not point directly to a commit`,
       );
     }
     captured.set(ref, head);
+  }
+  for (const ref of exactRefs) {
+    if (captured.has(ref)) continue;
+    const symbolicStatus = gitExitStatus(
+      repo,
+      ['symbolic-ref', '-q', ref],
+      `inspect exact branch representation ${ref}`,
+    );
+    if (symbolicStatus === 0) {
+      throw new GitRecordError(
+        'INVALID_HEAD_OBJECT',
+        `branch ${ref} does not point directly to a commit`,
+      );
+    }
+    if (symbolicStatus !== 1) {
+      throw new GitRecordError(
+        'INVALID_HEAD_OBJECT',
+        `branch ${ref} does not point directly to a commit`,
+      );
+    }
+    const existenceStatus = gitExitStatus(
+      repo,
+      ['show-ref', '--verify', '--quiet', ref],
+      `inspect exact branch existence ${ref}`,
+    );
+    if (existenceStatus !== 1) {
+      throw new GitRecordError(
+        'INVALID_HEAD_OBJECT',
+        `branch ${ref} does not point directly to a commit`,
+      );
+    }
   }
   return Object.freeze(exactRefs.map((ref) => Object.freeze({
     ref,
@@ -309,27 +419,42 @@ function assertObjectId(value, label) {
   return value;
 }
 
-/**
- * Raw exact ref transaction primitive. Safe callers should use
- * createBatonActions; this exists for the engine implementation and
- * adversarial conformance fixtures.
- */
-export function unsafeAtomicUpdateRefs(repo, operations) {
-  if (!Array.isArray(operations) || operations.length === 0 || operations.length > MAX_HEAD_REFS) {
+function assertObjectIdForFormat(value, label, objectFormat) {
+  const objectId = assertObjectId(value, label);
+  const width = objectFormat === 'sha256' ? 64 : 40;
+  if (objectId.length !== width) {
+    throw new GitRecordError(
+      'INVALID_REF_OID',
+      `${label} must match the repository object format`,
+    );
+  }
+  return objectId;
+}
+
+function validateRefTransactionOperations(operations, objectFormat) {
+  if (
+    !Array.isArray(operations)
+    || operations.length === 0
+    || operations.length > MAX_HEAD_REFS
+  ) {
     throw new GitRecordError(
       'INVALID_REF_TRANSACTION',
       `ref transaction requires between 1 and ${MAX_HEAD_REFS} operations`,
     );
   }
-  const refs = new Set();
-  const lines = ['start'];
-  const objectFormat = runGit(repo, ['rev-parse', '--show-object-format'], {
-    label: 'resolve ref transaction object format',
-  }).trim();
   if (!['sha1', 'sha256'].includes(objectFormat)) {
-    throw new GitRecordError('UNSUPPORTED_OBJECT_FORMAT', `unsupported Git object format ${objectFormat}`);
+    throw new GitRecordError(
+      'UNSUPPORTED_OBJECT_FORMAT',
+      `unsupported Git object format ${objectFormat}`,
+    );
   }
   const nullObjectId = '0'.repeat(objectFormat === 'sha256' ? 64 : 40);
+  const refs = new Set();
+  const commands = [];
+  const receipt = [];
+  const preState = [];
+  const desiredState = [];
+  let meaningful = false;
   for (const [index, operation] of operations.entries()) {
     if (
       operation === null
@@ -349,47 +474,526 @@ export function unsafeAtomicUpdateRefs(repo, operations) {
     refs.add(ref);
     if (operation.kind === 'create') {
       if (Object.keys(operation).sort().join(',') !== 'kind,newHead,ref') {
-        throw new GitRecordError('INVALID_REF_TRANSACTION', `create operation ${index} has unknown fields`);
+        throw new GitRecordError(
+          'INVALID_REF_TRANSACTION',
+          `create operation ${index} has unknown fields`,
+        );
       }
-      lines.push(`create ${ref} ${assertObjectId(operation.newHead, 'new ref head')}`);
+      const newHead = assertObjectIdForFormat(
+        operation.newHead,
+        'new ref head',
+        objectFormat,
+      );
+      const copy = Object.freeze({ kind: 'create', ref, newHead });
+      receipt.push(copy);
+      preState.push(Object.freeze({ ref, head: null }));
+      desiredState.push(Object.freeze({ ref, head: newHead }));
+      commands.push(`create ${ref} ${newHead}`);
+      meaningful = true;
       continue;
     }
     if (operation.kind === 'verify') {
       if (Object.keys(operation).sort().join(',') !== 'expectedHead,kind,ref') {
-        throw new GitRecordError('INVALID_REF_TRANSACTION', `verify operation ${index} has unknown fields`);
+        throw new GitRecordError(
+          'INVALID_REF_TRANSACTION',
+          `verify operation ${index} has unknown fields`,
+        );
       }
       const expectedHead = operation.expectedHead === null
-        ? nullObjectId
-        : assertObjectId(operation.expectedHead, 'expected ref head');
-      lines.push(`verify ${ref} ${expectedHead}`);
+        ? null
+        : assertObjectIdForFormat(
+          operation.expectedHead,
+          'expected ref head',
+          objectFormat,
+        );
+      const copy = Object.freeze({ kind: 'verify', ref, expectedHead });
+      receipt.push(copy);
+      preState.push(Object.freeze({ ref, head: expectedHead }));
+      desiredState.push(Object.freeze({ ref, head: expectedHead }));
+      commands.push(`verify ${ref} ${expectedHead ?? nullObjectId}`);
       continue;
     }
     if (Object.keys(operation).sort().join(',') !== 'expectedHead,kind,newHead,ref') {
-      throw new GitRecordError('INVALID_REF_TRANSACTION', `update operation ${index} has unknown fields`);
+      throw new GitRecordError(
+        'INVALID_REF_TRANSACTION',
+        `update operation ${index} has unknown fields`,
+      );
     }
-    lines.push(
-      `update ${ref} ${assertObjectId(operation.newHead, 'new ref head')} `
-      + `${assertObjectId(operation.expectedHead, 'expected ref head')}`,
+    const expectedHead = assertObjectIdForFormat(
+      operation.expectedHead,
+      'expected ref head',
+      objectFormat,
+    );
+    const newHead = assertObjectIdForFormat(
+      operation.newHead,
+      'new ref head',
+      objectFormat,
+    );
+    const copy = Object.freeze({
+      kind: 'update',
+      ref,
+      newHead,
+      expectedHead,
+    });
+    receipt.push(copy);
+    preState.push(Object.freeze({ ref, head: expectedHead }));
+    desiredState.push(Object.freeze({ ref, head: newHead }));
+    commands.push(`update ${ref} ${newHead} ${expectedHead}`);
+    if (newHead !== expectedHead) meaningful = true;
+  }
+  return Object.freeze({
+    commands: Object.freeze(commands),
+    receipt: Object.freeze(receipt),
+    preState: Object.freeze(preState),
+    desiredState: Object.freeze(desiredState),
+    meaningful,
+  });
+}
+
+function exactRefVectorMatches(observed, expected) {
+  return observed.length === expected.length && observed.every((entry, index) => (
+    entry.ref === expected[index].ref && entry.head === expected[index].head
+  ));
+}
+
+function cleanupRefTransactionHooks(hooksDirectory) {
+  rmSync(hooksDirectory, { recursive: true, force: true });
+}
+
+/**
+ * Raw exact ref transaction primitive. Safe callers should use
+ * createBatonActions; this exists for the engine implementation and
+ * adversarial conformance fixtures.
+ */
+export function unsafeAtomicUpdateRefs(repo, operations) {
+  const objectFormat = runGit(repo, ['rev-parse', '--show-object-format'], {
+    label: 'resolve ref transaction object format',
+  }).trim();
+  const prepared = validateRefTransactionOperations(operations, objectFormat);
+  const hooksDirectory = mkdtempSync(path.join(tmpdir(), 'baton-ref-hooks-'));
+  const request = Buffer.from(JSON.stringify({
+    gitExecutable: gitExecutablePath(),
+    hooksDirectory,
+    objectFormat,
+    operations: prepared.receipt,
+  }));
+  let helperOutcome = null;
+  try {
+    const helperOutput = execFileSync(
+      process.execPath,
+      [fileURLToPath(import.meta.url), REF_HELPER_MARKER],
+      {
+        cwd: repo,
+        encoding: null,
+        input: request,
+        env: gitEnvironment(),
+        maxBuffer: MAX_REF_HELPER_OUTPUT_BYTES,
+        timeout: REF_HELPER_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
+    if (helperOutput.byteLength !== 0) {
+      helperOutcome = new Error('exact-ref helper emitted unexpected output');
+    }
+  } catch (error) {
+    helperOutcome = error;
+  }
+
+  let observed = null;
+  let reconciliationError = null;
+  try {
+    observed = captureHeadRefs(
+      repo,
+      prepared.receipt.map((operation) => operation.ref),
+    );
+  } catch (error) {
+    reconciliationError = error;
+  }
+
+  let result;
+  if (observed && exactRefVectorMatches(observed, prepared.desiredState)) {
+    result = prepared.receipt;
+  } else if (
+    observed
+    && prepared.meaningful
+    && exactRefVectorMatches(observed, prepared.preState)
+  ) {
+    result = new GitRecordError(
+      'ATOMIC_REF_UPDATE_FAILED',
+      'exact Baton ref transaction lost without partial advancement',
+      helperOutcome,
+    );
+  } else {
+    result = new GitRecordError(
+      'ATOMIC_REF_UPDATE_FAILED',
+      'exact Baton ref transaction has an ambiguous outcome; '
+        + 'authoritative recovery is required before retry',
+      reconciliationError ?? helperOutcome,
     );
   }
-  lines.push('prepare', 'commit', '');
+
   try {
-    runGit(repo, ['update-ref', '--stdin'], {
-      input: lines.join('\n'),
-      code: 'ATOMIC_REF_UPDATE_FAILED',
-      label: 'apply exact Baton ref transaction',
-    });
+    cleanupRefTransactionHooks(hooksDirectory);
+  } catch {
+    // Exact-ref reconciliation is authoritative; cleanup cannot change it.
+  }
+  if (result instanceof Error) {
+    throw result;
+  }
+  return result;
+}
+
+function exactObjectKeys(value, keys) {
+  return (
+    value !== null
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Object.keys(value).sort().join(',') === [...keys].sort().join(',')
+  );
+}
+
+async function readBoundedHelperRequest() {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    size += chunk.byteLength;
+    if (size > MAX_REF_HELPER_REQUEST_BYTES) {
+      throw new Error('exact-ref helper request exceeded its byte bound');
+    }
+    chunks.push(chunk);
+  }
+  let rendered;
+  try {
+    rendered = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
   } catch (error) {
-    if (error instanceof GitRecordError) {
-      throw new GitRecordError(
-        'ATOMIC_REF_UPDATE_FAILED',
-        'exact Baton ref transaction lost without partial advancement',
-        error,
-      );
+    throw new Error('exact-ref helper request was not valid UTF-8', { cause: error });
+  }
+  let request;
+  try {
+    request = JSON.parse(rendered);
+  } catch (error) {
+    throw new Error('exact-ref helper request was not valid JSON', { cause: error });
+  }
+  if (!exactObjectKeys(
+    request,
+    ['gitExecutable', 'hooksDirectory', 'objectFormat', 'operations'],
+  )) {
+    throw new Error('exact-ref helper request fields differ');
+  }
+  const executable = validateGitExecutable(request.gitExecutable);
+  if (executable !== request.gitExecutable) {
+    throw new Error('exact-ref helper Git executable is not canonical');
+  }
+  if (
+    typeof request.hooksDirectory !== 'string'
+    || !path.isAbsolute(request.hooksDirectory)
+    || realpathSync(request.hooksDirectory) !== request.hooksDirectory
+    || !statSync(request.hooksDirectory).isDirectory()
+    || readdirSync(request.hooksDirectory).length !== 0
+  ) {
+    throw new Error('exact-ref helper hooks directory is not exact and empty');
+  }
+  const prepared = validateRefTransactionOperations(
+    request.operations,
+    request.objectFormat,
+  );
+  return Object.freeze({
+    gitExecutable: executable,
+    hooksDirectory: request.hooksDirectory,
+    objectFormat: request.objectFormat,
+    prepared,
+  });
+}
+
+function helperGitArguments(hooksDirectory, args) {
+  return [
+    '-c',
+    `core.hooksPath=${hooksDirectory}`,
+    '-c',
+    'core.fsmonitor=false',
+    ...args,
+  ];
+}
+
+function helperGitStatus(request, args) {
+  const result = spawnSync(
+    request.gitExecutable,
+    helperGitArguments(request.hooksDirectory, args),
+    {
+      cwd: process.cwd(),
+      encoding: null,
+      env: gitEnvironmentForExecutable(request.gitExecutable),
+      maxBuffer: MAX_REF_HELPER_OUTPUT_BYTES,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  if (result.error || result.signal || !Number.isInteger(result.status)) {
+    throw new Error('exact-ref helper inspection lacked a trustworthy exit status', {
+      cause: result.error,
+    });
+  }
+  return result.status;
+}
+
+function helperCaptureDirectRefs(request) {
+  const refs = request.prepared.receipt.map((operation) => operation.ref);
+  let raw;
+  try {
+    raw = execFileSync(
+      request.gitExecutable,
+      helperGitArguments(request.hooksDirectory, [
+        'for-each-ref',
+        '--format=%(refname)%09%(objectname)%09%(objecttype)%09%(symref)',
+        ...refs,
+      ]),
+      {
+        cwd: process.cwd(),
+        encoding: null,
+        env: gitEnvironmentForExecutable(request.gitExecutable),
+        maxBuffer: MAX_REF_HELPER_OUTPUT_BYTES,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+  } catch (error) {
+    throw new Error('exact-ref helper batch inspection failed', { cause: error });
+  }
+  let rendered;
+  try {
+    rendered = new TextDecoder('utf-8', { fatal: true }).decode(raw);
+  } catch (error) {
+    throw new Error('exact-ref helper batch inspection was not valid UTF-8', {
+      cause: error,
+    });
+  }
+  const requested = new Set(refs);
+  const captured = new Map();
+  for (const line of rendered.split('\n').filter(Boolean)) {
+    const fields = line.split('\t');
+    if (fields.length !== 4) {
+      throw new Error('exact-ref helper batch inspection was malformed');
+    }
+    const [ref, head, type, symbolicTarget] = fields;
+    if (
+      !requested.has(ref)
+      || captured.has(ref)
+      || symbolicTarget !== ''
+      || type !== 'commit'
+      || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(head)
+    ) {
+      throw new Error('exact-ref helper observed an invalid branch representation');
+    }
+    captured.set(ref, head);
+  }
+  return captured;
+}
+
+function recheckPreparedRefState(request) {
+  for (const expected of request.prepared.preState) {
+    const symbolicStatus = helperGitStatus(
+      request,
+      ['symbolic-ref', '-q', expected.ref],
+    );
+    if (symbolicStatus !== 1) {
+      throw new Error('exact-ref helper observed a symbolic or unreadable branch');
+    }
+    const existenceStatus = helperGitStatus(
+      request,
+      ['show-ref', '--verify', '--quiet', expected.ref],
+    );
+    const expectedStatus = expected.head === null ? 1 : 0;
+    if (existenceStatus !== expectedStatus) {
+      throw new Error('exact-ref helper observed unexpected branch existence');
+    }
+  }
+  const captured = helperCaptureDirectRefs(request);
+  for (const expected of request.prepared.preState) {
+    if (expected.head === null) {
+      if (captured.has(expected.ref)) {
+        throw new Error('exact-ref helper observed an unexpected branch');
+      }
+    } else if (captured.get(expected.ref) !== expected.head) {
+      throw new Error('exact-ref helper observed a moved or invalid branch');
+    }
+  }
+}
+
+function createBoundedLineReader(stream) {
+  const lines = [];
+  let buffered = Buffer.alloc(0);
+  let total = 0;
+  let ended = false;
+  let failure = null;
+  let wake = null;
+  const notify = () => {
+    if (wake) {
+      const resolve = wake;
+      wake = null;
+      resolve();
+    }
+  };
+  stream.on('data', (chunk) => {
+    total += chunk.byteLength;
+    if (total > MAX_REF_HELPER_OUTPUT_BYTES) {
+      failure = new Error('exact-ref Git protocol output exceeded its byte bound');
+      notify();
+      return;
+    }
+    buffered = Buffer.concat([buffered, chunk]);
+    let newline = buffered.indexOf(0x0a);
+    while (newline !== -1) {
+      lines.push(buffered.subarray(0, newline));
+      buffered = buffered.subarray(newline + 1);
+      newline = buffered.indexOf(0x0a);
+    }
+    notify();
+  });
+  stream.on('error', (error) => {
+    failure = error;
+    notify();
+  });
+  stream.on('end', () => {
+    ended = true;
+    notify();
+  });
+  const waitForChange = async () => {
+    await new Promise((resolve) => {
+      wake = resolve;
+    });
+  };
+  return Object.freeze({
+    async next() {
+      while (lines.length === 0 && !ended && !failure) {
+        await waitForChange();
+      }
+      if (failure) throw failure;
+      if (lines.length === 0) {
+        throw new Error('exact-ref Git protocol ended before acknowledgement');
+      }
+      try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(lines.shift());
+      } catch (error) {
+        throw new Error('exact-ref Git protocol was not valid UTF-8', { cause: error });
+      }
+    },
+    requireNoQueued() {
+      if (failure) throw failure;
+      if (lines.length !== 0 || buffered.byteLength !== 0) {
+        throw new Error('exact-ref Git protocol emitted extra output');
+      }
+    },
+    async requireEnd() {
+      while (!ended && !failure) {
+        await waitForChange();
+      }
+      if (failure) throw failure;
+      if (lines.length !== 0 || buffered.byteLength !== 0) {
+        throw new Error('exact-ref Git protocol emitted extra output');
+      }
+    },
+  });
+}
+
+function writeProtocolLine(child, line) {
+  return new Promise((resolve, reject) => {
+    child.stdin.write(`${line}\n`, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+async function runExactRefHelper() {
+  const request = await readBoundedHelperRequest();
+  const child = spawn(
+    request.gitExecutable,
+    helperGitArguments(request.hooksDirectory, [
+      'update-ref',
+      '--no-deref',
+      '--stdin',
+    ]),
+    {
+      cwd: process.cwd(),
+      env: gitEnvironmentForExecutable(request.gitExecutable),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  );
+  const stdout = createBoundedLineReader(child.stdout);
+  const stderrChunks = [];
+  let stderrBytes = 0;
+  let stderrOverflow = false;
+  child.stderr.on('data', (chunk) => {
+    stderrBytes += chunk.byteLength;
+    if (stderrBytes > MAX_REF_HELPER_OUTPUT_BYTES) {
+      stderrOverflow = true;
+      child.stdin.end();
+    } else {
+      stderrChunks.push(chunk);
+    }
+  });
+  const exit = new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (code, signal) => resolve({ code, signal }));
+  });
+  let startSent = false;
+  let committed = false;
+  try {
+    await writeProtocolLine(child, 'start');
+    startSent = true;
+    if (await stdout.next() !== 'start: ok') {
+      throw new Error('exact-ref Git protocol rejected start');
+    }
+    stdout.requireNoQueued();
+    for (const command of request.prepared.commands) {
+      await writeProtocolLine(child, command);
+    }
+    await writeProtocolLine(child, 'prepare');
+    if (await stdout.next() !== 'prepare: ok') {
+      throw new Error('exact-ref Git protocol rejected prepare');
+    }
+    stdout.requireNoQueued();
+    recheckPreparedRefState(request);
+    await writeProtocolLine(child, 'commit');
+    if (await stdout.next() !== 'commit: ok') {
+      throw new Error('exact-ref Git protocol rejected commit');
+    }
+    committed = true;
+    child.stdin.end();
+    const outcome = await exit;
+    await stdout.requireEnd();
+    if (
+      stderrOverflow
+      || stderrChunks.length !== 0
+      || outcome.code !== 0
+      || outcome.signal !== null
+    ) {
+      throw new Error('exact-ref Git process failed after commit acknowledgement');
+    }
+  } catch (error) {
+    if (!committed && startSent && child.exitCode === null && child.signalCode === null) {
+      try {
+        await writeProtocolLine(child, 'abort');
+        if (await stdout.next() !== 'abort: ok') {
+          throw new Error('exact-ref Git protocol rejected abort');
+        }
+      } catch {}
+    }
+    if (!child.stdin.destroyed) child.stdin.end();
+    if (child.exitCode === null && child.signalCode === null) {
+      await exit.catch(() => {});
     }
     throw error;
   }
-  return Object.freeze(operations.map((operation) => Object.freeze({ ...operation })));
+}
+
+async function runExactRefHelperMain() {
+  try {
+    await runExactRefHelper();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown helper failure';
+    process.stderr.write(`${message.slice(0, 4096)}\n`);
+    process.exitCode = 1;
+  }
 }
 
 export function isAncestor(repo, ancestor, descendant) {
@@ -1617,7 +2221,22 @@ export function unsafeCommitRecordTransition(repo, {
     unsafeAtomicUpdateRefs(repo, operations);
   } catch (error) {
     const code = ownerRef ? 'ATOMIC_REF_UPDATE_FAILED' : 'STALE_WRITER';
-    throw new GitRecordError(code, `record ref transaction lost for ${exactRef}`, error);
+    const message = (
+      error instanceof GitRecordError
+      && error.message.includes('ambiguous outcome')
+    )
+      ? `record ref transaction has an ambiguous outcome for ${exactRef}; `
+        + 'authoritative recovery is required before retry'
+      : `record ref transaction lost for ${exactRef}`;
+    throw new GitRecordError(code, message, error);
   }
   return prepared.commit;
+}
+
+if (
+  process.argv.length === 3
+  && process.argv[1] === fileURLToPath(import.meta.url)
+  && process.argv[2] === REF_HELPER_MARKER
+) {
+  await runExactRefHelperMain();
 }
