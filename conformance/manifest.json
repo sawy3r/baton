@@ -13,7 +13,8 @@
           "format": "baton.plan/v2",
           "valid_fixtures": [
             "conformance/fixtures/valid-plan-v2.md",
-            "conformance/fixtures/valid-plan-revision-v2.md"
+            "conformance/fixtures/valid-plan-revision-v2.md",
+            "conformance/fixtures/valid-plan-transitive-overlap-v2.md"
           ],
           "invalid_fixtures": [
             {

@@ -38,6 +38,7 @@ STRICT_CASES = (
 VALID_PLAN_FIXTURES = (
     "valid-plan-v2.md",
     "valid-plan-revision-v2.md",
+    "valid-plan-transitive-overlap-v2.md",
 )
 
 INVALID_PLAN_FIXTURES = (
@@ -470,7 +471,7 @@ def run() -> list[str]:
     if not failures:
         print(
             "PASS 7 strict JSON cases, 1 Draft 2020-12 receipt schema, "
-            "5 plan fixtures, and 6 receipt fixtures"
+            "6 plan fixtures, and 6 receipt fixtures"
         )
     return failures
 

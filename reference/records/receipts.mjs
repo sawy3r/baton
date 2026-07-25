@@ -409,6 +409,22 @@ function assertAcyclic(nodes, edges, label) {
   for (const node of nodes) visit(node);
 }
 
+function dependencyClosures(nodes, edges) {
+  const closures = new Map();
+  function resolve(node) {
+    if (closures.has(node)) return closures.get(node);
+    const closure = new Set();
+    for (const dependency of edges.get(node) ?? []) {
+      closure.add(dependency);
+      for (const inherited of resolve(dependency)) closure.add(inherited);
+    }
+    closures.set(node, closure);
+    return closure;
+  }
+  for (const node of nodes) resolve(node);
+  return closures;
+}
+
 export function validatePlanMetadata(value) {
   exactKeys(
     value,
@@ -518,15 +534,19 @@ export function validatePlanMetadata(value) {
     }
   }
   assertAcyclic(sliceIDs, deliveryEdges, 'delivery graph');
+  const deliveryClosures = dependencyClosures(sliceIDs, deliveryEdges);
 
   for (let leftIndex = 0; leftIndex < parsedTracks.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < parsedTracks.length; rightIndex += 1) {
       const left = parsedTracks[leftIndex];
       const right = parsedTracks[rightIndex];
-      const ordered = left.depends_on.includes(right.id) || right.depends_on.includes(left.id);
-      if (ordered) continue;
       for (const leftSlice of left.slices) {
         for (const rightSlice of right.slices) {
+          const ordered = (
+            deliveryClosures.get(leftSlice.id).has(rightSlice.id)
+            || deliveryClosures.get(rightSlice.id).has(leftSlice.id)
+          );
+          if (ordered) continue;
           for (const leftPath of leftSlice.scope.include) {
             for (const rightPath of rightSlice.scope.include) {
               if (pathOverlap(leftPath, rightPath)) {

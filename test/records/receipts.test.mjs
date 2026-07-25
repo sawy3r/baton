@@ -175,6 +175,26 @@ test('plan validation rejects broken revision, dependency, and parallel ownershi
   crossLayerCycle.tracks[1].depends_on = [];
   crossLayerCycle.tracks[1].slices[0].consumes = [];
   throwsCode(() => parsePlanBytes(planBytes(crossLayerCycle)), 'DEPENDENCY_CYCLE');
+
+  const transitivelyOrderedOverlap = planMetadata();
+  transitivelyOrderedOverlap.tracks.push({
+    id: 'T3',
+    depends_on: ['T2'],
+    slices: [{
+      ...structuredClone(transitivelyOrderedOverlap.tracks[0].slices[0]),
+      id: 'S3',
+      scope: { include: ['src/product/nested'], exclude: [] },
+      acceptance: [{ id: 'A3', text: 'The transitive outcome is observable.' }],
+      depends_on: [],
+      consumes: [],
+    }],
+  });
+  assert.equal(parsePlanBytes(planBytes(transitivelyOrderedOverlap)).metadata.tracks.length, 3);
+
+  const explicitlyOrderedOverlap = planMetadata();
+  explicitlyOrderedOverlap.tracks[1].depends_on = [];
+  explicitlyOrderedOverlap.tracks[1].slices[0].scope.include = ['src/product/nested'];
+  assert.equal(parsePlanBytes(planBytes(explicitlyOrderedOverlap)).metadata.tracks.length, 2);
 });
 
 test('receipt JSON is strict, canonical, bounded, and role-aware', () => {
