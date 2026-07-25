@@ -876,6 +876,12 @@ function createBoundedLineReader(stream) {
         throw new Error('exact-ref Git protocol was not valid UTF-8', { cause: error });
       }
     },
+    requireNoQueued() {
+      if (failure) throw failure;
+      if (lines.length !== 0 || buffered.byteLength !== 0) {
+        throw new Error('exact-ref Git protocol emitted extra output');
+      }
+    },
     async requireEnd() {
       while (!ended && !failure) {
         await waitForChange();
@@ -920,7 +926,7 @@ async function runExactRefHelper() {
     stderrBytes += chunk.byteLength;
     if (stderrBytes > MAX_REF_HELPER_OUTPUT_BYTES) {
       stderrOverflow = true;
-      child.kill('SIGKILL');
+      child.stdin.end();
     } else {
       stderrChunks.push(chunk);
     }
@@ -937,6 +943,7 @@ async function runExactRefHelper() {
     if (await stdout.next() !== 'start: ok') {
       throw new Error('exact-ref Git protocol rejected start');
     }
+    stdout.requireNoQueued();
     for (const command of request.prepared.commands) {
       await writeProtocolLine(child, command);
     }
@@ -944,6 +951,7 @@ async function runExactRefHelper() {
     if (await stdout.next() !== 'prepare: ok') {
       throw new Error('exact-ref Git protocol rejected prepare');
     }
+    stdout.requireNoQueued();
     recheckPreparedRefState(request);
     await writeProtocolLine(child, 'commit');
     if (await stdout.next() !== 'commit: ok') {
@@ -968,9 +976,7 @@ async function runExactRefHelper() {
         if (await stdout.next() !== 'abort: ok') {
           throw new Error('exact-ref Git protocol rejected abort');
         }
-      } catch {
-        child.kill('SIGKILL');
-      }
+      } catch {}
     }
     if (!child.stdin.destroyed) child.stdin.end();
     if (child.exitCode === null && child.signalCode === null) {
