@@ -522,6 +522,12 @@ function deriveAssembly(repo, current, history, approval, tracks, target) {
     });
   }
   const candidate = assemblyCandidate(history, latestEntry);
+  if (latestEntry.receipt.role === 'merge') return frozen({
+    ...common, stage: 'merge', status: 'complete', next_role: 'none', outcome: 'merged',
+    current_receipt: latestEntry, candidate,
+    pass: history.byOID.get(latestEntry.receipt.binds),
+    result_commit: latestEntry.receipt.result_commit,
+  });
   const stale = candidate && (
     candidate.receipt.target !== target
     || JSON.stringify(candidate.receipt.inputs) !== JSON.stringify(pins)
@@ -548,11 +554,7 @@ function deriveAssembly(repo, current, history, approval, tracks, target) {
       pass: result === 'pass' ? latestEntry : null,
     });
   }
-  return frozen({
-    ...common, stage: 'merge', status: 'complete', next_role: 'none', outcome: 'merged',
-    current_receipt: latestEntry, candidate, pass: history.byOID.get(latestEntry.receipt.binds),
-    result_commit: latestEntry.receipt.result_commit,
-  });
+  fail('INVALID_RECEIPT', `assembly history ends at unsupported ${latestEntry.receipt.role}`);
 }
 
 function diagnostic(code, message, context = {}) {
@@ -605,7 +607,11 @@ export function readBatonState(
   const planByOID = new Map(plans.chain.map((entry) => [entry.oid, entry]));
   validateRetirements(current, plans.chain, plans.approvals, releaseHistory.receipts);
 
-  const releaseOIDs = new Set(releaseHistory.receipts.map((entry) => entry.oid));
+  const releasePlannerOIDs = new Set(
+    releaseHistory.receipts
+      .filter(({ receipt }) => receipt.role === 'planner')
+      .map((entry) => entry.oid),
+  );
   const priorOwners = new Map();
   for (const entry of plans.chain) {
     for (const [id, location] of locations(entry.parsed)) priorOwners.set(id, location.track.id);
@@ -615,12 +621,14 @@ export function readBatonState(
   for (let index = 0; index < current.parsed.metadata.tracks.length; index += 1) {
     const track = current.parsed.metadata.tracks[index];
     const ref = captured[index + 2];
-    const owned = historyAt(repo, ref.head).receipts.filter((entry) => !releaseOIDs.has(entry.oid));
+    const owned = historyAt(repo, ref.head).receipts.filter((entry) => (
+      Object.hasOwn(entry.receipt, 'slice')
+      && !releasePlannerOIDs.has(entry.oid)
+      && priorOwners.get(entry.receipt.slice) === track.id
+    ));
     for (const entry of owned) {
       if (
         entry.receipt.release !== release
-        || !Object.hasOwn(entry.receipt, 'slice')
-        || priorOwners.get(entry.receipt.slice) !== track.id
         || (claimed.has(entry.oid) && claimed.get(entry.oid) !== track.id)
       ) fail('AMBIGUOUS_AUTHORITY', `track ${track.id} contains a foreign receipt`);
       claimed.set(entry.oid, track.id);
@@ -669,7 +677,11 @@ export function readBatonState(
     || receipt.role === 'merge'
   ));
   for (const entry of releaseHistory.receipts) {
-    if (entry.receipt.role !== 'planner' && !assemblyEntries.includes(entry)) {
+    if (
+      entry.receipt.role !== 'planner'
+      && !assemblyEntries.includes(entry)
+      && !claimed.has(entry.oid)
+    ) {
       fail('AMBIGUOUS_AUTHORITY', `receipt ${entry.oid} is on the wrong authority`);
     }
   }
