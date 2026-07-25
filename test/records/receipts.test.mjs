@@ -93,6 +93,18 @@ function receipt(overrides = {}) {
   };
 }
 
+function candidateReceipt(overrides = {}) {
+  return receipt({
+    role: 'implementer',
+    result: 'candidate',
+    candidate: OID_C,
+    product_tree: DIGEST_A,
+    inputs: {},
+    checks: DIGEST_A,
+    ...overrides,
+  });
+}
+
 test('plan revisions keep stable slice contracts and private raw bytes', () => {
   const source = planBytes();
   const parsed = parsePlanBytes(source);
@@ -159,6 +171,31 @@ test('receipt JSON is strict, canonical, bounded, and role-aware', () => {
     () => parseReceiptBytes(Buffer.from(canonicalJSON(receipt({ summary: 'x'.repeat(281) })))),
     'INVALID_FIELD',
   );
+  throwsCode(
+    () => parseReceiptBytes(Buffer.from(canonicalJSON(receipt({
+      role: 'implementer',
+      result: 'candidate',
+    })))),
+    'MISSING_FIELD',
+  );
+  assert.equal(
+    parseReceiptBytes(Buffer.from(canonicalJSON(candidateReceipt()))).candidate,
+    OID_C,
+  );
+  const assembly = candidateReceipt({
+    slice: undefined,
+    attempt: undefined,
+    contract: undefined,
+    target: OID_A,
+    base: OID_B,
+  });
+  delete assembly.slice;
+  delete assembly.attempt;
+  delete assembly.contract;
+  assert.equal(
+    parseReceiptBytes(Buffer.from(canonicalJSON(assembly))).target,
+    OID_A,
+  );
   assert.ok(strictParseJSON(readFileSync(path.join(ROOT, 'schemas/receipt-v1.json'))));
 });
 
@@ -202,12 +239,7 @@ test('history entries require one parent and a metadata-only tree', () => {
   const message = renderReceiptCommit({
     subject: 'baton(S1): candidate',
     detail: 'Candidate checks passed.',
-    receipt: receipt({
-      role: 'implementer',
-      result: 'candidate',
-      candidate: OID_C,
-      product_tree: DIGEST_A,
-    }),
+    receipt: candidateReceipt(),
   });
   const parsed = parseReceiptHistoryEntry({
     oid: OID_C,

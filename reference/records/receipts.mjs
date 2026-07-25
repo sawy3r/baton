@@ -563,6 +563,75 @@ function validateInputs(value, label) {
   return result;
 }
 
+function assertRoleFields(receipt) {
+  const present = (field) => Object.hasOwn(receipt, field);
+  const requireFields = (...fields) => {
+    const missing = fields.filter((field) => !present(field));
+    if (missing.length > 0) {
+      fail(
+        'MISSING_FIELD',
+        `${receipt.role}/${receipt.result} receipt requires ${missing.join(', ')}`,
+      );
+    }
+  };
+  const forbidFields = (...fields) => {
+    const unexpected = fields.filter(present);
+    if (unexpected.length > 0) {
+      fail(
+        'INVALID_FIELD',
+        `${receipt.role}/${receipt.result} receipt forbids ${unexpected.join(', ')}`,
+      );
+    }
+  };
+  const candidateEvidence = ['candidate', 'product_tree', 'inputs', 'checks'];
+  const mergeEvidence = ['target', 'candidate', 'product_tree', 'result_commit'];
+
+  if (receipt.role === 'planner') {
+    if (receipt.result === 'approved') {
+      if (present('slice')) fail('INVALID_FIELD', 'planner/approved receipt is release-scoped');
+      requireFields('target');
+    } else {
+      requireFields('slice');
+    }
+    forbidFields('base', 'candidate', 'product_tree', 'inputs', 'checks', 'result_commit');
+    return;
+  }
+  if (receipt.role === 'implementer') {
+    if (receipt.result === 'designed') {
+      requireFields('slice');
+      forbidFields('target', 'base', ...candidateEvidence, 'result_commit');
+    } else {
+      requireFields(...candidateEvidence);
+      forbidFields('result_commit');
+      if (!present('slice')) requireFields('target', 'base');
+    }
+    return;
+  }
+  if (receipt.role === 'captain') {
+    requireFields('slice');
+    forbidFields(
+      'target',
+      'base',
+      'candidate',
+      'product_tree',
+      'inputs',
+      'checks',
+      'result_commit',
+    );
+    return;
+  }
+  if (receipt.role === 'verifier') {
+    requireFields(...candidateEvidence);
+    forbidFields('base', 'result_commit');
+    return;
+  }
+  if (receipt.role === 'merge') {
+    if (present('slice')) fail('INVALID_FIELD', 'merge receipt is release-scoped');
+    requireFields(...mergeEvidence);
+    forbidFields('base', 'checks');
+  }
+}
+
 export function validateReceipt(value) {
   exactKeys(
     value,
@@ -607,7 +676,7 @@ export function validateReceipt(value) {
     parsed.slice = identity(value.slice, 'receipt.slice');
     parsed.attempt = integer(value.attempt, 'receipt.attempt');
     parsed.contract = digest(value.contract, 'receipt.contract');
-  } else if (role === 'implementer' || role === 'captain') {
+  } else if (role === 'captain' || (role === 'implementer' && value.result === 'designed')) {
     fail('MISSING_FIELD', `${role} receipt requires slice identity`);
   }
   for (const field of ['target', 'base', 'candidate', 'result_commit']) {
@@ -617,6 +686,7 @@ export function validateReceipt(value) {
     if (Object.hasOwn(value, field)) parsed[field] = digest(value[field], `receipt.${field}`);
   }
   if (Object.hasOwn(value, 'inputs')) parsed.inputs = validateInputs(value.inputs, 'receipt.inputs');
+  assertRoleFields(parsed);
   return freeze(canonicalValue(parsed));
 }
 
