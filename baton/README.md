@@ -32,5 +32,6 @@ another state store.
 
 The portable kit includes five canonical operations, generated Claude Code and
 Codex Skills, one plan template, deterministic reference tools, a read-only
-board, and one role-independent process-driver seam. Longer design and evidence
-documents are optional project artefacts.
+terminal and browser board. Longer design and evidence documents are optional
+project artefacts. Drivers, scheduling, retries, and telemetry belong to an
+engine such as Sworn.

@@ -22,7 +22,7 @@ import {
   repositoryRoot,
   unsafeRunGit,
 } from '../reference/records/git.mjs';
-import { strictParseJSON } from '../reference/records/records.mjs';
+import { strictParseJSON } from '../reference/records/receipts.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_ROOT = resolve(SCRIPT_DIR, '..');
@@ -186,7 +186,7 @@ async function measureBaseline(root, baselinePath) {
   const baseline = validateBaselineShape(strictParseJSON(
     await readFile(baselinePath),
     'v0.16.0 overhead baseline',
-    { maxBytes: 262_144 },
+    262_144,
   ));
   const { source } = baseline;
   const observedTag = gitText(root, ['rev-parse', '--verify', `refs/tags/${source.tag}`]);

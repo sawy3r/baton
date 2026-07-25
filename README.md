@@ -114,7 +114,7 @@ follow the [platform-agnostic walkthrough](examples/README.md).
 - [`baton/ASSURANCE.md`](baton/ASSURANCE.md) — standard and heightened assurance
 - [`baton/CONFORMANCE.md`](baton/CONFORMANCE.md) — observable obligations
 - [`operations/`](operations/) — five canonical operations
-- [`reference/`](reference/) — the portable receipt, board, and driver kit
+- [`reference/`](reference/) — the portable receipt, Git, and read-only board kit
 - [`conformance/`](conformance/) — portable and autonomous profiles
 
 ## License
