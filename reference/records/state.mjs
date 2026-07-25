@@ -224,6 +224,45 @@ function sameCandidate(left, right) {
   );
 }
 
+function applicablePriorPass(entries, plan, sliceID) {
+  const contract = plan.parsed.metadata.contracts[sliceID];
+  const matching = entries.filter(({ receipt }) => (
+    receipt.slice === sliceID && receipt.contract === contract
+  ));
+  const pass = latest(
+    matching,
+    ({ receipt }) => receipt.role === 'verifier' && receipt.result === 'pass',
+  );
+  return pass && !matching.some(
+    ({ receipt }) => receipt.attempt > pass.receipt.attempt,
+  );
+}
+
+function validateSerialSliceOrder(track, entries, planByOID) {
+  const priorEntries = [];
+  for (const entry of entries) {
+    const plan = planByOID.get(entry.receipt.plan);
+    const plannedTrack = plan?.parsed.metadata.tracks.find(
+      ({ id }) => id === track.id,
+    );
+    const position = plannedTrack?.slices.findIndex(
+      ({ id }) => id === entry.receipt.slice,
+    ) ?? -1;
+    if (position < 0) {
+      fail('AMBIGUOUS_AUTHORITY', `receipt ${entry.oid} uses the wrong track`);
+    }
+    for (const prior of plannedTrack.slices.slice(0, position)) {
+      if (!applicablePriorPass(priorEntries, plan, prior.id)) {
+        fail(
+          'DEPENDENCIES_NOT_READY',
+          `${entry.receipt.slice} advanced before ${prior.id} PASS`,
+        );
+      }
+    }
+    priorEntries.push(entry);
+  }
+}
+
 function validateSlice(
   repo,
   location,
@@ -407,6 +446,32 @@ function deriveSlices(current, histories, approvals) {
     return state;
   }
   for (const id of states.keys()) resolve(id);
+  const trackReady = new Map(current.parsed.metadata.tracks.map((track) => [
+    track.id,
+    track.slices.every(({ id }) => Boolean(states.get(id).pass)),
+  ]));
+  for (const track of current.parsed.metadata.tracks) {
+    const trackDependenciesReady = track.depends_on.every(
+      (trackID) => trackReady.get(trackID),
+    );
+    let priorSlicesReady = true;
+    for (const slice of track.slices) {
+      const state = states.get(slice.id);
+      const explicitDependenciesReady = [...new Set([
+        ...slice.depends_on,
+        ...slice.consumes,
+      ])].every((id) => states.get(id).pass);
+      if (
+        !state.pass
+        && state.status !== 'blocked'
+        && !(trackDependenciesReady && priorSlicesReady && explicitDependenciesReady)
+      ) {
+        state.status = 'waiting';
+        state.next_role = 'none';
+      }
+      priorSlicesReady = priorSlicesReady && Boolean(state.pass);
+    }
+  }
   return states;
 }
 
@@ -633,6 +698,7 @@ export function readBatonState(
       ) fail('AMBIGUOUS_AUTHORITY', `track ${track.id} contains a foreign receipt`);
       claimed.set(entry.oid, track.id);
     }
+    validateSerialSliceOrder(track, owned, planByOID);
     trackHistories.set(track.id, { ref, owned });
   }
 

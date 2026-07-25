@@ -462,6 +462,71 @@ test('Captain revision and Verifier failure keep one slice identity with new att
   }
 });
 
+test('one track advances only its first incomplete slice', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const serialPlan = metadata(1, null, {
+      tracks: [{
+        ...metadata().tracks[0],
+        slices: [
+          metadata().tracks[0].slices[0],
+          {
+            id: 'S2',
+            outcome: 'Deliver the ordered follow-up.',
+            scope: { include: ['src/second.txt'], exclude: [] },
+            acceptance: [{ id: 'A2', text: 'The follow-up is observable.' }],
+            checks: ['node --test'],
+            constraints: [],
+            depends_on: [],
+            consumes: [],
+          },
+        ],
+      }],
+    });
+    engine.recordPlanRevision({
+      planBytes: planBytes(serialPlan),
+      summary: 'Serial plan approved.',
+    });
+
+    const waiting = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(waiting.slices[0].next_role, 'implementer');
+    assert.equal(waiting.slices[1].status, 'waiting');
+    assert.equal(waiting.slices[1].next_role, 'none');
+    assert.throws(
+      () => engine.appendReceipt({
+        release: 'actions-v2',
+        slice: 'S2',
+        role: 'implementer',
+        result: 'designed',
+        summary: 'Out-of-order design.',
+      }),
+      (error) => error?.code === 'DEPENDENCIES_NOT_READY',
+    );
+
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'first\n',
+    });
+    const designed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'designed',
+      summary: 'The ordered follow-up is now eligible.',
+    });
+    assert.equal(designed.receipt.slice, 'S2');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('two passed tracks produce one exact assembly, one fresh verdict, and one merge', () => {
   const fixture = temporaryRepository();
   try {

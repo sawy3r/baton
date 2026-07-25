@@ -302,6 +302,34 @@ function currentSlice(state, sliceID) {
   return slice;
 }
 
+function requireSlicePrerequisites(state, slice) {
+  const { location } = slice;
+  const track = currentTrack(state, location.track.id);
+  const position = track.slices.findIndex(
+    ({ location: item }) => item.slice.id === location.slice.id,
+  );
+  const required = new Set([
+    ...track.depends_on.flatMap(
+      (trackID) => currentTrack(state, trackID).slices.map(
+        ({ location: item }) => item.slice.id,
+      ),
+    ),
+    ...track.slices.slice(0, position).map(
+      ({ location: item }) => item.slice.id,
+    ),
+    ...location.slice.depends_on,
+    ...location.slice.consumes,
+  ]);
+  for (const dependency of required) {
+    if (!currentSlice(state, dependency).pass) {
+      fail(
+        'DEPENDENCIES_NOT_READY',
+        `${location.slice.id} is waiting for ${dependency} PASS`,
+      );
+    }
+  }
+}
+
 function exactRetry(entry, {
   role,
   result,
@@ -576,6 +604,7 @@ export function createBatonActions(options) {
       })) {
         return appendResult(false, ownerRef, current);
       }
+      requireSlicePrerequisites(state, slice);
 
       let attempt;
       let binds;
@@ -620,17 +649,6 @@ export function createBatonActions(options) {
         }
         if (candidate === null || ownerHead !== candidate) {
           fail('CHANGED_CANDIDATE', 'candidate must be the exact captured track head');
-        }
-        const dependencies = [
-          ...new Set([
-            ...location.slice.depends_on,
-            ...location.slice.consumes,
-          ]),
-        ];
-        for (const dependency of dependencies) {
-          if (!currentSlice(state, dependency).pass) {
-            fail('DEPENDENCIES_NOT_READY', `${sliceID} is waiting for ${dependency} PASS`);
-          }
         }
         const identity = productTreeIdentity(
           repo,

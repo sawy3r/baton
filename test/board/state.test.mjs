@@ -14,6 +14,7 @@ import {
   appendReceipt,
   baselineFixture,
   designSlice,
+  oneSliceMetadata,
   passSlice,
   revisePlan,
 } from './helpers.mjs';
@@ -139,6 +140,40 @@ test('a forged Captain binding is invalid, not a procedural blocker', () => {
     assert.throws(
       () => readBatonState(fixture.repo, 'v1.0.0'),
       (error) => error instanceof BatonStateError && error.code === 'STALE_BINDING',
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a later same-track slice cannot forge progress before the prior PASS', () => {
+  const fixture = baselineFixture(oneSliceMetadata({
+    tracks: [{
+      id: 'T1',
+      depends_on: [],
+      slices: [
+        oneSliceMetadata().tracks[0].slices[0],
+        {
+          id: 'S2',
+          outcome: 'Deliver S2 after S1.',
+          scope: { include: ['src/two.txt'], exclude: [] },
+          acceptance: [{ id: 'S2-A1', text: 'S2 is observable.' }],
+          checks: ['node --test'],
+          constraints: [],
+          depends_on: [],
+          consumes: [],
+        },
+      ],
+    }],
+  }));
+  try {
+    designSlice(fixture, 'S2');
+    assert.throws(
+      () => readBatonState(fixture.repo, 'v1.0.0'),
+      (error) => (
+        error instanceof BatonStateError
+        && error.code === 'DEPENDENCIES_NOT_READY'
+      ),
     );
   } finally {
     fixture.cleanup();
