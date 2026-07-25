@@ -4,7 +4,7 @@ Date: 2026-07-24
 Status: ratified
 Ratified: 2026-07-24
 Authority: [Baton v1 course correction](./2026-07-22-baton-v1-course-correction.md)
-and [Baton v1 RC2 rebuild plan](./2026-07-22-baton-v1-rc2-rebuild-plan.md)
+and [Baton lightweight revision and receipt decision](./2026-07-25-baton-lightweight-revision-and-receipt-decision.md)
 
 ## Decision
 
@@ -77,9 +77,11 @@ Plan
        -> independent tracks in parallel
        -> ordered slices serially within each track
        -> Implementer design -> Captain -> Implementer build -> Verifier
-  -> compose completed track heads on release-wt
-  -> fresh final assembly verification
-  -> Merge exact passed release candidate
+  -> one track: Merge the exact passed candidate
+  -> multiple tracks:
+       -> compose completed track heads on release-wt
+       -> fresh final assembly verification
+       -> Merge the exact passed assembly
 ```
 
 Roles are not drivers. Sworn has one common driver layer for speaking to each
@@ -317,23 +319,25 @@ transactional command/event/effect kernel remains the runtime authority.
 
 ## Delivery sequence
 
-1. Finish and dogfood Baton RC2, including its thin board and generated
+1. Finish and dogfood Baton RC4, including its thin board and generated
    platform adapters.
-2. Pin RC2 and replan Sworn against its exact records and topology.
+2. Pin RC4 and replan Sworn against its exact records and topology.
 3. Close one single-track release end to end through all five Baton
-   responsibilities, assembly verification, and release Merge.
-4. Split claim, external execution, and completion so concurrency is real.
-5. Add the minimal dependency-aware release coordinator and release/track/slice
+   responsibilities and exact Merge.
+4. Close one multi-track release through deterministic composition, fresh
+   Assembly verification, and exact Merge.
+5. Split claim, external execution, and completion so concurrency is real.
+6. Add the minimal dependency-aware release coordinator and release/track/slice
    read model.
-6. Publish one stable run snapshot, resumable typed event stream, and
+7. Publish one stable run snapshot, resumable typed event stream, and
    command/receipt contract.
-7. Build the read-only embedded local workflow interface against recorded real
+8. Build the read-only embedded local workflow interface against recorded real
    runs.
-8. Add authenticated local pause, cancel, retry, and interactive-takeover
+9. Add authenticated local pause, cancel, retry, and interactive-takeover
    commands.
-9. Add protected authority and exact-integration command flows.
-10. Add generic webhook/outbox and hardened self-hosted access.
-11. Project a metadata-minimised form of the same contracts into read-only
+10. Add protected authority and exact-integration command flows.
+11. Add generic webhook/outbox and hardened self-hosted access.
+12. Project a metadata-minimised form of the same contracts into read-only
     hosted fleet and mobile views.
 
 The first GUI milestone is valuable without mutation: truthful monitoring,
@@ -388,4 +392,4 @@ This decision supersedes the June 2026 proposal to deliver the WebUI and
 multiple notification channels in one release. It retains the useful
 machine-global view, embedded local server, responsive interface, shared
 event/command core, and interactive handoff, but sequences those capabilities
-behind a proven Baton RC2 loop.
+behind a proven Baton RC4 loop.
