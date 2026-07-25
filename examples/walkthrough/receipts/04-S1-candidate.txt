@@ -1,0 +1,8 @@
+baton(S1): candidate attempt 1
+
+Baton-Detail-Begin
+Candidate implements atomic retry-key persistence.
+Check: npm test -- checkout-retry (exit 0).
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","candidate":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","checks":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","contract":"sha256:c862740b165f99eae38cd9778dbbe4ec18067cbc17ffdc3e7394d47ef94f6269","detail":"sha256:b66c929347357e8733d23e141df83b0333da21c957b4f78d25741555823723d4","inputs":{},"plan":"b614893f77b74f188230f37cdd5698b122abca3e","product_tree":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","release":"checkout-recovery","result":"candidate","role":"implementer","slice":"S1","summary":"S1 candidate and checks are ready for fresh verification.","version":1}

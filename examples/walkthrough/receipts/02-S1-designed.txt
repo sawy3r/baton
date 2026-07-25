@@ -1,0 +1,8 @@
+baton(S1): design attempt 1
+
+Baton-Detail-Begin
+Approach: persist the first charge identity for the existing retry key and return it on repeats.
+Evidence: run the checkout retry test twice against one key.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"b614893f77b74f188230f37cdd5698b122abca3e","contract":"sha256:c862740b165f99eae38cd9778dbbe4ec18067cbc17ffdc3e7394d47ef94f6269","detail":"sha256:b362b0634033dd457f55bcd4185044e55b66dd7983f3847372cea2c1f4113725","plan":"b614893f77b74f188230f37cdd5698b122abca3e","release":"checkout-recovery","result":"designed","role":"implementer","slice":"S1","summary":"S1 has a bounded retry-safe design.","version":1}

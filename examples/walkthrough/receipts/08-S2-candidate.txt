@@ -1,0 +1,8 @@
+baton(S2): candidate attempt 1
+
+Baton-Detail-Begin
+Candidate documents the retry key and explicit escalation boundary.
+Check: npm test -- runbook-links (exit 0).
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"1111111111111111111111111111111111111111","candidate":"1111111111111111111111111111111111111111","checks":"sha256:4444444444444444444444444444444444444444444444444444444444444444","contract":"sha256:8811b98b0635ec64fcd8ed8b35ade5763c46e7392a42a493e1b57a50a9f3d6ac","detail":"sha256:bef4eeda31957b6908541c802dbc55e8ef43573cf2f25ab3a1686cb66f6e15c2","inputs":{},"plan":"b614893f77b74f188230f37cdd5698b122abca3e","product_tree":"sha256:3333333333333333333333333333333333333333333333333333333333333333","release":"checkout-recovery","result":"candidate","role":"implementer","slice":"S2","summary":"S2 candidate and checks are ready for fresh verification.","version":1}

@@ -1,151 +1,93 @@
 # Baton Conformance 1.0
 
-Conformance is behavioral. Loading Baton prose, naming five agents, or drawing a
-workflow does not establish it.
+Conformance is behavioral. Loading Baton prose, naming five agents, or drawing
+a workflow does not establish it.
 
-## Portable record conformance
+## Portable protocol profile
 
 Every implementation MUST:
 
-1. parse the plan metadata and status as strict UTF-8 I-JSON;
-2. reject duplicate names, trailing values, lone surrogates, non-finite
-   numbers, and integers outside `[-9007199254740991, 9007199254740991]`;
-3. validate the closed plan and `work-status-v1` shapes before use;
-4. digest plan, design, proof, approval, and dispatch evidence as exact raw
-   bytes;
-5. reject unknown fields, invalid refs, ambiguous ownership, and every record
-   root except the canonical, non-symlinked `.baton/releases`;
-6. admit only the standard transitions, one atomic dual-ref materialisation,
-   and `REBOUND` of a pristine unmaterialised baseline;
-7. reject stale plan, approval, design, Captain, proof, candidate, product-tree,
-   Verifier, Merge, assembly, and target bindings;
-8. keep runner failure distinct from `FAIL` and `BLOCKED`, with `NO_VERDICT` as
-   the only byte-unchanged redispatch path;
-9. derive repository identity, ancestry, candidate tree, and product-tree facts
-   from Git rather than an agent claim;
-10. replay candidate history from the exact materialisation or prior passed
-    candidate, rejecting product-before-`PROCEED`, cross-work record commits,
-    and later work before earlier `PASS`;
-11. select active work from one captured owning lineage, never a newer foreign
-    copy, and reject an erased materialisation marker;
-12. treat structural board projection as syntax and authority only, never as
-    trusted action admission;
-13. expose one admission-gated action surface for plan installation, pristine
-    rebound, ordinary transition, materialisation, track composition, assembly
-    preparation, and release integration; raw Git or record primitives are not
-    the normal caller path; action options are non-Proxy plain data snapshotted
-    once from enumerable value descriptors, work transitions require one
-    string work identity, assembly transitions forbid it, and receipts contain
-    only engine-owned deeply frozen JSON data;
-14. validate each prepared immutable result against a prospective plan-bound
-    snapshot before applying one exact ref transaction, then recheck the
-    installed heads;
-15. inventory the complete release namespace before plan installation or
-    pristine rebound: installation starts from an absent namespace, while a
-    rebound predecessor and result contain exactly `plan.md` plus every planned
-    baseline `status.json`, with no stale handoff, assembly, or unknown file;
-16. reconcile an exact retry without another commit or ref movement only after
-    replaying its predecessor, lifecycle eligibility, candidate or assembly
-    history, and canonical deterministic action OIDs; a stale, copied,
-    sibling, or divergent retry fails; and
-17. require Merge-prepared proof and fresh verification of the complete
-    assembled release before final Merge.
+1. preserve one externally approved plan lineage with stable release and slice
+   identities;
+2. bind each plan revision and compact responsibility receipt to exact immutable
+   objects;
+3. keep Planner, Implementer, Captain, Verifier, Merge, and external-authorizer
+   authority distinct;
+4. require an applicable Captain `PROCEED` before implementation;
+5. derive repository, candidate, tree, ancestry, checks, and Merge facts rather
+   than trust an unsupported claim;
+6. start verification in fresh context with read-only candidate access;
+7. keep operational failure distinct from `FAIL` and `BLOCKED`;
+8. retain unchanged slices across plan revisions and invalidate only changed
+   slices plus the dependency closure whose consumed inputs changed;
+9. append design and implementation attempts without erasing earlier Git
+   history;
+10. derive the board from the plan, receipts, and Git rather than store another
+    lifecycle cursor;
+11. reconcile duplicate dispatch, stale projection, interruption, and known Git
+    effects without manufacturing trust facts; and
+12. compose and integrate only exact candidates covered by current `PASS`.
 
-The only authored JSON Schema is `work-status-v1`. Plan metadata has a closed
-semantic shape because it is embedded in Markdown rather than represented by a
-second schema.
+Receipt serialization, branch names, record paths, worktree layout, locks, and
+retry algorithms are reference-kit or engine choices. A conforming portable
+representation remains strict, bounded, deterministic, and safe for untrusted
+repository input.
 
-## Guided/manual profile
+## Guided profile
 
-A guided implementation conforms when it:
+A guided implementation conforms when it presents exact plan bytes for external
+approval, uses a distinct Captain, starts a fresh read-only Verifier, records
+compact receipts through a machine writer, and stops when a required trust fact
+cannot be established.
 
-- presents the exact plan for external approval;
-- records protected approval evidence over the plan digest;
-- uses distinct Implementer and Captain invocations;
-- stops implementation until Captain returns `PROCEED`;
-- starts the Verifier in a clean context with read-only candidate access and no
-  implementation conversation;
-- resolves protected approval and Verifier-dispatch evidence outside the
-  candidate before admitting the corresponding action;
-- leaves the durable status unchanged and redispatches only the same candidate
-  when the host or runner produces `NO_VERDICT`;
-- performs every transition through validated committed records; and
-- stops when its host cannot establish one of those facts.
-
-Human coordination may establish separation and approval, but the resulting
-status bindings and Git facts remain machine-checkable. A guided adapter cannot
-claim autonomous-engine conformance.
+It may rely on a person to choose eligible operations and recover procedure.
+Procedural recovery does not require another role decision when all applicable
+trust facts already exist.
 
 ## Autonomous-engine profile
 
-An autonomous engine also MUST demonstrate through its real binary and
+An autonomous engine additionally MUST demonstrate through its real binary and
 boundaries:
 
-- the approval capability is unavailable to the autonomous caller and role
-  runners;
-- Implementer, Captain, and Verifier instructions, credentials, workspaces, and
-  process lifetimes are appropriately isolated;
-- Verifier control input is engine-owned and candidate-local configuration is
-  review data only;
-- evidence admissions are opaque, bound to one exact status and execution
-  profile, and cannot be forged from a board row or copied record;
-- at most one active writer owns a track and stale writers lose compare-and-set;
+- protected approval is unavailable to delivery roles;
+- instructions, credentials, workspaces, and process lifetimes are isolated;
+- at most one active writer owns a track;
 - dispatch and effect identities are durable and write-once;
-- process count, memory, CPU, output, duration, and writable storage are
-  bounded;
-- persistence failure never projects protocol success;
-- timeout, cancellation, crash, and malformed output never manufacture a
-  verdict;
+- resources are bounded;
+- timeout, cancellation, crash, malformed output, and retry exhaustion never
+  manufacture a Baton outcome;
 - interrupted external effects reconcile before retry and complete
   idempotently;
-- bounded retry exhaustion stops truthfully;
-- track and release Merge use expected-target compare-and-set;
-- track composition happens once, is idempotent for the same expected head and
-  candidate, and transfers all track work together;
-- materialisation creates the release and owner marker in one ref transaction,
-  and the release permanently retains that marker ancestry;
-- assembly preparation changes only the proof and status records over the exact
-  pre-preparation release head, which is both assembly proof base and candidate;
-- and replay produces the same Baton projection from the same durable facts.
+- plan revision and consumed-input changes produce deterministic selective
+  invalidation;
+- projection replay yields the same state from the same plan, receipts, and
+  Git; and
+- track composition and release Merge recheck exact candidates and expected
+  targets.
 
-Provider names, model names, prompt bytes, token counts, and internal engine
-event names are not conformance requirements.
+Provider names, prompt bytes, token counts, and internal event names are not
+conformance requirements.
 
-## Required transition cases
+## Required cases
 
-Positive cases cover initial design, Captain `PROCEED`, `REVISE`, and
-`ESCALATE`, candidate proof, Verifier `PASS`, `FAIL`, and `BLOCKED`, exact track
-composition, assembly `PASS`, exact release Merge, materialisation, and
-pristine-baseline `REBOUND`. Assembly `FAIL` durably returns responsibility to
-the Planner; recovery creates a new plan, work, and release identity.
+Positive cases cover plan approval and revision, stable slices, design
+`PROCEED` and `REVISE`, implementation retry after `FAIL`, fresh work and
+assembly `PASS`, exact composition, and final Merge.
 
-Negative cases mutate one bound fact at a time and cover:
+Recovery cases cover missing derived status, stale board output, duplicate
+dispatch, runner interruption, skipped procedural cursor, and reconcilable Git
+effects without a new model role or human approval.
 
-- Captain or Verifier self-review;
-- unresolved, substituted, self-declared, or false approval and clean/read-only
-  dispatch evidence;
-- changed plan, design, proof, candidate, product tree, or target;
-- foreign-track writes, missing owner state, and erased dual-ref markers;
-- product before Captain `PROCEED`, cross-work record commits, out-of-order work,
-  and unmet dependencies;
-- durable `active` or `no_verdict`;
-- product changes hidden behind record commits;
-- a behaviorally consumed record root;
-- composition conflict, forged merge tree, or unexpected parent topology;
-- stale compare-and-set; and
-- rewriting a terminal identity or outcome.
+Negative cases cover missing or substituted approval; self-review; changed
+plan, design, candidate, proof, product tree, or target; ambiguous authority;
+runtime events presented as role outcomes; unsafe dependency reuse; composition
+conflict; and forged Merge results.
 
 ## Board and engine handoff
 
-The reference oracle, terminal view, and WebUI must consume the same
-owner-aware projection, including optional assembly status, from bounded reads
-of captured refs. That projection proves structural validity and authority
-selection only. It does not resolve external evidence or authorize a transition
-or Merge. The WebUI may invoke the shared read-only Git oracle; it has no route
-that starts an agent, mutates delivery, or executes an operator-supplied
-command.
+The reference oracle, terminal view, and WebUI consume the same bounded
+projection. They may report runtime diagnostics but cannot create approval,
+`PROCEED`, `PASS`, or `MERGED`.
 
 Sworn is the reference autonomous implementation, not a privileged
-interpretation. Final Baton 1.0 waits until Sworn passes every published
-autonomous case through real Git, persistence, subprocess, recovery, and
-integration boundaries.
+interpretation of Baton.

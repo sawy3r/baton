@@ -1,0 +1,7 @@
+baton(S2): captain proceed attempt 1
+
+Baton-Detail-Begin
+Decision: proceed. The runbook uses only controls already present in the service.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"2222222222222222222222222222222222222222","contract":"sha256:8811b98b0635ec64fcd8ed8b35ade5763c46e7392a42a493e1b57a50a9f3d6ac","detail":"sha256:f5d509ba0747d61b9de4655cec236019d7dc3054d5aabfda98c7c1f6e317233f","plan":"b614893f77b74f188230f37cdd5698b122abca3e","release":"checkout-recovery","result":"proceed","role":"captain","slice":"S2","summary":"The S2 design is safe to implement.","version":1}

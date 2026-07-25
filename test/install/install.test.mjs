@@ -11,9 +11,14 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import { runInstaller } from '../../scripts/install.mjs';
-import { PORTABLE_RUNTIME_FILES } from '../../scripts/lib/catalog.mjs';
+import {
+  OPERATIONS,
+  PORTABLE_RUNTIME_FILES,
+  SUPPORT_FILES,
+} from '../../scripts/lib/catalog.mjs';
 import { sha256 } from '../../scripts/lib/digest.mjs';
 import { baselineFixture } from '../board/helpers.mjs';
 import {
@@ -162,7 +167,7 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
       });
       assert.equal(installed.actions.length, 7);
       const manifest = await assertInstalled(target, host, scope);
-      assert.equal(manifest.owned_files.length, 31);
+      assert.equal(manifest.owned_files.length, SUPPORT_FILES.length + OPERATIONS.length);
       const manifestBytes = await readFile(join(target.supportRoot, 'install-manifest.json'));
       const transactions = await transactionCount(target.stateRoot);
 
@@ -193,7 +198,7 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
   }
 });
 
-test('installed portable board and driver runtime is host-identical and executable', async (t) => {
+test('installed board and receipt/state/action runtime is host-identical and executable', async (t) => {
   const fixture = await temporaryFixture(t, 'baton-installed-runtime-');
   const release = baselineFixture();
   t.after(() => release.cleanup());
@@ -253,52 +258,45 @@ test('installed portable board and driver runtime is host-identical and executab
   assert.match(terminal, /Release v1\.0\.0/);
   assert.match(terminal, /Next operations/);
 
-  const fakeDriver = join(runtime, 'reference/driver/fake-driver.mjs');
-  const driverInfo = JSON.parse(execFileSync(
-    process.execPath,
-    [fakeDriver, 'info'],
-    { encoding: 'utf8', env },
-  ));
-  assert.deepEqual(driverInfo, {
-    contract_version: 'baton.driver/v1',
-    driver_id: 'baton.fake',
-    driver_version: '1.0.0',
-  });
-  const instructions = await readFile(join(runtime, 'operations/baton-verify.md'), 'utf8');
-  const request = {
-    schema_version: 'baton.driver-request/v1',
-    invocation_id: 'installed-runtime-smoke',
-    role: 'verifier',
-    operation: {
-      id: 'baton-verify',
-      version: 'baton.operation/v1',
-      digest: sha256(Buffer.from(instructions)),
-      instructions,
-    },
-    model: 'fake-model-v1',
-    workspace: {
-      path: release.repo,
-      access: 'read_only',
-    },
-    inputs: [],
-    fresh_context: true,
-    limits: {
-      timeout_ms: 60000,
-      output_bytes: 65536,
-    },
-  };
-  const driverResult = JSON.parse(execFileSync(
-    process.execPath,
-    [fakeDriver, 'run'],
+  const installedGit = await import(
+    pathToFileURL(join(runtime, 'reference/records/git.mjs')).href,
+  );
+  const installedReceipts = await import(
+    pathToFileURL(join(runtime, 'reference/records/receipts.mjs')).href,
+  );
+  const installedState = await import(
+    pathToFileURL(join(runtime, 'reference/records/state.mjs')).href,
+  );
+  const installedActions = await import(
+    pathToFileURL(join(runtime, 'reference/records/actions.mjs')).href,
+  );
+  assert.equal(
+    installedReceipts.parsePlanBytes(release.parsed.bytes).metadata.release,
+    release.metadata.release,
+  );
+  const recordPathAdmission = installedGit.resolveRecordPathAdmission(release.repo);
+  const productExclusionAdmission = installedGit.resolveProductExclusionAdmission(
+    release.repo,
     {
-      encoding: 'utf8',
-      env: { ...env, BATON_FAKE_PROFILE: 'completed' },
-      input: `${JSON.stringify(request)}\n`,
+      recordPathAdmission,
+      resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
     },
-  ));
-  assert.equal(driverResult.schema_version, 'baton.driver-result/v1');
-  assert.equal(driverResult.invocation_id, request.invocation_id);
-  assert.equal(driverResult.transport_status, 'completed');
+  );
+  const state = installedState.readBatonState(
+    release.repo,
+    release.metadata.release,
+    { productExclusionAdmission },
+  );
+  assert.equal(state.release, release.metadata.release);
+  assert.equal(state.plan.metadata.schema_version, 'baton.plan/v2');
+  const actions = installedActions.createBatonActions({
+    repo: release.repo,
+    resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
+  });
+  assert.deepEqual(
+    Object.keys(actions),
+    ['recordPlanRevision', 'appendReceipt', 'prepareAssembly', 'mergePassedCandidate'],
+  );
 
   const web = spawn(
     process.execPath,

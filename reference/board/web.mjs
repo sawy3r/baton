@@ -14,7 +14,7 @@ const HTML = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Baton release board</title>
+  <title>Baton relay board</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
@@ -24,7 +24,7 @@ const HTML = `<!doctype html>
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
-        <p class="eyebrow">Durable delivery truth</p>
+        <p class="eyebrow">The work, handed forward</p>
         <p class="wordmark">Baton</p>
       </div>
     </div>
@@ -46,9 +46,14 @@ const HTML = `<!doctype html>
 
 const APP_JS = `'use strict';
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const GRAPH_VERSION = 'baton.graph/v1';
 const boardRoot = document.getElementById('board');
 const freshness = document.getElementById('freshness');
 let lastBoard = null;
+let activeGraphs = [];
+let graphSequence = 0;
+let graphDrawQueued = false;
 
 function text(value, fallback) {
   if (value === null || value === undefined || value === '') return fallback || '—';
@@ -59,6 +64,12 @@ function element(tag, className, value) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (value !== undefined) node.textContent = text(value);
+  return node;
+}
+
+function svgElement(tag, className) {
+  const node = document.createElementNS(SVG_NS, tag);
+  if (className) node.setAttribute('class', className);
   return node;
 }
 
@@ -104,109 +115,237 @@ function blockerBlock(blocker) {
 
 function sourceLine(source) {
   const row = element('p', 'source mono');
-  row.append(element('span', 'source-mode', text(source.mode)));
-  row.append(document.createTextNode('  ' + text(source.ref) + ' @ ' + text(source.head)));
+  row.append(element('span', 'source-mode', text(source && source.mode)));
+  row.append(document.createTextNode(
+    '  ' + text(source && source.ref) + ' @ ' + text(source && source.head)
+  ));
   return row;
 }
 
-function workCard(work) {
-  const card = element('article', 'work');
-  const heading = element('div', 'work-heading');
-  heading.append(element('h4', 'work-id mono', work.id));
-  heading.append(statePill(work.status));
-  card.append(heading);
-
-  const lifecycle = element('p', 'lifecycle');
-  lifecycle.append(element('span', 'lifecycle-stage', text(work.stage)));
-  lifecycle.append(document.createTextNode(' → '));
-  lifecycle.append(element('span', 'lifecycle-role', text(work.next_role)));
-  lifecycle.append(element('span', 'outcome', 'outcome ' + text(work.outcome)));
-  card.append(lifecycle);
-  card.append(sourceLine(work.source));
-
-  if (Array.isArray(work.depends_on) && work.depends_on.length > 0) {
-    card.append(element('p', 'dependency mono', 'after ' + work.depends_on.join(', ')));
-  }
-  if (work.blocker) card.append(blockerBlock(work.blocker));
-  if (work.next_operation) {
-    const next = element('div', 'next-inline');
-    next.append(element('span', 'next-label', 'Next'));
-    next.append(element('span', 'mono', work.next_operation.operation));
-    card.append(next);
-  }
-  return card;
+function relationLine(label, values, className) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const row = element('p', 'relation relation--' + className);
+  row.append(element('span', 'relation-label', label));
+  row.append(document.createTextNode(' '));
+  values.forEach(function (value, index) {
+    if (index > 0) row.append(document.createTextNode(', '));
+    row.append(element('strong', 'relation-id mono', value));
+  });
+  return row;
 }
 
-function trackLane(track) {
-  const lane = element('section', 'track');
-  const rail = element('div', 'rail');
-  rail.setAttribute('aria-hidden', 'true');
-  lane.append(rail);
+function graphKey(work) {
+  return 'slice:' + text(work);
+}
 
-  const content = element('div', 'track-content');
-  const heading = element('header', 'track-heading');
+function addEdge(graph, from, to, kind) {
+  if (!from || !to || from === to) return;
+  const identity = from + '|' + to + '|' + kind;
+  if (graph.edgeKeys.has(identity)) return;
+  graph.edgeKeys.add(identity);
+  graph.edges.push({ from: from, to: to, kind: kind });
+}
+
+function registerNode(graph, key, node) {
+  graph.nodes.set(key, node);
+  node.setAttribute('data-relay-node', 'true');
+}
+
+function projectedSliceInputs(graph, target, kind) {
+  const found = [];
+  const seen = new Set();
+  graph.projectedEdges.forEach(function (edge) {
+    if (edge.to !== target || !edge.kinds.includes(kind)) return;
+    const source = graph.projectedNodes.get(edge.from);
+    if (!source || source.kind !== 'slice' || seen.has(source.work)) return;
+    seen.add(source.work);
+    found.push(source.work);
+  });
+  return found;
+}
+
+function projectedTrackFeeds(graph, trackID) {
+  const found = [];
+  const seen = new Set();
+  graph.projectedEdges.forEach(function (edge) {
+    if (!edge.kinds.includes('track_dependency')) return;
+    const source = graph.projectedNodes.get(edge.from);
+    const target = graph.projectedNodes.get(edge.to);
+    if (
+      !source
+      || !target
+      || source.kind !== 'slice'
+      || target.kind !== 'slice'
+      || target.track !== trackID
+      || seen.has(source.track)
+    ) return;
+    seen.add(source.track);
+    found.push(source.track);
+  });
+  return found;
+}
+
+function workNode(work, index, graph) {
+  const nodeID = graphKey(work.id);
+  const projected = graph.projectedNodes.get(nodeID);
+  const dependencies = projectedSliceInputs(graph, nodeID, 'depends_on');
+  const consumes = projectedSliceInputs(graph, nodeID, 'consumes');
+  const item = element('li', 'work-node');
+  const details = element('details', 'work-leg');
+  const summary = element('summary', 'work-summary');
+  const identity = element('span', 'work-identity');
+  identity.append(element('span', 'leg-number', 'Leg ' + String(index + 1).padStart(2, '0')));
+  identity.append(element('span', 'work-id mono', work.id));
+  summary.append(identity);
+  summary.append(statePill(projected.state));
+  if (projected.next_operation) {
+    const summaryRoute = element('span', 'leg-route');
+    summaryRoute.append(element('span', 'next-label', 'Next'));
+    summaryRoute.append(document.createTextNode(' '));
+    summaryRoute.append(element(
+      'span',
+      'lifecycle-role mono',
+      projected.next_operation.operation
+    ));
+    summary.append(summaryRoute);
+  }
+  const feeds = [];
+  if (dependencies.length > 0) {
+    feeds.push('after ' + dependencies.join(', '));
+  }
+  if (consumes.length > 0) {
+    feeds.push('uses ' + consumes.join(', '));
+  }
+  if (feeds.length > 0) summary.append(element('span', 'work-feeds mono', feeds.join(' · ')));
+  details.append(summary);
+
+  const facts = element('dl', 'leg-facts');
+  facts.append(labelledValue('Attempt', work.attempt));
+  facts.append(labelledValue('Plan revision', work.plan_revision));
+  facts.append(labelledValue('Recorded stage', work.stage));
+  facts.append(labelledValue('Recorded outcome', work.outcome));
+  details.append(facts);
+  details.append(sourceLine(work.source));
+
+  const dependencyLine = relationLine('Depends on', dependencies, 'depends');
+  const consumesLine = relationLine('Consumes', consumes, 'consumes');
+  if (dependencyLine) details.append(dependencyLine);
+  if (consumesLine) details.append(consumesLine);
+  if (work.blocker) details.append(blockerBlock(work.blocker));
+  if (projected.next_operation) {
+    const next = element('div', 'next-inline');
+    next.append(element('span', 'next-label', 'Next handoff'));
+    next.append(element('span', 'mono', projected.next_operation.operation));
+    details.append(next);
+  }
+  if (typeof details.addEventListener === 'function') {
+    details.addEventListener('toggle', scheduleGraphDraw);
+  }
+  item.append(details);
+  registerNode(graph, graphKey(work.id), item);
+  return item;
+}
+
+function trackLane(track, graph) {
+  const lane = element('section', 'track-lane');
+  lane.setAttribute('aria-labelledby', 'lane-label-' + graph.index + '-' + graph.laneSequence);
+  const stem = element('header', 'track-stem');
   const title = element('div');
-  title.append(element('p', 'eyebrow', 'Track'));
-  title.append(element('h3', 'track-id mono', track.id));
-  heading.append(title);
-  heading.append(statePill(track.composition));
-  content.append(heading);
+  title.append(element('p', 'eyebrow', 'Lane'));
+  const laneName = element('h4', 'track-id mono', track.id);
+  laneName.setAttribute('id', 'lane-label-' + graph.index + '-' + graph.laneSequence);
+  title.append(laneName);
+  stem.append(title);
+  stem.append(element(
+    'p',
+    'track-authority',
+    String((track.work || []).length) + ' legs · ' + text(track.materialisation) + ' authority'
+  ));
+  const feeds = projectedTrackFeeds(graph, track.id);
+  if (feeds.length > 0) {
+    stem.append(element('p', 'track-dependency mono', 'fed by ' + feeds.join(', ')));
+  }
+  lane.append(stem);
 
+  const workList = element('ol', 'work-list');
+  workList.setAttribute('aria-label', 'Ordered slices for lane ' + text(track.id));
+  (track.work || []).forEach(function (work, index) {
+    workList.append(workNode(work, index, graph));
+  });
+  lane.append(workList);
+
+  const exact = element('details', 'track-record');
+  exact.append(element('summary', 'record-summary', 'Lane record'));
   const facts = element('dl', 'track-facts');
-  facts.append(labelledValue('Authority', track.materialisation));
   facts.append(labelledValue('Ref', track.ref, true));
   facts.append(labelledValue('Head', track.head, true));
   if (track.frozen_head) facts.append(labelledValue('Frozen', track.frozen_head, true));
-  content.append(facts);
-
-  if (Array.isArray(track.depends_on) && track.depends_on.length > 0) {
-    content.append(element('p', 'dependency mono', 'depends on ' + track.depends_on.join(', ')));
-  }
+  exact.append(facts);
   if (Array.isArray(track.blockers) && track.blockers.length > 0) {
-    content.append(element('p', 'track-waiting mono', 'waiting for ' + track.blockers.join(', ')));
+    exact.append(element('p', 'track-waiting mono', 'Recorded blockers ' + track.blockers.join(', ')));
   }
-
-  const workList = element('div', 'work-list');
-  (track.work || []).forEach(function (work) { workList.append(workCard(work)); });
-  content.append(workList);
-  if (track.next_operation && track.next_operation.scope !== 'work') {
-    const next = element('div', 'track-next');
-    next.append(element('p', 'eyebrow', 'Next handoff'));
-    next.append(operationCard(track.next_operation));
-    content.append(next);
-  }
-  lane.append(content);
+  lane.append(exact);
+  graph.laneSequence += 1;
   return lane;
 }
 
-function assemblyCard(assembly) {
-  const section = element('section', 'assembly');
-  const heading = element('header', 'assembly-heading');
-  const title = element('div');
-  title.append(element('p', 'eyebrow', 'Final gate'));
-  title.append(element('h3', 'assembly-title', 'Assembly'));
-  heading.append(title);
-  heading.append(statePill(assembly ? assembly.status : 'invalid'));
-  section.append(heading);
+function assemblyNode(assembly, graph) {
+  const projectedAssembly = graph.projectedNodes.get('assembly');
+  const projectedMerge = graph.projectedNodes.get('merge');
+  const stack = element('div', 'cadence-stack');
+  const exchange = element('details', 'cadence-node final-exchange');
+  const summary = element('summary', 'cadence-summary');
+  const label = element('span', 'cadence-label');
+  label.append(element('span', 'eyebrow', 'Final exchange'));
+  label.append(element('strong', 'cadence-title', 'Assembly'));
+  summary.append(label);
+  summary.append(statePill(projectedAssembly.state));
+  exchange.append(summary);
   if (!assembly) {
-    section.append(element('p', 'empty-copy', 'Assembly state is unavailable.'));
-    return section;
+    exchange.append(element('p', 'empty-copy', 'Assembly state is unavailable.'));
+  } else {
+    const route = element('p', 'lifecycle');
+    route.append(element('span', 'lifecycle-stage', text(assembly.stage)));
+    if (projectedAssembly.next_operation) {
+      route.append(document.createTextNode(' → '));
+      route.append(element(
+        'span',
+        'lifecycle-role mono',
+        projectedAssembly.next_operation.operation
+      ));
+    }
+    exchange.append(route);
+    exchange.append(element('p', 'outcome', 'Outcome ' + text(assembly.outcome)));
+    if (assembly.source) exchange.append(sourceLine(assembly.source));
+    if (assembly.blocker) exchange.append(blockerBlock(assembly.blocker));
+    if (projectedAssembly.next_operation) {
+      const next = element('div', 'next-inline');
+      next.append(element('span', 'next-label', 'Next handoff'));
+      next.append(element('span', 'mono', projectedAssembly.next_operation.operation));
+      exchange.append(next);
+    }
   }
-  const lifecycle = element('p', 'lifecycle');
-  lifecycle.append(element('span', 'lifecycle-stage', text(assembly.stage)));
-  lifecycle.append(document.createTextNode(' → '));
-  lifecycle.append(element('span', 'lifecycle-role', text(assembly.next_role)));
-  lifecycle.append(element('span', 'outcome', 'outcome ' + text(assembly.outcome)));
-  section.append(lifecycle);
-  if (assembly.source) section.append(sourceLine(assembly.source));
-  if (assembly.blocker) section.append(blockerBlock(assembly.blocker));
-  if (assembly.next_operation) {
-    const next = element('div', 'track-next');
-    next.append(element('p', 'eyebrow', 'Next handoff'));
-    next.append(operationCard(assembly.next_operation));
-    section.append(next);
+  if (typeof exchange.addEventListener === 'function') {
+    exchange.addEventListener('toggle', scheduleGraphDraw);
   }
-  return section;
+  stack.append(exchange);
+  registerNode(graph, 'assembly', exchange);
+
+  const finish = element('article', 'cadence-node finish-node');
+  finish.append(element('span', 'finish-stripe'));
+  finish.append(element('p', 'eyebrow', 'Finish'));
+  finish.append(element('h4', 'cadence-title', 'Merge'));
+  finish.append(statePill(projectedMerge.state));
+  finish.append(element(
+    'p',
+    'finish-copy',
+    projectedMerge.next_operation
+      ? text(projectedMerge.next_operation.operation) + ' is the recorded handoff.'
+      : 'Awaits a recorded merge handoff.'
+  ));
+  stack.append(finish);
+  registerNode(graph, 'merge', finish);
+  return stack;
 }
 
 function diagnosticCard(item) {
@@ -223,6 +362,158 @@ function diagnosticCard(item) {
   return card;
 }
 
+function legendItem(kind, label) {
+  const item = element('span', 'legend-item legend-item--' + kind);
+  item.append(element('span', 'legend-line'));
+  item.append(document.createTextNode(label));
+  return item;
+}
+
+function projectGraph(release) {
+  const projection = release.graph;
+  if (
+    !projection
+    || projection.schema_version !== GRAPH_VERSION
+    || !Array.isArray(projection.nodes)
+    || !Array.isArray(projection.edges)
+  ) return null;
+  const projectedNodes = new Map();
+  for (const node of projection.nodes) {
+    if (!node || typeof node.id !== 'string' || projectedNodes.has(node.id)) return null;
+    projectedNodes.set(node.id, node);
+  }
+  if (
+    projectedNodes.get('plan')?.kind !== 'plan'
+    || projectedNodes.get('assembly')?.kind !== 'assembly'
+    || projectedNodes.get('merge')?.kind !== 'merge'
+  ) return null;
+  const expectedSlices = new Set();
+  for (const track of release.tracks || []) {
+    for (const work of track.work || []) {
+      const id = graphKey(work.id);
+      const node = projectedNodes.get(id);
+      if (
+        !node
+        || node.kind !== 'slice'
+        || node.track !== track.id
+        || node.work !== work.id
+      ) return null;
+      expectedSlices.add(id);
+    }
+  }
+  for (const node of projection.nodes) {
+    if (node.kind === 'slice' && !expectedSlices.has(node.id)) return null;
+  }
+  for (const edge of projection.edges) {
+    if (
+      !edge
+      || !projectedNodes.has(edge.from)
+      || !projectedNodes.has(edge.to)
+      || !Array.isArray(edge.kinds)
+      || edge.kinds.some(function (kind) { return typeof kind !== 'string'; })
+    ) return null;
+  }
+  return { nodes: projectedNodes, edges: projection.edges };
+}
+
+function createGraph(release) {
+  const index = graphSequence++;
+  const projected = projectGraph(release);
+  const graph = {
+    index: index,
+    markerId: 'relay-arrow-' + index,
+    nodes: new Map(),
+    projectedNodes: projected ? projected.nodes : new Map(),
+    projectedEdges: projected ? projected.edges : [],
+    edges: [],
+    edgeKeys: new Set(),
+    canvas: null,
+    svg: null,
+    laneSequence: 0,
+    release: release,
+    valid: projected !== null,
+  };
+  if (!projected) return graph;
+  projected.edges.forEach(function (edge) {
+    const kinds = edge.kinds;
+    if (kinds.includes('start')) addEdge(graph, edge.from, edge.to, 'branch');
+    if (kinds.includes('serial')) addEdge(graph, edge.from, edge.to, 'handoff');
+    if (kinds.includes('track_dependency') || kinds.includes('depends_on')) {
+      addEdge(graph, edge.from, edge.to, 'depends');
+    }
+    if (kinds.includes('consumes')) addEdge(graph, edge.from, edge.to, 'consumes');
+    if (kinds.includes('assembly')) addEdge(graph, edge.from, edge.to, 'converge');
+    if (kinds.includes('verified_before_merge')) addEdge(graph, edge.from, edge.to, 'finish');
+  });
+  return graph;
+}
+
+function relayMap(release) {
+  const graph = createGraph(release);
+  const wrapper = element('section', 'relay-map');
+  const heading = element('header', 'relay-heading');
+  const title = element('div');
+  title.append(element('p', 'eyebrow', 'Committed route'));
+  title.append(element('h3', 'relay-title', 'Release relay'));
+  heading.append(title);
+  const legend = element('div', 'graph-legend');
+  legend.setAttribute('role', 'group');
+  legend.setAttribute('aria-label', 'Relationship legend');
+  legend.append(legendItem('handoff', 'Handoff'));
+  legend.append(legendItem('depends', 'Depends on'));
+  legend.append(legendItem('consumes', 'Consumes'));
+  heading.append(legend);
+  wrapper.append(heading);
+  wrapper.append(element(
+    'p',
+    'relay-caption',
+    'Each lane runs forward. Cross-lane lines are declared dependencies; dashed lines are consumed inputs.'
+  ));
+  if (!graph.valid) {
+    wrapper.append(element(
+      'p',
+      'graph-unavailable',
+      'The committed graph projection is unavailable. No route is shown.'
+    ));
+    return wrapper;
+  }
+
+  const viewport = element('div', 'graph-viewport');
+  viewport.setAttribute('tabindex', '0');
+  viewport.setAttribute('role', 'region');
+  viewport.setAttribute('aria-label', 'Scrollable release relay graph for ' + text(release.release));
+  const canvas = element('div', 'graph-canvas');
+  graph.canvas = canvas;
+  const links = svgElement('svg', 'graph-links');
+  links.setAttribute('aria-hidden', 'true');
+  links.setAttribute('focusable', 'false');
+  graph.svg = links;
+  canvas.append(links);
+
+  const start = element('div', 'start-block');
+  start.append(element('span', 'start-signal', 'Start'));
+  start.append(element('span', 'baton-mark'));
+  start.append(element('p', 'eyebrow', 'Plan'));
+  start.append(element('strong', 'start-title', 'r' + text(release.plan_revision, '—')));
+  start.append(statePill(graph.projectedNodes.get('plan').state));
+  canvas.append(start);
+  registerNode(graph, 'plan', start);
+
+  const tracks = element('div', 'track-field');
+  (release.tracks || []).forEach(function (track) {
+    tracks.append(trackLane(track, graph));
+  });
+  canvas.append(tracks);
+
+  const cadence = assemblyNode(release.assembly, graph);
+  canvas.append(cadence);
+
+  viewport.append(canvas);
+  wrapper.append(viewport);
+  activeGraphs.push(graph);
+  return wrapper;
+}
+
 function releaseSection(release) {
   const section = element('section', 'release');
   const header = element('header', 'release-heading');
@@ -230,41 +521,152 @@ function releaseSection(release) {
   title.append(element('p', 'eyebrow', 'Release'));
   title.append(element('h2', 'release-name', release.release));
   header.append(title);
-  header.append(statePill(release.status));
   section.append(header);
 
+  const record = element('details', 'release-record');
+  record.append(element(
+    'summary',
+    'record-summary',
+    'Exact ref record · plan r' + text(release.plan_revision)
+  ));
   const facts = element('dl', 'release-facts');
-  facts.append(labelledValue('Plan', release.plan_digest, true));
+  facts.append(labelledValue('Plan digest', release.plan_digest, true));
+  facts.append(labelledValue('Plan object', release.plan_object, true));
   facts.append(labelledValue('Release ref', release.release_ref, true));
   facts.append(labelledValue('Release head', release.release_head, true));
   facts.append(labelledValue('Target ref', release.target_ref, true));
   facts.append(labelledValue('Target head', release.target_head, true));
-  section.append(facts);
+  record.append(facts);
+  section.append(record);
 
   if (Array.isArray(release.diagnostics) && release.diagnostics.length > 0) {
     const diagnostics = element('div', 'diagnostics');
     release.diagnostics.forEach(function (item) { diagnostics.append(diagnosticCard(item)); });
     section.append(diagnostics);
   }
-
-  const tracks = element('div', 'tracks');
-  (release.tracks || []).forEach(function (track) { tracks.append(trackLane(track)); });
-  section.append(tracks);
-  section.append(assemblyCard(release.assembly));
+  section.append(relayMap(release));
   return section;
 }
 
+function nodeBox(node, canvasBox) {
+  const box = node.getBoundingClientRect();
+  return {
+    left: box.left - canvasBox.left,
+    right: box.right - canvasBox.left,
+    top: box.top - canvasBox.top,
+    bottom: box.bottom - canvasBox.top,
+    centerX: box.left - canvasBox.left + box.width / 2,
+    centerY: box.top - canvasBox.top + box.height / 2,
+  };
+}
+
+function graphPath(source, target, edge, index) {
+  const verticalRelation = (
+    edge.kind === 'depends'
+    || edge.kind === 'consumes'
+    || edge.kind === 'finish'
+  ) && Math.abs(target.centerY - source.centerY) > 44;
+  if (verticalRelation) {
+    const targetIsBelow = target.centerY > source.centerY;
+    const offset = edge.kind === 'consumes' ? 12 : edge.kind === 'depends' ? -12 : 0;
+    const startX = source.centerX + offset;
+    const startY = targetIsBelow ? source.bottom : source.top;
+    const endX = target.centerX + offset;
+    const endY = targetIsBelow ? target.top : target.bottom;
+    const pull = Math.max(24, Math.abs(endY - startY) * 0.48);
+    const startControl = targetIsBelow ? startY + pull : startY - pull;
+    const endControl = targetIsBelow ? endY - pull : endY + pull;
+    return 'M ' + startX + ' ' + startY
+      + ' C ' + startX + ' ' + startControl
+      + ', ' + endX + ' ' + endControl
+      + ', ' + endX + ' ' + endY;
+  }
+  const startX = source.right;
+  const startY = source.centerY;
+  const endX = target.left;
+  const endY = target.centerY;
+  const distance = endX - startX;
+  if (distance > 4) {
+    const pull = Math.max(16, distance * 0.42);
+    return 'M ' + startX + ' ' + startY
+      + ' C ' + (startX + pull) + ' ' + startY
+      + ', ' + (endX - pull) + ' ' + endY
+      + ', ' + endX + ' ' + endY;
+  }
+  const upper = Math.max(16, Math.min(source.top, target.top) - 28 - (index % 3) * 12);
+  const exit = startX + 30 + (index % 2) * 10;
+  const entry = endX - 30 - (index % 2) * 10;
+  return 'M ' + startX + ' ' + startY
+    + ' C ' + exit + ' ' + startY + ', ' + exit + ' ' + upper + ', ' + exit + ' ' + upper
+    + ' L ' + entry + ' ' + upper
+    + ' C ' + entry + ' ' + upper + ', ' + entry + ' ' + endY + ', ' + endX + ' ' + endY;
+}
+
+function drawGraph(graph) {
+  if (
+    !graph.canvas
+    || !graph.svg
+    || typeof graph.canvas.getBoundingClientRect !== 'function'
+  ) return;
+  const canvasBox = graph.canvas.getBoundingClientRect();
+  if (!canvasBox.width || !canvasBox.height) return;
+  graph.svg.setAttribute('viewBox', '0 0 ' + canvasBox.width + ' ' + canvasBox.height);
+  graph.svg.setAttribute('width', String(canvasBox.width));
+  graph.svg.setAttribute('height', String(canvasBox.height));
+
+  const defs = svgElement('defs');
+  const marker = svgElement('marker');
+  marker.setAttribute('id', graph.markerId);
+  marker.setAttribute('viewBox', '0 0 8 8');
+  marker.setAttribute('refX', '7');
+  marker.setAttribute('refY', '4');
+  marker.setAttribute('markerWidth', '7');
+  marker.setAttribute('markerHeight', '7');
+  marker.setAttribute('orient', 'auto-start-reverse');
+  const arrow = svgElement('path');
+  arrow.setAttribute('d', 'M 0 0 L 8 4 L 0 8 z');
+  arrow.setAttribute('class', 'graph-arrow');
+  marker.append(arrow);
+  defs.append(marker);
+  const paths = [defs];
+  graph.edges.forEach(function (edge, index) {
+    const sourceNode = graph.nodes.get(edge.from);
+    const targetNode = graph.nodes.get(edge.to);
+    if (!sourceNode || !targetNode) return;
+    const path = svgElement('path', 'graph-link graph-link--' + edge.kind);
+    path.setAttribute(
+      'd',
+      graphPath(nodeBox(sourceNode, canvasBox), nodeBox(targetNode, canvasBox), edge, index)
+    );
+    path.setAttribute('marker-end', 'url(#' + graph.markerId + ')');
+    paths.push(path);
+  });
+  graph.svg.replaceChildren.apply(graph.svg, paths);
+}
+
+function drawAllGraphs() {
+  graphDrawQueued = false;
+  activeGraphs.forEach(drawGraph);
+}
+
+function scheduleGraphDraw() {
+  if (graphDrawQueued || typeof window.requestAnimationFrame !== 'function') return;
+  graphDrawQueued = true;
+  window.requestAnimationFrame(drawAllGraphs);
+}
+
 function render(board) {
+  activeGraphs = [];
   const fragment = document.createDocumentFragment();
   const intro = element('section', 'intro');
   const copy = element('div');
-  copy.append(element('p', 'eyebrow', 'Committed state · exact refs'));
+  copy.append(element('p', 'eyebrow', 'Baton board · exact refs'));
   copy.append(element('h1', 'intro-title', board.repository || 'No active release'));
   copy.append(element(
     'p',
     'intro-copy',
     board.valid
-      ? 'Every lane below comes from immutable Baton records and captured Git heads.'
+      ? 'Baton is how the work is handed off. One approved plan starts the relay; each verified leg carries committed work forward.'
       : 'At least one release cannot be trusted. Its diagnostics are shown without partial progress claims.'
   ));
   intro.append(copy);
@@ -280,7 +682,7 @@ function render(board) {
 
   if (!Array.isArray(board.releases) || board.releases.length === 0) {
     const empty = element('section', 'empty');
-    empty.append(element('p', 'eyebrow', 'Nothing queued'));
+    empty.append(element('p', 'eyebrow', 'Nothing on the track'));
     empty.append(element('h2', 'section-title', 'No local release refs'));
     empty.append(element('p', 'empty-copy', 'Create an approved refs/heads/release-wt/* release to populate this board.'));
     fragment.append(empty);
@@ -291,7 +693,7 @@ function render(board) {
   if (Array.isArray(board.next_operations) && board.next_operations.length > 0) {
     const queue = element('section', 'queue');
     const heading = element('div', 'queue-heading');
-    heading.append(element('p', 'eyebrow', 'Independently actionable'));
+    heading.append(element('p', 'eyebrow', 'Ready now'));
     heading.append(element('h2', 'section-title', 'Next handoffs'));
     queue.append(heading);
     const operations = element('div', 'operation-grid');
@@ -300,6 +702,7 @@ function render(board) {
     fragment.append(queue);
   }
   boardRoot.replaceChildren(fragment);
+  scheduleGraphDraw();
 }
 
 function markFresh() {
@@ -325,6 +728,14 @@ async function refresh() {
     if (!board || board.schema_version !== 'baton.board/v1') {
       throw new Error('unexpected board contract');
     }
+    if (
+      !Array.isArray(board.releases)
+      || board.releases.some(function (release) {
+        return release.valid !== false && projectGraph(release) === null;
+      })
+    ) {
+      throw new Error('unexpected graph contract');
+    }
     lastBoard = board;
     render(board);
     markFresh();
@@ -333,46 +744,21 @@ async function refresh() {
   }
 }
 
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('resize', scheduleGraphDraw);
+}
 refresh();
 window.setInterval(refresh, 15000);
 `;
 
-const CSS = `:root {
-  color-scheme: light;
-  --ink: #17233b;
-  --ink-soft: #4f5b70;
-  --mist: #e9eff2;
-  --paper: #f7f9fa;
-  --white: #ffffff;
-  --rail: #9aabb5;
-  --brass: #b97918;
-  --brass-soft: #f4e7ce;
-  --teal: #176f64;
-  --teal-soft: #dceeea;
-  --red: #a43d47;
-  --red-soft: #f5e1e3;
-  --blue: #315d82;
-  --blue-soft: #e0eaf2;
-  --shadow: 0 20px 50px rgba(23, 35, 59, 0.09);
-  font-family: Inter, Aptos, "Segoe UI", system-ui, sans-serif;
-}
-
+const CSS = `/* The relay board: a timing sheet, not a dashboard. */
 * {
   box-sizing: border-box;
-}
-
-html {
-  background: var(--mist);
-  color: var(--ink);
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    linear-gradient(90deg, rgba(49, 93, 130, 0.045) 1px, transparent 1px) 0 0 / 40px 40px,
-    linear-gradient(rgba(49, 93, 130, 0.045) 1px, transparent 1px) 0 0 / 40px 40px,
-    var(--mist);
 }
 
 .skip-link {
@@ -381,8 +767,8 @@ body {
   left: 0.75rem;
   z-index: 10;
   padding: 0.65rem 0.9rem;
-  background: var(--ink);
-  color: var(--white);
+  background: #17201e;
+  color: #f8faf6;
   transform: translateY(-180%);
 }
 
@@ -390,216 +776,77 @@ body {
   transform: translateY(0);
 }
 
+.masthead,
+.brand,
+.release-heading,
+.queue-heading,
+.operation-lead,
+.diagnostic-heading {
+  display: flex;
+}
+
 .masthead {
   position: sticky;
   top: 0;
-  z-index: 5;
-  display: flex;
+  z-index: 10;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  min-height: 74px;
-  padding: 0.8rem clamp(1rem, 4vw, 4rem);
-  border-bottom: 1px solid rgba(23, 35, 59, 0.16);
-  background: rgba(247, 249, 250, 0.94);
-  backdrop-filter: blur(14px);
 }
 
 .brand {
-  display: flex;
   align-items: center;
-  gap: 0.85rem;
 }
 
-.brand-mark {
-  position: relative;
-  display: block;
-  width: 12px;
-  height: 42px;
-  border-radius: 999px;
-  background: var(--brass);
-  box-shadow: inset 0 -8px 0 var(--ink);
-}
-
-.brand-mark::after {
-  position: absolute;
-  top: 7px;
-  left: -5px;
-  width: 22px;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--ink);
-  content: "";
+.eyebrow,
+.wordmark,
+.release-name,
+.section-title,
+.relay-title,
+.track-id,
+.source,
+.relation,
+.outcome,
+.operation-target,
+.diagnostic-code,
+.diagnostic-scope,
+.diagnostic-message,
+.blocker-code,
+.blocker-summary,
+.empty-copy {
+  margin: 0;
 }
 
 .eyebrow {
-  margin: 0 0 0.25rem;
-  color: var(--ink-soft);
   font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.13em;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
-.wordmark {
-  margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.freshness {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--rail);
-  border-radius: 999px;
-  background: var(--white);
-  color: var(--ink-soft);
-  font-size: 0.74rem;
-  font-weight: 700;
-}
-
-.freshness--fresh {
-  border-color: var(--teal);
-  color: var(--teal);
-}
-
-.freshness--stale {
-  border-color: var(--red);
-  background: var(--red-soft);
-  color: var(--red);
-}
-
 .board {
-  width: min(1440px, 100%);
   margin: 0 auto;
-  padding: clamp(1.2rem, 4vw, 4rem);
   outline: none;
 }
 
-.intro,
 .release-heading,
-.track-heading,
-.assembly-heading,
 .queue-heading {
-  display: flex;
-  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.intro {
-  margin-bottom: clamp(1.5rem, 4vw, 3rem);
-  padding: clamp(1.4rem, 4vw, 3.2rem);
-  border-left: 8px solid var(--brass);
-  background: var(--ink);
-  color: var(--white);
-  box-shadow: var(--shadow);
-}
-
-.intro .eyebrow {
-  color: #b9c8d3;
-}
-
-.intro-title {
-  margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(2rem, 6vw, 5rem);
-  line-height: 0.98;
-  letter-spacing: -0.055em;
-  overflow-wrap: anywhere;
-}
-
-.intro-copy {
-  max-width: 62ch;
-  margin: 1rem 0 0;
-  color: #d9e1e6;
-  line-height: 1.6;
-}
-
-.release {
-  margin: 0 0 2rem;
-  padding: clamp(1.2rem, 3vw, 2.25rem);
-  border: 1px solid rgba(23, 35, 59, 0.17);
-  background: var(--paper);
-  box-shadow: var(--shadow);
-}
-
-.release-name,
-.section-title,
-.assembly-title {
-  margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(1.55rem, 3vw, 2.4rem);
-  letter-spacing: -0.035em;
-}
-
-.state {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  min-height: 28px;
-  padding: 0.34rem 0.6rem;
-  border: 1px solid var(--blue);
-  border-radius: 999px;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 0.69rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.state--complete,
-.state--composed,
-.state--valid {
-  border-color: var(--teal);
-  background: var(--teal-soft);
-  color: var(--teal);
-}
-
-.state--ready,
-.state--merge_ready,
-.state--assembly_ready {
-  border-color: var(--brass);
-  background: var(--brass-soft);
-  color: #7b4a00;
-}
-
-.state--invalid,
-.state--blocked {
-  border-color: var(--red);
-  background: var(--red-soft);
-  color: var(--red);
-}
-
 .release-facts,
-.track-facts {
+.track-facts,
+.leg-facts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  margin: 1.5rem 0 0;
-  background: rgba(23, 35, 59, 0.13);
+  margin: 0;
 }
 
 .fact {
   min-width: 0;
-  padding: 0.8rem;
-  background: var(--white);
-}
-
-.release-facts .fact:last-child:nth-child(odd),
-.track-facts .fact:last-child:nth-child(odd) {
-  grid-column: 1 / -1;
 }
 
 .fact-label {
-  margin-bottom: 0.35rem;
-  color: var(--ink-soft);
-  font-size: 0.7rem;
+  margin-bottom: 0.3rem;
   font-weight: 750;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -612,234 +859,56 @@ body {
 
 .mono {
   font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 0.78rem;
-}
-
-.tracks {
-  margin-top: 2rem;
-}
-
-.track {
-  position: relative;
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  gap: 0.8rem;
-}
-
-.track + .track {
-  margin-top: 1rem;
-}
-
-.rail {
-  position: relative;
-  min-height: 100%;
-}
-
-.rail::before {
-  position: absolute;
-  top: 0;
-  bottom: -1rem;
-  left: 14px;
-  width: 3px;
-  background: var(--rail);
-  content: "";
-}
-
-.rail::after {
-  position: absolute;
-  top: 1.1rem;
-  left: 8px;
-  width: 11px;
-  height: 28px;
-  border: 3px solid var(--paper);
-  border-radius: 999px;
-  background: var(--brass);
-  box-shadow: 0 0 0 2px var(--rail);
-  content: "";
-}
-
-.track-content {
-  min-width: 0;
-  padding: 1.25rem;
-  border: 1px solid rgba(23, 35, 59, 0.13);
-  background: var(--white);
-}
-
-.track-id {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.track-facts {
-  margin-top: 1rem;
-}
-
-.dependency,
-.track-waiting {
-  margin: 0.8rem 0 0;
-  color: var(--ink-soft);
-}
-
-.track-waiting {
-  color: var(--red);
-  font-weight: 700;
-}
-
-.work-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 0.8rem;
-  margin-top: 1rem;
-}
-
-.work {
-  min-width: 0;
-  padding: 1rem;
-  border-top: 3px solid var(--blue);
-  background: var(--paper);
-}
-
-.work-heading,
-.operation-lead,
-.diagnostic-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-}
-
-.work-id {
-  margin: 0;
-  font-size: 0.9rem;
 }
 
 .lifecycle {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
-  margin: 0.9rem 0 0;
-  font-size: 0.84rem;
-}
-
-.lifecycle-stage {
-  font-weight: 800;
-}
-
-.lifecycle-role {
-  color: var(--blue);
-  font-weight: 800;
+  gap: 0.35rem;
 }
 
 .outcome {
-  margin-left: auto;
-  color: var(--ink-soft);
-  font-size: 0.72rem;
+  color: #59645f;
 }
 
-.source {
-  margin: 0.75rem 0 0;
-  color: var(--ink-soft);
-  line-height: 1.5;
+.source,
+.relation,
+.operation-target,
+.diagnostic-scope {
   overflow-wrap: anywhere;
-}
-
-.source-mode {
-  color: var(--ink);
-  font-weight: 800;
-}
-
-.next-inline,
-.track-next {
-  margin-top: 0.8rem;
-}
-
-.next-inline {
-  display: flex;
-  gap: 0.55rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid rgba(23, 35, 59, 0.12);
-}
-
-.next-label {
-  color: #7b4a00;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.assembly,
-.queue,
-.empty,
-.loading,
-.diagnostics {
-  margin-top: 1.5rem;
-  padding: 1.25rem;
-  border: 1px solid rgba(23, 35, 59, 0.14);
-  background: var(--white);
-}
-
-.assembly {
-  margin-left: 44px;
-  border-top: 5px solid var(--ink);
 }
 
 .operation-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.7rem;
   margin-top: 1rem;
 }
 
-.operation {
-  padding: 0.85rem;
-  border-left: 4px solid var(--brass);
-  background: var(--brass-soft);
-}
-
-.operation-name {
-  color: #6b4000;
-  font-weight: 850;
-}
-
-.operation-scope {
-  color: #6b4000;
-  font-size: 0.68rem;
-  font-weight: 800;
-  text-transform: uppercase;
+.operation-lead,
+.diagnostic-heading {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
 }
 
 .operation-target {
-  margin: 0.5rem 0 0;
-  overflow-wrap: anywhere;
+  margin-top: 0.5rem;
 }
 
 .blocker,
 .diagnostic {
   margin-top: 0.8rem;
-  padding: 0.85rem;
-  border-left: 4px solid var(--red);
-  background: var(--red-soft);
-}
-
-.blocker-code,
-.blocker-summary,
-.diagnostic-code,
-.diagnostic-scope,
-.diagnostic-message {
-  margin: 0;
-}
-
-.blocker-code,
-.diagnostic-code {
-  color: var(--red);
-  font-weight: 850;
 }
 
 .blocker-summary,
-.diagnostic-message {
+.diagnostic-message,
+.empty-copy {
   margin-top: 0.4rem;
-  line-height: 1.45;
+  line-height: 1.5;
+}
+
+.diagnostic-heading {
+  justify-content: flex-start;
 }
 
 .diagnostic-mark {
@@ -847,89 +916,1160 @@ body {
   width: 22px;
   height: 22px;
   place-items: center;
-  border-radius: 50%;
-  background: var(--red);
-  color: var(--white);
+  color: #f8faf6;
   font-weight: 900;
 }
 
-.diagnostic-heading {
-  justify-content: flex-start;
-}
-
 .diagnostic-scope {
-  margin-top: 0.55rem;
-  color: var(--ink-soft);
+  color: #59645f;
 }
 
 .global-diagnostics {
   margin-bottom: 1.5rem;
 }
 
-.empty-copy {
-  max-width: 62ch;
-  color: var(--ink-soft);
-  line-height: 1.55;
-}
-
 .footer {
   padding: 1rem clamp(1rem, 4vw, 4rem) 2rem;
-  color: var(--ink-soft);
+  color: #59645f;
   font-size: 0.75rem;
   text-align: center;
 }
 
+:root {
+  --ink: #17201e;
+  --ink-soft: #59645f;
+  --ground: #dfe5e1;
+  --sheet: #f8faf6;
+  --sheet-deep: #eef2ed;
+  --lane: #2f687a;
+  --lane-soft: #c8d9df;
+  --baton: #df5038;
+  --baton-dark: #8f3024;
+  --pass: #27705b;
+  --pass-soft: #d9ebe3;
+  --caution: #8a5610;
+  --caution-soft: #f2e6ce;
+  --fault: #a53d47;
+  --fault-soft: #f3dee0;
+  --hairline: rgba(23, 32, 30, 0.2);
+  --hardline: rgba(23, 32, 30, 0.58);
+  --timing-shadow: #bcc6c0;
+  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+}
+
+html {
+  background: var(--ground);
+  color: var(--ink);
+}
+
+body {
+  background: var(--ground);
+}
+
+.masthead {
+  min-height: 78px;
+  padding: 0.85rem clamp(1rem, 4vw, 4rem);
+  border-bottom: 4px solid var(--ink);
+  background: rgba(248, 250, 246, 0.96);
+}
+
+.brand {
+  gap: 1rem;
+}
+
+.brand-mark {
+  width: 46px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--baton);
+  box-shadow: inset -11px 0 0 var(--baton-dark);
+  transform: rotate(-11deg);
+}
+
+.brand-mark::after {
+  top: -3px;
+  left: 5px;
+  width: 2px;
+  height: 14px;
+  border-radius: 0;
+  background: var(--sheet);
+  opacity: 0.72;
+}
+
+.wordmark {
+  font-family: "Arial Narrow", "Aptos Display", Aptos, sans-serif;
+  font-size: 1.6rem;
+  font-weight: 850;
+  letter-spacing: -0.035em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  color: var(--ink-soft);
+  font-size: 0.64rem;
+  letter-spacing: 0.145em;
+}
+
+.freshness {
+  position: relative;
+  padding: 0.42rem 0 0.42rem 1.15rem;
+  border-bottom: 1px solid var(--hardline);
+  color: var(--ink-soft);
+}
+
+.freshness::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0.55rem;
+  height: 0.55rem;
+  background: var(--ink-soft);
+  content: "";
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.freshness--fresh {
+  border-color: var(--pass);
+  color: var(--pass);
+}
+
+.freshness--fresh::before {
+  background: var(--pass);
+}
+
+.freshness--stale {
+  border-color: var(--fault);
+  color: var(--fault);
+}
+
+.freshness--stale::before {
+  background: var(--fault);
+}
+
+.board {
+  width: min(1640px, 100%);
+  padding: clamp(1.25rem, 4vw, 4rem);
+}
+
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  margin-bottom: clamp(2rem, 6vw, 5rem);
+  padding: clamp(2rem, 5vw, 5.5rem) 0 clamp(1.5rem, 3vw, 2.5rem);
+  border-bottom: 1px solid var(--hardline);
+}
+
+.intro .eyebrow {
+  color: var(--baton-dark);
+}
+
+.intro-title {
+  max-width: 19ch;
+  overflow-wrap: anywhere;
+  font-family: "Arial Narrow", "Aptos Display", Aptos, sans-serif;
+  font-size: clamp(2.6rem, 7vw, 7rem);
+  font-stretch: condensed;
+  font-weight: 850;
+  line-height: 0.84;
+  letter-spacing: -0.07em;
+  text-transform: uppercase;
+}
+
+.intro-copy {
+  max-width: 66ch;
+  overflow-wrap: anywhere;
+  margin-top: 1.5rem;
+  color: var(--ink-soft);
+  font-size: clamp(0.95rem, 1.5vw, 1.12rem);
+  line-height: 1.65;
+}
+
+.state {
+  position: relative;
+  display: inline-flex;
+  padding: 0 0 0 0.9rem;
+  color: var(--lane);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+}
+
+.state::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: currentColor;
+  content: "";
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.state--complete,
+.state--composed,
+.state--passed,
+.state--retained,
+.state--approved,
+.state--not_required,
+.state--valid {
+  color: var(--pass);
+}
+
+.state--ready,
+.state--merge_ready,
+.state--assembly_ready,
+.state--revision_required,
+.state--stale {
+  color: var(--caution);
+}
+
+.state--invalid,
+.state--blocked {
+  color: var(--fault);
+}
+
+.release {
+  margin: 0 0 clamp(3rem, 7vw, 7rem);
+  padding: 1.25rem 0 0;
+  border-top: 7px solid var(--ink);
+}
+
+.release-heading {
+  align-items: flex-end;
+}
+
+.release-name,
+.section-title,
+.relay-title {
+  margin: 0;
+  font-family: "Arial Narrow", "Aptos Display", Aptos, sans-serif;
+  font-weight: 850;
+  letter-spacing: -0.045em;
+}
+
+.release-name {
+  font-size: clamp(2rem, 4vw, 3.7rem);
+}
+
+.record-summary {
+  width: fit-content;
+  padding: 0.42rem 0;
+  border-bottom: 1px solid var(--hardline);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  list-style-position: outside;
+}
+
+.record-summary:hover {
+  color: var(--ink);
+}
+
+.release-record {
+  margin-top: 0.75rem;
+}
+
+.release-facts,
+.track-facts,
+.leg-facts {
+  gap: 0;
+  border-top: 1px solid var(--hairline);
+  border-left: 1px solid var(--hairline);
+}
+
+.release-facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0.8rem;
+}
+
+.fact {
+  padding: 0.7rem;
+  border-right: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--sheet);
+}
+
+.fact-label {
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+}
+
+.fact-value {
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.relay-map {
+  position: relative;
+  margin-top: clamp(1.5rem, 3vw, 2.5rem);
+  padding: clamp(1rem, 2vw, 1.6rem);
+  border: 1px solid var(--hardline);
+  background: var(--sheet);
+  box-shadow: 10px 10px 0 var(--timing-shadow);
+}
+
+.relay-map::after {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-bottom: 1px solid var(--hardline);
+  border-left: 1px solid var(--hardline);
+  background: var(--ground);
+  content: "";
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+.relay-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-right: 2.4rem;
+}
+
+.relay-title {
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+}
+
+.relay-caption {
+  max-width: 72ch;
+  margin: 0.65rem 0 1.3rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.graph-unavailable {
+  margin: 1rem 0 0;
+  padding: 0.85rem;
+  border-left: 4px solid var(--fault);
+  background: var(--fault-soft);
+  color: var(--fault);
+}
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem 1rem;
+  color: var(--ink-soft);
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 1.9rem;
+  height: 0;
+  border-top: 2px solid var(--ink);
+}
+
+.legend-item--depends .legend-line {
+  border-color: var(--lane);
+}
+
+.legend-item--consumes .legend-line {
+  border-color: var(--baton);
+  border-top-style: dashed;
+}
+
+.graph-viewport {
+  position: relative;
+  max-width: 100%;
+  overflow: auto;
+  border-top: 1px solid var(--hardline);
+  border-bottom: 1px solid var(--hardline);
+  background: var(--sheet);
+  scrollbar-color: var(--hardline) var(--sheet-deep);
+}
+
+.graph-viewport:focus-visible {
+  outline-offset: 5px;
+}
+
+.graph-canvas {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 8.5rem max-content 11rem;
+  align-items: stretch;
+  min-width: max-content;
+  padding: 1.25rem 1.4rem;
+}
+
+.graph-links {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  animation: relay-lines-in 420ms ease-out both;
+}
+
+.graph-link {
+  fill: none;
+  stroke: var(--ink);
+  stroke-linecap: square;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-link--branch,
+.graph-link--converge {
+  stroke: var(--hardline);
+  stroke-width: 1.4;
+}
+
+.graph-link--handoff,
+.graph-link--finish {
+  stroke: var(--ink);
+  stroke-width: 2.4;
+}
+
+.graph-link--depends {
+  stroke: var(--lane);
+  stroke-width: 2;
+}
+
+.graph-link--consumes {
+  stroke: var(--baton);
+  stroke-dasharray: 7 5;
+  stroke-width: 2;
+}
+
+.graph-arrow {
+  fill: var(--ink);
+}
+
+@supports (fill: context-stroke) {
+  .graph-arrow {
+    fill: context-stroke;
+  }
+}
+
+@keyframes relay-lines-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.start-block,
+.track-field,
+.cadence-stack {
+  position: relative;
+  z-index: 2;
+}
+
+.start-block {
+  align-self: center;
+  display: grid;
+  justify-items: center;
+  min-width: 7.5rem;
+  padding: 1rem 0.7rem;
+  text-align: center;
+}
+
+.start-signal {
+  margin-bottom: 1rem;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--sheet);
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.baton-mark {
+  position: relative;
+  display: block;
+  width: 4rem;
+  height: 0.62rem;
+  margin-bottom: 0.9rem;
+  border-radius: 999px;
+  background: var(--baton);
+  box-shadow: inset -0.9rem 0 0 var(--baton-dark);
+  transform: rotate(-7deg);
+}
+
+.baton-mark::after {
+  position: absolute;
+  top: -0.18rem;
+  left: 0.65rem;
+  width: 2px;
+  height: 0.98rem;
+  background: var(--sheet);
+  content: "";
+  opacity: 0.75;
+}
+
+.start-title {
+  font-family: "Arial Narrow", "Aptos Display", Aptos, sans-serif;
+  font-size: 2.5rem;
+  line-height: 1;
+  letter-spacing: -0.07em;
+}
+
+.track-field {
+  width: max-content;
+  min-width: 46rem;
+}
+
+.track-lane {
+  position: relative;
+  display: grid;
+  grid-template-columns: 7.5rem minmax(38rem, max-content);
+  align-items: center;
+  min-height: 10.5rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.track-lane:last-child {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.track-lane::before {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  right: 0;
+  left: 7.5rem;
+  height: 2px;
+  background: var(--lane-soft);
+  content: "";
+}
+
+.track-stem {
+  position: relative;
+  z-index: 3;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 0.7rem 0.75rem;
+  border-right: 2px solid var(--lane);
+  background: var(--sheet);
+}
+
+.track-id {
+  margin: 0;
+  font-family: "Arial Narrow", "Aptos Display", Aptos, sans-serif;
+  font-size: 1.7rem;
+  font-weight: 850;
+  letter-spacing: -0.04em;
+}
+
+.track-authority,
+.track-dependency,
+.track-waiting {
+  margin: 0.42rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+  line-height: 1.35;
+}
+
+.track-dependency {
+  color: var(--lane);
+}
+
+.track-waiting {
+  color: var(--fault);
+  font-weight: 750;
+}
+
+.work-list {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2.6rem;
+  width: max-content;
+  min-width: 38rem;
+  margin: 0;
+  padding: 1.45rem 2.5rem;
+  list-style: none;
+}
+
+.work-node {
+  position: relative;
+  flex: 0 0 13.25rem;
+  min-width: 0;
+  list-style: none;
+}
+
+.work-node::before {
+  position: absolute;
+  z-index: -1;
+  top: -0.45rem;
+  bottom: -0.45rem;
+  left: -0.7rem;
+  width: 0.85rem;
+  border: 1px solid rgba(223, 80, 56, 0.58);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(223, 80, 56, 0.18) 0 4px,
+    transparent 4px 8px
+  );
+  content: "";
+}
+
+.work-leg {
+  position: relative;
+  min-width: 0;
+  border-top: 3px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  background: var(--sheet);
+  box-shadow: 4px 4px 0 var(--timing-shadow);
+}
+
+.work-leg[open] {
+  width: 17.5rem;
+}
+
+.work-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.7rem 0.75rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.work-summary::-webkit-details-marker,
+.cadence-summary::-webkit-details-marker {
+  display: none;
+}
+
+.work-summary::after,
+.cadence-summary::after {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.35rem;
+  color: var(--ink-soft);
+  content: "+";
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.work-leg[open] > .work-summary::after,
+.final-exchange[open] > .cadence-summary::after {
+  content: "−";
+}
+
+.work-identity {
+  display: grid;
+  min-width: 0;
+}
+
+.leg-number {
+  color: var(--baton-dark);
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.57rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.work-id {
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.leg-route,
+.work-feeds {
+  grid-column: 1 / -1;
+}
+
+.leg-route {
+  font-size: 0.73rem;
+}
+
+.work-feeds {
+  color: var(--lane);
+  font-size: 0.59rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.lifecycle-stage {
+  font-weight: 800;
+}
+
+.lifecycle-role {
+  color: var(--lane);
+  font-weight: 800;
+}
+
+.leg-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0.7rem;
+}
+
+.work-leg > .source,
+.work-leg > .relation,
+.work-leg > .blocker,
+.work-leg > .next-inline {
+  margin-right: 0.7rem;
+  margin-left: 0.7rem;
+}
+
+.source {
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.source-mode {
+  color: var(--ink);
+}
+
+.relation {
+  margin-top: 0.55rem;
+  margin-bottom: 0;
+  color: var(--ink-soft);
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.relation-label {
+  color: var(--ink-soft);
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.relation--depends .relation-id {
+  color: var(--lane);
+}
+
+.relation--consumes .relation-id {
+  color: var(--baton-dark);
+}
+
+.next-inline {
+  align-items: baseline;
+  margin-bottom: 0.7rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.next-label {
+  color: var(--caution);
+}
+
+.track-record {
+  position: absolute;
+  z-index: 5;
+  bottom: 0.3rem;
+  left: 0.75rem;
+}
+
+.track-record .record-summary {
+  max-width: 6rem;
+  padding: 0.18rem 0;
+  font-size: 0.56rem;
+}
+
+.track-record[open] {
+  width: min(31rem, calc(100% - 1.5rem));
+  padding: 0.75rem;
+  border: 1px solid var(--hardline);
+  background: var(--sheet);
+  box-shadow: 5px 5px 0 var(--timing-shadow);
+}
+
+.track-record[open] .record-summary {
+  max-width: none;
+}
+
+.track-facts {
+  grid-template-columns: 1fr;
+  margin-top: 0.6rem;
+}
+
+.cadence-stack {
+  align-self: center;
+  display: grid;
+  gap: 1.25rem;
+  justify-items: stretch;
+  min-width: 9.5rem;
+  padding-left: 1.4rem;
+}
+
+.cadence-node {
+  position: relative;
+  min-width: 0;
+  background: var(--sheet);
+}
+
+.final-exchange {
+  border-top: 3px solid var(--baton);
+  border-bottom: 1px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--timing-shadow);
+}
+
+.final-exchange::before {
+  position: absolute;
+  top: -0.5rem;
+  bottom: -0.5rem;
+  left: -0.7rem;
+  width: 0.8rem;
+  border: 1px solid rgba(223, 80, 56, 0.65);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(223, 80, 56, 0.2) 0 4px,
+    transparent 4px 8px
+  );
+  content: "";
+}
+
+.cadence-summary {
+  position: relative;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem 0.7rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cadence-label {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.cadence-title {
+  margin: 0;
+  font-family: "Arial Narrow", "Aptos Display", Aptos, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 850;
+  letter-spacing: -0.035em;
+}
+
+.final-exchange > .lifecycle,
+.final-exchange > .outcome,
+.final-exchange > .source,
+.final-exchange > .blocker,
+.final-exchange > .next-inline {
+  margin-right: 0.7rem;
+  margin-left: 0.7rem;
+}
+
+.final-exchange > .lifecycle {
+  font-size: 0.72rem;
+}
+
+.final-exchange > .outcome {
+  margin-top: 0.5rem;
+  font-size: 0.62rem;
+  text-align: left;
+}
+
+.finish-node {
+  min-height: 7rem;
+  padding: 0.75rem 1.05rem 0.8rem 0.7rem;
+  border-top: 1px solid var(--ink);
+  border-bottom: 3px solid var(--ink);
+}
+
+.finish-stripe {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 0.62rem;
+  background:
+    conic-gradient(
+      var(--ink) 0 25%,
+      var(--sheet) 0 50%,
+      var(--ink) 0 75%,
+      var(--sheet) 0
+    ) 0 0 / 0.62rem 0.62rem;
+}
+
+.finish-copy {
+  margin: 0.6rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.diagnostics,
+.queue,
+.empty,
+.loading {
+  margin-top: 1.5rem;
+  padding: 1.1rem;
+  border: 1px solid var(--hardline);
+  background: var(--sheet);
+}
+
+.diagnostic {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-left: 4px solid var(--fault);
+  background: var(--fault-soft);
+}
+
+.diagnostic-mark {
+  border-radius: 0;
+  background: var(--fault);
+}
+
+.queue {
+  border-top: 6px solid var(--caution);
+  box-shadow: 8px 8px 0 var(--timing-shadow);
+}
+
+.operation-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--hairline);
+  border-left: 1px solid var(--hairline);
+}
+
+.operation {
+  padding: 0.85rem;
+  border-right: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--sheet);
+}
+
+.operation-name,
+.operation-scope {
+  color: var(--caution);
+}
+
+.operation-scope {
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--caution);
+}
+
+.footer {
+  border-top: 1px solid var(--hardline);
+}
+
 :focus-visible {
-  outline: 3px solid var(--brass);
+  outline: 3px solid var(--baton);
   outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .release-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 700px) {
   .masthead {
-    align-items: flex-start;
+    align-items: center;
+  }
+
+  .brand .eyebrow {
+    display: none;
   }
 
   .freshness {
-    max-width: 48%;
-    border-radius: 4px;
-    text-align: right;
+    max-width: 52%;
+    font-size: 0.62rem;
+    text-align: left;
   }
 
   .intro,
   .release-heading,
-  .track-heading,
-  .assembly-heading {
+  .relay-heading,
+  .queue-heading {
+    display: flex;
     flex-direction: column;
+    align-items: flex-start;
   }
 
-  .release-facts,
-  .track-facts {
+  .intro {
+    padding-top: 3.5rem;
+  }
+
+  .intro-title {
+    font-size: clamp(2.7rem, 15vw, 5rem);
+  }
+
+  .release-facts {
     grid-template-columns: 1fr;
   }
 
-  .track {
-    grid-template-columns: 20px minmax(0, 1fr);
-    gap: 0.4rem;
+  .relay-map {
+    margin-right: 5px;
+    padding: 0.9rem;
+    box-shadow: 5px 5px 0 var(--timing-shadow);
   }
 
-  .rail::before {
-    left: 7px;
+  .relay-heading {
+    padding-right: 2rem;
   }
 
-  .rail::after {
-    left: 1px;
+  .graph-legend {
+    justify-content: flex-start;
   }
 
-  .assembly {
-    margin-left: 28px;
+  .graph-viewport {
+    overflow: visible;
+  }
+
+  .graph-canvas {
+    display: block;
+    min-width: 0;
+    padding: 1rem 0;
+  }
+
+  .graph-links {
+    display: none;
+  }
+
+  .start-block {
+    justify-items: start;
+    grid-template-columns: auto auto 1fr;
+    gap: 0.55rem;
+    padding: 0.8rem 0 1.2rem;
+    text-align: left;
+  }
+
+  .start-signal,
+  .baton-mark {
+    margin: 0;
+  }
+
+  .start-signal {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .baton-mark {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .start-block .eyebrow {
+    grid-row: 2;
+    grid-column: 2;
+    margin: 0;
+  }
+
+  .start-title {
+    grid-row: 1;
+    grid-column: 3;
+    align-self: center;
+    font-size: 2rem;
+  }
+
+  .track-field {
+    width: auto;
+    min-width: 0;
+  }
+
+  .track-lane {
+    display: block;
+    min-height: 0;
+    padding: 1rem 0 1.35rem 2.8rem;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .track-lane::before {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: 1.25rem;
+    width: 2px;
+    height: auto;
+    background: var(--lane);
+  }
+
+  .track-stem {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem;
+    padding: 0 0 0.8rem;
+    border: 0;
+  }
+
+  .track-authority,
+  .track-dependency,
+  .track-waiting {
+    grid-column: 1 / -1;
+  }
+
+  .work-list {
+    display: grid;
+    gap: 1.15rem;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .work-node {
+    width: auto;
+  }
+
+  .work-node::before {
+    top: 50%;
+    right: 100%;
+    bottom: auto;
+    left: -1.55rem;
+    width: 1.55rem;
+    height: 0.65rem;
+    border: 0;
+    border-top: 2px solid var(--lane);
+    background: none;
+  }
+
+  .work-leg[open] {
+    width: auto;
+  }
+
+  .track-record {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    margin-top: 0.8rem;
+  }
+
+  .track-record[open] {
+    width: 100%;
+  }
+
+  .cadence-stack {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    margin: 1.25rem 0 0 2.8rem;
+    padding: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto;
+  .graph-links {
+    animation: none;
   }
 }
 `;

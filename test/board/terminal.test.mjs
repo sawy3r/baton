@@ -27,6 +27,15 @@ test('terminal renderer matches the deterministic no-color golden', () => {
   );
 });
 
+test('terminal renderer exposes plan revision and slice attempt when projected', () => {
+  const board = fixture();
+  board.releases[0].plan_revision = 3;
+  board.releases[0].tracks[0].work[0].attempt = 2;
+  const rendered = renderTerminal(board, { color: 'never' });
+  assert.match(rendered, /  plan r3 /);
+  assert.match(rendered, /W1 .*  attempt=2  outcome=/);
+});
+
 test('terminal renderer sanitizes executable and directional control text', () => {
   const board = fixture();
   board.repository = [

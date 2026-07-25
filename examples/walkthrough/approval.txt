@@ -1,2 +1,2 @@
 Approved by the checkout service owner under approval://checkout-recovery/1.
-The approved object is the exact SHA-256 digest of plan.md in this directory.
+The approved object is the exact Git blob object of plan.md in this directory.

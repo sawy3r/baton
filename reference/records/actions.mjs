@@ -1,73 +1,42 @@
-import { isDeepStrictEqual, types as utilTypes } from 'node:util';
+import { types as utilTypes } from 'node:util';
 
 import {
   captureHeadRefs,
-  commitParents,
+  isAncestor,
   productTreeIdentity,
-  readFileAtOID,
+  readFilesAtOID,
+  readFirstParentHistory,
+  repositoryRoot,
   resolveProductExclusionAdmission,
   resolveRecordPathAdmission,
   unsafeAtomicUpdateRefs,
   unsafePrepareExactComposition,
+  unsafePrepareMetadataCommit,
   unsafePrepareRecordTransition,
 } from './git.mjs';
 import {
-  RecordError,
-  assemblyProofPath,
-  assemblyStatusPath,
-  assertWorkMayAdvance,
-  captureRefSnapshot,
-  deriveProspectiveRefSnapshot,
+  RECEIPT_TRAILER,
+  canonicalJSON,
   digestBytes,
-  expectedTrackMaterialization,
-  findTrack,
   parsePlanBytes,
-  parseStatusBytes,
-  readAuthoritativeRecordSnapshot,
-  releasePlanPath,
-  requirePlanAdmission,
-  resolveStatusEvidence,
-  selectAssemblyFromSnapshot,
-  selectAuthoritativeStatusFromSnapshot,
-  trackRefSnapshot,
-  validateAssemblyStatus,
-  validatePristineRecordNamespace,
-  validateStatusHandoffsAtRef,
-  validateTrackMaterialization,
-  validateWorkStatusIdentity,
-  workDesignPath,
-  workProofPath,
-  workStatusPath,
-} from './records.mjs';
-import {
-  unsafeValidateTransition,
-  validateAdmittedTransition,
-  validateAssemblyMergeTransition,
-  validateAssemblyPreparationTransition,
-  validateTrackCompositionTransition,
-  validateTrackMaterializationTransition,
-  validateWorkCandidateHistory,
-} from './transition.mjs';
+  parseReceiptCommitMessage,
+  parseReceiptHistoryEntry,
+  renderReceiptCommit,
+} from './receipts.mjs';
+import { readBatonState } from './state.mjs';
 
-const STATUS_SCHEMA = 'https://baton.sawy3r.net/schemas/work-status-v1.json';
-const STATUS_VERSION = 'baton.work-status/v1';
-const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
-const ORDINARY_RESULTS = new Set([
-  'DESIGN_WRITTEN',
-  'PROCEED',
-  'REVISE',
-  'ESCALATE',
-  'IMPLEMENTED',
-  'PASS',
-  'FAIL',
-  'BLOCKED',
-  'NO_VERDICT',
-]);
+const RECORD_ROOT = '.baton/releases';
+const MAX_SUMMARY = 280;
+const MAX_DETAIL = 8_192;
+const MAX_CHECK_RESULTS = 1_048_576;
+const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
-export class BatonActionError extends RecordError {
+export class BatonActionError extends Error {
   constructor(code, message, cause) {
-    super(code, message, cause);
+    super(message, cause ? { cause } : undefined);
     this.name = 'BatonActionError';
+    this.code = code;
   }
 }
 
@@ -76,9 +45,6 @@ function fail(code, message, cause) {
 }
 
 function exactOptions(value, required, optional, label) {
-  if (value === undefined && required.length === 0) {
-    return Object.freeze(Object.create(null));
-  }
   if (
     value === null
     || typeof value !== 'object'
@@ -86,1661 +52,983 @@ function exactOptions(value, required, optional, label) {
     || utilTypes.isProxy(value)
     || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
   ) {
-    fail('INVALID_ACTION_INPUT', `${label} requires one options object`);
+    fail('INVALID_ACTION_INPUT', `${label} requires one plain options object`);
   }
-  const ownKeys = Reflect.ownKeys(value);
-  const descriptors = new Map();
-  for (const key of ownKeys) {
-    if (typeof key !== 'string') {
-      fail('INVALID_ACTION_INPUT', `${label} options must be plain enumerable data`);
+  const allowed = new Set([...required, ...optional]);
+  const result = Object.create(null);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string' || !allowed.has(key)) {
+      fail('INVALID_ACTION_INPUT', `${label} received an unknown option`);
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (
-      !descriptor
-      || descriptor.enumerable !== true
-      || !Object.hasOwn(descriptor, 'value')
-    ) {
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
       fail('INVALID_ACTION_INPUT', `${label} options must be plain enumerable data`);
     }
-    descriptors.set(key, descriptor);
-  }
-  const keys = ownKeys.sort();
-  const admitted = [...required, ...optional].sort();
-  if (keys.some((key) => !admitted.includes(key))) {
-    fail('INVALID_ACTION_INPUT', `${label} received an unknown option`);
+    result[key] = descriptor.value;
   }
   for (const key of required) {
-    if (!keys.includes(key)) {
+    if (!Object.hasOwn(result, key)) {
       fail('INVALID_ACTION_INPUT', `${label} requires ${key}`);
     }
   }
-  const snapshot = Object.create(null);
-  for (const key of keys) snapshot[key] = descriptors.get(key).value;
-  return Object.freeze(snapshot);
+  return Object.freeze(result);
+}
+
+function text(value, label, maximum, { nonempty = true } = {}) {
+  if (
+    typeof value !== 'string'
+    || Buffer.byteLength(value, 'utf8') > maximum
+    || (nonempty && value.trim().length === 0)
+  ) {
+    fail(
+      'INVALID_ACTION_INPUT',
+      `${label} must be ${nonempty ? 'a non-empty' : 'an'} UTF-8 string of at most ${maximum} bytes`,
+    );
+  }
+  return value;
+}
+
+function detailBytes(value = Buffer.alloc(0)) {
+  if (!(typeof value === 'string' || Buffer.isBuffer(value))) {
+    fail('INVALID_ACTION_INPUT', 'detail must be a string or Buffer');
+  }
+  const result = Buffer.from(value);
+  if (result.byteLength > MAX_DETAIL) {
+    fail('INVALID_ACTION_INPUT', `detail must be at most ${MAX_DETAIL} bytes`);
+  }
+  return result;
+}
+
+function evidenceBytes(value, label) {
+  if (!(typeof value === 'string' || Buffer.isBuffer(value))) {
+    fail('INVALID_ACTION_INPUT', `${label} must be a string or Buffer`);
+  }
+  const result = Buffer.from(value);
+  if (result.byteLength > MAX_CHECK_RESULTS) {
+    fail(
+      'INVALID_ACTION_INPUT',
+      `${label} must be at most ${MAX_CHECK_RESULTS} bytes`,
+    );
+  }
+  return result;
+}
+
+function objectID(value, label) {
+  if (typeof value !== 'string' || !OID.test(value)) {
+    fail('INVALID_ACTION_INPUT', `${label} must be one full Git object ID`);
+  }
+  return value;
+}
+
+function identity(value, label) {
+  if (typeof value !== 'string' || !IDENTITY.test(value)) {
+    fail('INVALID_ACTION_INPUT', `${label} must be one portable identity`);
+  }
+  return value;
 }
 
 function frozen(value, seen = new WeakSet()) {
   if (value === null || typeof value !== 'object' || seen.has(value)) return value;
   seen.add(value);
   for (const nested of Object.values(value)) frozen(nested, seen);
-  return Object.isFrozen(value) ? value : Object.freeze(value);
+  return Object.freeze(value);
 }
 
-function assertReceiptData(value, label = 'receipt', seen = new Set()) {
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'boolean'
-    || (typeof value === 'number' && Number.isFinite(value))
-  ) {
-    return;
-  }
-  if (typeof value !== 'object' || ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
-    fail('INVALID_ACTION_RECEIPT', `${label} must contain only JSON data`);
-  }
-  if (seen.has(value)) {
-    fail('INVALID_ACTION_RECEIPT', `${label} must not contain cycles`);
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    value.forEach((nested, index) => assertReceiptData(nested, `${label}[${index}]`, seen));
-  } else {
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      fail('INVALID_ACTION_RECEIPT', `${label} must contain only plain objects`);
-    }
-    for (const [key, nested] of Object.entries(value)) {
-      assertReceiptData(nested, `${label}.${key}`, seen);
-    }
-  }
-  seen.delete(value);
-}
-
-function receipt(action, details) {
-  const value = {
-    kind: 'baton.action-receipt/v1',
-    action,
-    ...details,
-  };
-  assertReceiptData(value);
-  return frozen(value);
-}
-
-function statusBytes(status) {
-  return Buffer.from(`${JSON.stringify(status)}\n`);
-}
-
-function statusProjection(status) {
-  return `${status.stage}/${status.status}/${status.next_role}`;
-}
-
-function resultMatchesDurableStatus(result, status) {
-  const projection = statusProjection(status);
-  if (result === 'NO_VERDICT') {
-    return projection === 'verify/ready/verifier' && status.outcome === 'none';
-  }
-  if (result === 'DESIGN_WRITTEN') return projection === 'design/ready/captain' && status.outcome === 'none';
-  if (result === 'PROCEED') return projection === 'implement/ready/implementer' && status.outcome === 'proceed';
-  if (result === 'REVISE') return projection === 'design/ready/implementer' && status.outcome === 'revise';
-  if (result === 'ESCALATE') return projection === 'design/blocked/planner' && status.outcome === 'escalate';
-  if (result === 'IMPLEMENTED') return projection === 'verify/ready/verifier' && status.outcome === 'none';
-  if (result === 'PASS') return projection === 'merge/ready/merge' && status.outcome === 'pass';
-  if (result === 'BLOCKED') return projection === 'verify/blocked/planner' && status.outcome === 'blocked';
-  if (result === 'FAIL' && status.kind === 'assembly') {
-    return projection === 'verify/ready/planner' && status.outcome === 'fail';
-  }
-  return result === 'FAIL'
-    && projection === 'implement/ready/implementer'
-    && status.outcome === 'fail';
-}
-
-function canonicalStatus(status, plan) {
-  return parseStatusBytes(statusBytes(status), {
-    planDigest: plan.digest,
-    approvalRef: plan.metadata.approval_ref,
-  });
-}
-
-function initialWorkStatus(plan, track, work, approvalDigest) {
-  return canonicalStatus({
-    $schema: STATUS_SCHEMA,
-    schema_version: STATUS_VERSION,
-    kind: 'work',
-    release: plan.metadata.release,
-    work_id: work.id,
-    track_id: track.id,
-    owner_ref: track.ref,
-    authority_ref: plan.metadata.release_ref,
-    target_ref: plan.metadata.target_ref,
-    plan: {
-      digest: plan.digest,
-      approval: {
-        ref: plan.metadata.approval_ref,
-        digest: approvalDigest,
-      },
-    },
-    stage: 'design',
-    status: 'ready',
-    next_role: 'implementer',
-    outcome: 'none',
-  }, plan);
-}
-
-function allPlannedWork(plan) {
-  return plan.metadata.tracks.flatMap((track) => (
-    track.work.map((work) => ({ track, work }))
-  ));
-}
-
-function baselineStatuses(plan, approvalDigest) {
-  if (!DIGEST_PATTERN.test(approvalDigest)) {
-    fail('INVALID_ACTION_INPUT', 'approvalDigest must be one SHA-256 digest');
-  }
-  return Object.fromEntries(allPlannedWork(plan).map(({ track, work }) => [
-    work.id,
-    initialWorkStatus(plan, track, work, approvalDigest),
-  ]));
-}
-
-function baselineChanges(plan, statuses) {
-  return {
-    [releasePlanPath(plan)]: plan.bytes,
-    ...Object.fromEntries(allPlannedWork(plan).map(({ work }) => [
-      workStatusPath(plan, work.id),
-      statusBytes(statuses[work.id]),
-    ])),
-  };
-}
-
-function rawPlanHeads(repo, plan) {
-  const entries = captureHeadRefs(repo, [
-    plan.metadata.target_ref,
-    plan.metadata.release_ref,
-    ...plan.metadata.tracks.map((track) => track.ref),
-  ]);
+function receiptResult(action, changed, details) {
   return frozen({
-    target: entries[0],
-    release: entries[1],
-    tracks: entries.slice(2).map((entry, index) => ({
-      id: plan.metadata.tracks[index].id,
-      ...entry,
-    })),
+    kind: 'baton.action-result/v2',
+    action,
+    changed,
+    ...details,
   });
 }
 
-function verifySnapshotOperations(snapshot, excluded = new Set()) {
-  const entries = [
-    snapshot.target,
-    snapshot.release,
-    ...snapshot.tracks,
-  ];
-  return entries
-    .filter((entry) => !excluded.has(entry.ref))
-    .map((entry) => ({
-      kind: 'verify',
-      ref: entry.ref,
-      expectedHead: entry.head,
+function releaseRef(release) {
+  return `refs/heads/release-wt/${release}`;
+}
+
+function trackRef(release, track) {
+  return `refs/heads/track/${release}/${track}`;
+}
+
+function planPath(release) {
+  return `${RECORD_ROOT}/${release}/plan.md`;
+}
+
+function captureMap(repo, refs) {
+  return new Map(captureHeadRefs(repo, refs).map(({ ref, head }) => [ref, head]));
+}
+
+function receiptHistory(repo, head) {
+  const rows = readFirstParentHistory(repo, head);
+  const entries = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (!row.message.includes(Buffer.from(RECEIPT_TRAILER))) continue;
+    const parent = rows[index + 1];
+    if (!parent || row.parents[0] !== parent.oid) {
+      fail(
+        'HISTORY_LIMIT',
+        `cannot establish the parent tree for receipt ${row.oid}`,
+      );
+    }
+    entries.push(parseReceiptHistoryEntry({
+      oid: row.oid,
+      parents: row.parents,
+      tree: row.tree,
+      parent_tree: parent.tree,
+      message: row.message,
     }));
+  }
+  return Object.freeze(entries);
 }
 
-function assertSameUnchangedRefs(before, after, changedRef) {
-  for (const key of ['target', 'release']) {
-    if (
-      before[key].ref !== changedRef
-      && before[key].head !== after[key].head
-    ) {
-      fail('UNEXPECTED_REF_MOVEMENT', `action unexpectedly moved ${before[key].ref}`);
+function fileAt(repo, commit, relativePath) {
+  const [entry] = readFilesAtOID(repo, commit, [relativePath]);
+  return entry;
+}
+
+function currentPlan(repo, release, releaseHead) {
+  const entry = fileAt(repo, releaseHead, planPath(release));
+  if (!entry?.bytes || !entry.object) {
+    fail('PLAN_NOT_FOUND', `release ${release} has no current plan`);
+  }
+  return Object.freeze({
+    parsed: parsePlanBytes(entry.bytes),
+    object: entry.object,
+  });
+}
+
+function findApproval(repo, releaseHead, planObject) {
+  const approval = receiptHistory(repo, releaseHead).find(({ receipt }) => (
+    receipt.role === 'planner'
+    && receipt.result === 'approved'
+    && receipt.plan === planObject
+  ));
+  if (
+    !approval
+    || approval.receipt.binds !== approval.parent
+  ) {
+    fail('PLAN_NOT_APPROVED', `plan ${planObject} has no applicable approval receipt`);
+  }
+  return approval;
+}
+
+function assertRevision(previous, next, previousObject) {
+  if (next.metadata.revision !== previous.metadata.revision + 1) {
+    fail('INVALID_PLAN_REVISION', 'plan revision must advance by exactly one');
+  }
+  if (next.metadata.previous_plan !== previousObject) {
+    fail('INVALID_PLAN_REVISION', 'plan previous_plan must bind the current plan blob');
+  }
+  for (const field of ['release', 'repository', 'target_ref']) {
+    if (next.metadata[field] !== previous.metadata[field]) {
+      fail(
+        'REPLACED_RELEASE_AUTHORITY',
+        `plan revision cannot change ${field}; create a new release`,
+      );
     }
   }
-  for (const beforeTrack of before.tracks) {
-    if (beforeTrack.ref === changedRef) continue;
-    const afterTrack = after.tracks.find((track) => track.ref === beforeTrack.ref);
-    if (!afterTrack || beforeTrack.head !== afterTrack.head) {
-      fail('UNEXPECTED_REF_MOVEMENT', `action unexpectedly moved ${beforeTrack.ref}`);
-    }
+  if (next.metadata.approval_ref === previous.metadata.approval_ref) {
+    fail('STALE_APPROVAL', 'plan revision requires a new protected approval reference');
   }
 }
 
-function assertExactHead(snapshot, ref, expectedHead) {
-  const entry = [
-    snapshot.target,
-    snapshot.release,
-    ...snapshot.tracks,
-  ].find((candidate) => candidate.ref === ref);
-  if (!entry || entry.head !== expectedHead) {
-    fail('ACTION_EFFECT_MISMATCH', `action did not leave ${ref} at its prepared commit`);
-  }
+function planReceipt({
+  release,
+  planObject,
+  planCommit,
+  target,
+  summary,
+  detail,
+}) {
+  const message = renderReceiptCommit({
+    subject: `baton(${release}): approve plan`,
+    detail,
+    receipt: {
+      version: 1,
+      release,
+      role: 'planner',
+      result: 'approved',
+      plan: planObject,
+      binds: planCommit,
+      detail: digestBytes(Buffer.alloc(0)),
+      summary,
+      target,
+    },
+  });
+  return Object.freeze({
+    message,
+    receipt: parseReceiptCommitMessage(message).receipt,
+  });
 }
 
-function topology(plan) {
-  return {
-    release: plan.metadata.release,
-    repository: plan.metadata.repository,
-    target_ref: plan.metadata.target_ref,
-    release_ref: plan.metadata.release_ref,
-    record_root: plan.metadata.record_root,
-    tracks: plan.metadata.tracks.map((track) => ({
-      id: track.id,
-      ref: track.ref,
-      depends_on: track.depends_on,
-      work: track.work.map((work) => ({
-        id: work.id,
-        depends_on: work.depends_on,
-      })),
-    })),
-  };
+function planResult({
+  changed,
+  parsed,
+  planObject,
+  approval,
+  ref,
+  target,
+  head = approval.oid,
+  retirements = [],
+}) {
+  return receiptResult('recordPlanRevision', changed, {
+    release: parsed.metadata.release,
+    revision: parsed.metadata.revision,
+    plan: planObject,
+    ref,
+    head,
+    target,
+    receipt_commit: approval.oid,
+    receipt: approval.receipt,
+    retirements,
+  });
 }
 
-function mergedWorkStatus(previous, plan, frozenTrackHead, expectedTarget, resultCommit) {
-  const next = structuredClone(previous);
-  next.authority_ref = plan.metadata.release_ref;
-  next.stage = 'merge';
-  next.status = 'complete';
-  next.next_role = 'none';
-  next.outcome = 'merged';
-  next.merge = {
-    scope: 'track',
-    passed_candidate: next.proof.candidate_commit,
-    frozen_track_head: frozenTrackHead,
-    expected_target: expectedTarget,
-    outcome: 'merged',
-    observed_target: expectedTarget,
-    result_commit: resultCommit,
-    plan_digest: plan.digest,
-    verification_attestation_digest: next.verification.attestation_digest,
-  };
-  return canonicalStatus(next, plan);
+function sameInputs(left, right) {
+  return canonicalJSON(left ?? {}) === canonicalJSON(right ?? {});
 }
 
-function mergedAssemblyStatus(previous, plan, expectedTarget, resultCommit) {
-  const next = structuredClone(previous);
-  next.stage = 'merge';
-  next.status = 'complete';
-  next.next_role = 'none';
-  next.outcome = 'merged';
-  next.merge = {
-    scope: 'release',
-    passed_candidate: next.proof.candidate_commit,
-    expected_target: expectedTarget,
-    outcome: 'merged',
-    observed_target: expectedTarget,
-    result_commit: resultCommit,
-    plan_digest: plan.digest,
-    verification_attestation_digest: next.verification.attestation_digest,
-  };
-  return canonicalStatus(next, plan);
+function currentTrack(state, trackID) {
+  const track = state.tracks.find(({ id }) => id === trackID);
+  if (!track) fail('TRACK_NOT_FOUND', `plan has no track ${trackID}`);
+  return track;
 }
 
-function snapshotHandoffs(handoffs) {
-  const provided = exactOptions(
-    handoffs,
-    [],
-    ['design', 'proof'],
-    'recordTransition.handoffs',
+function currentSlice(state, sliceID) {
+  const slice = state.slices.find(({ location }) => location.slice.id === sliceID);
+  if (!slice) fail('SLICE_NOT_FOUND', `plan has no current slice ${sliceID}`);
+  return slice;
+}
+
+function requireSlicePrerequisites(state, slice) {
+  const { location } = slice;
+  const track = currentTrack(state, location.track.id);
+  const position = track.slices.findIndex(
+    ({ location: item }) => item.slice.id === location.slice.id,
   );
-  const snapshot = {};
-  for (const [field, value] of Object.entries(provided)) {
-    if (utilTypes.isProxy(value)) {
-      fail('INVALID_HANDOFF', `${field} handoff must not be a Proxy`);
+  const required = new Set([
+    ...track.depends_on.flatMap(
+      (trackID) => currentTrack(state, trackID).slices.map(
+        ({ location: item }) => item.slice.id,
+      ),
+    ),
+    ...track.slices.slice(0, position).map(
+      ({ location: item }) => item.slice.id,
+    ),
+    ...location.slice.depends_on,
+    ...location.slice.consumes,
+  ]);
+  for (const dependency of required) {
+    if (!currentSlice(state, dependency).pass) {
+      fail(
+        'DEPENDENCIES_NOT_READY',
+        `${location.slice.id} is waiting for ${dependency} PASS`,
+      );
     }
-    if (Buffer.isBuffer(value)) snapshot[field] = Buffer.from(value);
-    else if (typeof value === 'string') snapshot[field] = value;
-    else fail('INVALID_HANDOFF', `${field} handoff must be bytes or text`);
   }
-  return Object.freeze(snapshot);
 }
 
-function handoffChanges(plan, previous, next, provided) {
-  if (next.kind === 'assembly' && Object.hasOwn(provided, 'design')) {
-    fail('INVALID_HANDOFF', 'assembly transitions cannot write a design handoff');
-  }
-  const changes = {};
-  for (const field of ['design', 'proof']) {
-    const changed = next[field]?.digest !== previous[field]?.digest;
-    if (!changed) {
-      if (Object.hasOwn(provided, field)) {
-        fail('INVALID_HANDOFF', `${field} bytes were supplied without a new ${field} digest`);
-      }
-      continue;
-    }
-    if (!next[field] || !Object.hasOwn(provided, field)) {
-      fail('MISSING_HANDOFF', `a changed ${field} digest requires exact ${field} bytes`);
-    }
-    const bytes = Buffer.isBuffer(provided[field])
-      ? Buffer.from(provided[field])
-      : typeof provided[field] === 'string'
-        ? Buffer.from(provided[field])
-        : null;
-    if (!bytes || digestBytes(bytes) !== next[field].digest) {
-      fail('HANDOFF_DIGEST_MISMATCH', `${field} bytes do not match the durable digest`);
-    }
-    const relativePath = field === 'design'
-      ? workDesignPath(plan, next.work_id)
-      : next.kind === 'assembly'
-        ? assemblyProofPath(plan)
-        : workProofPath(plan, next.work_id);
-    changes[relativePath] = bytes;
-  }
-  return changes;
+function exactRetry(entry, {
+  role,
+  result,
+  summary,
+  detail,
+  candidate,
+  checks,
+}) {
+  if (!entry) return false;
+  const receipt = entry.receipt;
+  return (
+    receipt.role === role
+    && receipt.result === result
+    && receipt.summary === summary
+    && (candidate === null || receipt.candidate === candidate)
+    && (checks === null || receipt.checks === checks)
+    && entry.detail.equals(detail)
+  );
 }
 
-function validateRetryHandoffs(repo, plan, status, head, provided) {
-  for (const [field, value] of Object.entries(provided)) {
-    if (status.kind === 'assembly' && field === 'design') {
-      fail('INVALID_HANDOFF', 'assembly transitions cannot carry a design handoff');
-    }
-    const bytes = Buffer.isBuffer(value)
-      ? Buffer.from(value)
-      : typeof value === 'string'
-        ? Buffer.from(value)
-        : null;
-    if (!bytes || status[field]?.digest !== digestBytes(bytes)) {
-      fail('HANDOFF_DIGEST_MISMATCH', `${field} retry bytes do not match the durable digest`);
-    }
-  }
-  validateStatusHandoffsAtRef(repo, plan, status, head);
+function appendResult(changed, ref, entry) {
+  return receiptResult('appendReceipt', changed, {
+    release: entry.receipt.release,
+    slice: entry.receipt.slice ?? null,
+    ref,
+    receipt_commit: entry.oid,
+    receipt: entry.receipt,
+  });
 }
 
-function durableTransitionChanges(repo, plan, previous, next, head) {
-  const changes = {
-    [next.kind === 'work'
-      ? workStatusPath(plan, next.work_id)
-      : assemblyStatusPath(plan)]: statusBytes(next),
-  };
-  for (const field of ['design', 'proof']) {
-    if (next[field]?.digest === previous[field]?.digest) continue;
-    const relativePath = field === 'design'
-      ? workDesignPath(plan, next.work_id)
-      : next.kind === 'assembly'
-        ? assemblyProofPath(plan)
-        : workProofPath(plan, next.work_id);
-    changes[relativePath] = readFileAtOID(repo, head, relativePath);
-  }
-  return changes;
+function actionEntry(oid, parent, message) {
+  const parsed = parseReceiptCommitMessage(message);
+  return Object.freeze({
+    oid,
+    parent,
+    receipt: parsed.receipt,
+    get detail() {
+      return parsed.detail;
+    },
+  });
 }
 
-/**
- * The sole safe mutation surface. External actors still author plans,
- * statuses, and handoffs; this facade owns every mechanical Git and record
- * compare-and-set.
- */
-export function createBatonActions({
-  repo,
-  plan,
-  profile,
-  resolveEvidence,
-  resolveBehavioralInertness,
-} = {}) {
-  requirePlanAdmission(plan);
-  if (!['guided', 'autonomous'].includes(profile)) {
-    fail('INVALID_PROFILE', 'createBatonActions requires guided or autonomous profile');
-  }
-  if (typeof resolveEvidence !== 'function') {
-    fail('EVIDENCE_RESOLVER_REQUIRED', 'createBatonActions requires a trusted evidence resolver');
-  }
+function createAdmissions(repo, resolveBehavioralInertness) {
   const recordPathAdmission = resolveRecordPathAdmission(repo);
   const productExclusionAdmission = resolveProductExclusionAdmission(repo, {
     recordPathAdmission,
     resolveBehavioralInertness,
   });
+  return Object.freeze({ recordPathAdmission, productExclusionAdmission });
+}
 
-  const evidenceCache = new Map();
-  const cachedResolveEvidence = (request) => {
-    const key = JSON.stringify(request);
-    let cached = evidenceCache.get(key);
-    if (!cached) {
-      const resolved = resolveEvidence(request);
-      if (
-        resolved
-        && typeof resolved === 'object'
-        && !Array.isArray(resolved)
-        && (Buffer.isBuffer(resolved.bytes) || resolved.bytes instanceof Uint8Array || typeof resolved.bytes === 'string')
-        && resolved.provenance
-        && typeof resolved.provenance === 'object'
-      ) {
-        cached = {
-          bytes: Buffer.from(resolved.bytes),
-          provenance: structuredClone(resolved.provenance),
-        };
-        evidenceCache.set(key, cached);
-      } else {
-        return resolved;
-      }
-    }
-    return {
-      bytes: Buffer.from(cached.bytes),
-      provenance: structuredClone(cached.provenance),
-    };
-  };
-  const admit = (status) => resolveStatusEvidence(status, {
-    profile,
-    resolveEvidence: cachedResolveEvidence,
-  });
+export function createBatonActions(options) {
+  const admitted = exactOptions(
+    options,
+    ['repo', 'resolveBehavioralInertness'],
+    [],
+    'createBatonActions',
+  );
+  if (typeof admitted.repo !== 'string' || admitted.repo.length === 0) {
+    fail('INVALID_ACTION_INPUT', 'repo must be a non-empty path');
+  }
+  if (typeof admitted.resolveBehavioralInertness !== 'function') {
+    fail('INVALID_ACTION_INPUT', 'resolveBehavioralInertness must be a function');
+  }
+  const repo = repositoryRoot(admitted.repo);
+  const admissions = createAdmissions(repo, admitted.resolveBehavioralInertness);
 
-  function installApprovedPlan(options) {
-    const { approvalDigest } = exactOptions(
-      options,
-      ['approvalDigest'],
-      [],
-      'installApprovedPlan',
-    );
-    const before = rawPlanHeads(repo, plan);
-    if (before.target.head === null) {
-      fail('REF_NOT_FOUND', `target ${plan.metadata.target_ref} does not exist`);
-    }
-    if (before.tracks.some((track) => track.head !== null)) {
-      fail('EXTERNAL_AUTHORITY_REQUIRED', 'approved plan installation requires every owner ref to be absent');
-    }
-    validatePristineRecordNamespace(repo, plan, before.target.head, {
-      recordRootAdmission: recordPathAdmission,
-      expectAbsent: true,
-    });
-    if (before.release.head !== null) {
-      validatePristineRecordNamespace(repo, plan, before.release.head, {
-        recordRootAdmission: recordPathAdmission,
-      });
-    }
-    const statuses = baselineStatuses(plan, approvalDigest);
-    for (const status of Object.values(statuses)) admit(status);
-    const prepared = unsafePrepareRecordTransition(repo, {
-      expectedHead: before.target.head,
-      message: `Install approved Baton plan ${plan.metadata.release}`,
-      recordPathAdmission,
-      productExclusionAdmission,
-      changes: baselineChanges(plan, statuses),
-    });
-    validatePristineRecordNamespace(repo, plan, prepared.commit, {
-      recordRootAdmission: recordPathAdmission,
-    });
-    if (before.release.head !== null) {
-      if (before.release.head !== prepared.commit) {
-        fail('EXTERNAL_AUTHORITY_REQUIRED', 'release ref already contains a different installation');
-      }
-      return receipt('installApprovedPlan', {
-        changed: false,
-        release_head: prepared.commit,
-        before,
-        after: before,
-      });
-    }
-    unsafeAtomicUpdateRefs(repo, [
-      {
-        kind: 'verify',
-        ref: before.target.ref,
-        expectedHead: before.target.head,
-      },
-      {
-        kind: 'create',
-        ref: before.release.ref,
-        newHead: prepared.commit,
-      },
-      ...before.tracks.map((track) => ({
-        kind: 'verify',
-        ref: track.ref,
-        expectedHead: null,
-      })),
-    ]);
-    const after = rawPlanHeads(repo, plan);
-    assertExactHead(after, before.release.ref, prepared.commit);
-    return receipt('installApprovedPlan', {
-      changed: true,
-      release_head: prepared.commit,
-      before,
-      after,
+  function stateFor(release) {
+    return readBatonState(repo, release, {
+      productExclusionAdmission: admissions.productExclusionAdmission,
     });
   }
 
-  function reboundPristinePlan(options) {
-    const {
-      previousPlan,
-      approvalDigest,
-    } = exactOptions(
-      options,
-      ['previousPlan', 'approvalDigest'],
-      [],
-      'reboundPristinePlan',
+  function recordPlanRevision(rawOptions) {
+    const input = exactOptions(
+      rawOptions,
+      ['planBytes', 'summary'],
+      ['detail'],
+      'recordPlanRevision',
     );
-    requirePlanAdmission(previousPlan);
-    if (!isDeepStrictEqual(topology(previousPlan), topology(plan))) {
-      fail('EXTERNAL_AUTHORITY_REQUIRED', 'plan rebound requires identical release ownership topology');
-    }
-    const before = captureRefSnapshot(repo, previousPlan);
-    if (before.tracks.some((track) => track.head !== null)) {
-      fail('EXTERNAL_AUTHORITY_REQUIRED', 'materialized plans require a new release identity');
-    }
-    validatePristineRecordNamespace(repo, previousPlan, before.release.head, {
-      recordRootAdmission: recordPathAdmission,
-    });
-    const installedPlan = parsePlanBytes(
-      readFileAtOID(repo, before.release.head, releasePlanPath(previousPlan)),
-    );
-    const nextStatuses = baselineStatuses(plan, approvalDigest);
-    if (installedPlan.digest === plan.digest) {
-      const current = captureRefSnapshot(repo, plan);
-      const parents = commitParents(repo, current.release.head);
-      if (parents.length !== 1) {
-        fail('INVALID_RECONCILIATION', 'rebound retry has no exact previous-plan parent');
+    const parsed = parsePlanBytes(Buffer.from(input.planBytes));
+    const summary = text(input.summary, 'summary', MAX_SUMMARY);
+    const detail = detailBytes(input.detail);
+    const release = parsed.metadata.release;
+    const targetRef = parsed.metadata.target_ref;
+    const ownerRef = releaseRef(release);
+    const refs = captureMap(repo, [targetRef, ownerRef]);
+    const target = refs.get(targetRef);
+    const priorHead = refs.get(ownerRef);
+    if (!target) fail('TARGET_NOT_FOUND', `target ${targetRef} does not exist`);
+
+    let parent;
+    let previousState = null;
+    if (priorHead === null) {
+      if (parsed.metadata.revision !== 1 || parsed.metadata.previous_plan !== null) {
+        fail('INVALID_PLAN_REVISION', 'a new release must begin at plan revision 1');
       }
-      const previousSnapshot = deriveProspectiveRefSnapshot(previousPlan, before, [{
-        ref: before.release.ref,
-        head: parents[0],
-      }]);
-      validatePristineRecordNamespace(repo, previousPlan, parents[0], {
-        recordRootAdmission: recordPathAdmission,
-      });
-      validatePristineRecordNamespace(repo, plan, current.release.head, {
-        recordRootAdmission: recordPathAdmission,
-      });
-      const parentPlan = parsePlanBytes(
-        readFileAtOID(repo, parents[0], releasePlanPath(previousPlan)),
-      );
-      if (parentPlan.digest !== previousPlan.digest) {
-        fail('INVALID_RECONCILIATION', 'rebound retry parent is not the supplied previous plan');
+      if (fileAt(repo, target, planPath(release)).object !== null) {
+        fail('RELEASE_ALREADY_RECORDED', `target already contains release ${release}`);
       }
-      const previousRecords = readAuthoritativeRecordSnapshot(
-        repo,
-        previousPlan,
-        previousSnapshot,
-        { recordRootAdmission: recordPathAdmission },
-      );
-      const currentRecords = readAuthoritativeRecordSnapshot(
-        repo,
-        plan,
-        current,
-        { recordRootAdmission: recordPathAdmission },
-      );
-      for (const { work } of allPlannedWork(plan)) {
-        const previous = selectAuthoritativeStatusFromSnapshot(
-          previousPlan,
-          work.id,
-          previousRecords,
-        );
-        const selected = selectAuthoritativeStatusFromSnapshot(plan, work.id, currentRecords);
-        if (
-          previous.source !== 'baseline'
-          || selected.source !== 'baseline'
-          || !isDeepStrictEqual(selected.status, nextStatuses[work.id])
-        ) {
-          fail('EXTERNAL_AUTHORITY_REQUIRED', 'rebound plan no longer has exact pristine baselines');
+      parent = target;
+    } else {
+      previousState = stateFor(release);
+      const previous = currentPlan(repo, release, priorHead);
+      if (previous.parsed.bytes.equals(parsed.bytes)) {
+        const approval = findApproval(repo, priorHead, previous.object);
+        if (approval.receipt.target !== target) {
+          fail(
+            'TARGET_MOVED',
+            'the target changed after this plan approval; record a new plan revision',
+          );
         }
-        validateAdmittedTransition(previous.status, selected.status, 'REBOUND', {
-          previousAdmission: admit(previous.status),
-          nextAdmission: admit(selected.status),
-          profile,
+        return planResult({
+          changed: false,
+          parsed: previous.parsed,
+          planObject: previous.object,
+          approval: {
+            oid: approval.oid,
+            receipt: approval.receipt,
+          },
+          ref: ownerRef,
+          target,
+          head: priorHead,
         });
       }
-      const prepared = unsafePrepareRecordTransition(repo, {
-        expectedHead: parents[0],
-        message: `Rebound pristine Baton plan ${plan.metadata.release}`,
-        recordPathAdmission,
-        productExclusionAdmission,
-        changes: baselineChanges(plan, nextStatuses),
-      });
-      validatePristineRecordNamespace(repo, plan, prepared.commit, {
-        recordRootAdmission: recordPathAdmission,
-      });
-      if (prepared.commit !== current.release.head) {
-        fail('INVALID_RECONCILIATION', 'rebound retry does not match the exact Baton effect');
-      }
-      return receipt('reboundPristinePlan', {
-        changed: false,
-        previous_plan_digest: previousPlan.digest,
-        plan_digest: plan.digest,
-        release_head: current.release.head,
-        before: current,
-        after: current,
-      });
+      assertRevision(previous.parsed, parsed, previous.object);
+      parent = priorHead;
     }
-    if (installedPlan.digest !== previousPlan.digest) {
-      fail('STALE_BINDING', 'release does not contain the exact previous plan');
-    }
-    const records = readAuthoritativeRecordSnapshot(
-      repo,
-      previousPlan,
-      before,
-      { recordRootAdmission: recordPathAdmission },
-    );
-    for (const { work } of allPlannedWork(previousPlan)) {
-      const selected = selectAuthoritativeStatusFromSnapshot(previousPlan, work.id, records);
-      if (selected.source !== 'baseline') {
-        fail('EXTERNAL_AUTHORITY_REQUIRED', `work ${work.id} is no longer pristine`);
-      }
-      const previous = selected.status;
-      const next = nextStatuses[work.id];
-      validateAdmittedTransition(previous, next, 'REBOUND', {
-        previousAdmission: admit(previous),
-        nextAdmission: admit(next),
-        profile,
-      });
-    }
-    const prepared = unsafePrepareRecordTransition(repo, {
-      expectedHead: before.release.head,
-      message: `Rebound pristine Baton plan ${plan.metadata.release}`,
-      recordPathAdmission,
-      productExclusionAdmission,
-      changes: baselineChanges(plan, nextStatuses),
-    });
-    validatePristineRecordNamespace(repo, plan, prepared.commit, {
-      recordRootAdmission: recordPathAdmission,
-    });
-    unsafeAtomicUpdateRefs(repo, [
-      {
-        kind: 'update',
-        ref: before.release.ref,
-        newHead: prepared.commit,
-        expectedHead: before.release.head,
+
+    const preparedPlan = unsafePrepareRecordTransition(repo, {
+      expectedHead: parent,
+      message: `baton(${release}): plan revision ${parsed.metadata.revision}`,
+      ...admissions,
+      changes: {
+        [planPath(release)]: parsed.bytes,
       },
-      {
-        kind: 'verify',
-        ref: before.target.ref,
-        expectedHead: before.target.head,
-      },
-      ...before.tracks.map((track) => ({
-        kind: 'verify',
-        ref: track.ref,
-        expectedHead: null,
-      })),
-    ]);
-    const after = captureRefSnapshot(repo, plan);
-    assertExactHead(after, before.release.ref, prepared.commit);
-    return receipt('reboundPristinePlan', {
+    });
+    const planObject = fileAt(repo, preparedPlan.commit, planPath(release)).object;
+    if (!planObject) fail('PLAN_NOT_FOUND', 'prepared plan blob could not be resolved');
+    const rendered = planReceipt({
+      release,
+      planObject,
+      planCommit: preparedPlan.commit,
+      target,
+      summary,
+      detail,
+    });
+    const preparedApproval = unsafePrepareMetadataCommit(repo, {
+      expectedHead: preparedPlan.commit,
+      message: rendered.message,
+    });
+    let nextHead = preparedApproval.commit;
+    const retirements = [];
+    if (previousState) {
+      const retained = new Set(
+        parsed.metadata.tracks.flatMap((track) => track.slices.map((slice) => slice.id)),
+      );
+      for (const removed of previousState.slices.filter(
+        ({ location }) => !retained.has(location.slice.id),
+      )) {
+        const slice = removed.location.slice.id;
+        const retirementMessage = renderReceiptCommit({
+          subject: `baton(${release}/${slice}): retire slice`,
+          detail: Buffer.alloc(0),
+          receipt: {
+            version: 1,
+            release,
+            slice,
+            role: 'planner',
+            result: 'retired',
+            attempt: removed.history.maximum_attempt + 1,
+            plan: planObject,
+            contract: previousState.plan.metadata.contracts[slice],
+            binds: preparedApproval.commit,
+            detail: digestBytes(Buffer.alloc(0)),
+            summary: `Retired ${slice} under approved plan revision ${parsed.metadata.revision}.`,
+          },
+        });
+        const preparedRetirement = unsafePrepareMetadataCommit(repo, {
+          expectedHead: nextHead,
+          message: retirementMessage,
+        });
+        retirements.push(Object.freeze({
+          slice,
+          receipt_commit: preparedRetirement.commit,
+          receipt: parseReceiptCommitMessage(retirementMessage).receipt,
+        }));
+        nextHead = preparedRetirement.commit;
+      }
+    }
+    const operations = [
+      { kind: 'verify', ref: targetRef, expectedHead: target },
+      priorHead === null
+        ? { kind: 'create', ref: ownerRef, newHead: nextHead }
+        : {
+          kind: 'update',
+          ref: ownerRef,
+          newHead: nextHead,
+          expectedHead: priorHead,
+        },
+    ];
+    unsafeAtomicUpdateRefs(repo, operations);
+    return planResult({
       changed: true,
-      previous_plan_digest: previousPlan.digest,
-      plan_digest: plan.digest,
-      release_head: prepared.commit,
-      before,
-      after,
+      parsed,
+      planObject,
+      approval: {
+        oid: preparedApproval.commit,
+        receipt: rendered.receipt,
+      },
+      ref: ownerRef,
+      target,
+      head: nextHead,
+      retirements,
     });
   }
 
-  function recordTransition(options) {
-    const admittedOptions = exactOptions(
-      options,
-      ['scope', 'result', 'nextStatus'],
-      ['workId', 'handoffs'],
-      'recordTransition',
+  function appendReceipt(rawOptions) {
+    const input = exactOptions(
+      rawOptions,
+      ['release', 'role', 'result', 'summary'],
+      ['slice', 'detail', 'candidate', 'checkResults'],
+      'appendReceipt',
     );
-    const {
-      scope,
-      workId,
-      result,
-      nextStatus,
-      handoffs: callerHandoffs,
-    } = admittedOptions;
-    if (!['work', 'assembly'].includes(scope) || !ORDINARY_RESULTS.has(result)) {
-      fail('INVALID_ACTION_INPUT', 'recordTransition accepts only ordinary work/assembly results');
-    }
-    const hasWorkId = Object.hasOwn(admittedOptions, 'workId');
-    if (
-      (scope === 'work' && (!hasWorkId || typeof workId !== 'string'))
-      || (scope === 'assembly' && hasWorkId)
-    ) {
+    const release = identity(input.release, 'release');
+    const role = text(input.role, 'role', 16);
+    const result = text(input.result, 'result', 16);
+    const summary = text(input.summary, 'summary', MAX_SUMMARY);
+    const detail = detailBytes(input.detail);
+    const sliceID = Object.hasOwn(input, 'slice')
+      ? identity(input.slice, 'slice')
+      : null;
+    const candidate = Object.hasOwn(input, 'candidate')
+      ? objectID(input.candidate, 'candidate')
+      : null;
+    const evidenceRequired = (
+      (role === 'implementer' && result === 'candidate')
+      || role === 'verifier'
+    );
+    if (Object.hasOwn(input, 'checkResults') !== evidenceRequired) {
       fail(
         'INVALID_ACTION_INPUT',
-        'work transitions require one string workId; assembly transitions forbid workId',
+        evidenceRequired
+          ? `${role}/${result} requires checkResults`
+          : `${role}/${result} does not accept checkResults`,
       );
     }
-    const handoffs = snapshotHandoffs(callerHandoffs);
-    if (scope === 'assembly' && Object.hasOwn(handoffs, 'design')) {
-      fail('INVALID_HANDOFF', 'assembly transitions cannot carry a design handoff');
-    }
-    const next = canonicalStatus(nextStatus, plan);
-    let workContext;
-    if (scope === 'work') {
-      workContext = allPlannedWork(plan).find(({ work }) => work.id === workId);
-      if (!workContext) fail('UNKNOWN_WORK', `plan has no work ${workId}`);
-      validateWorkStatusIdentity(next, plan, workContext.track, workContext.work);
-    }
-    const before = captureRefSnapshot(repo, plan);
-    const records = readAuthoritativeRecordSnapshot(
-      repo,
-      plan,
-      before,
-      { recordRootAdmission: recordPathAdmission },
-    );
-    let selected;
-    let trackStatuses;
-    if (scope === 'work') {
-      trackStatuses = Object.fromEntries(workContext.track.work.map((work) => {
-        const authoritative = selectAuthoritativeStatusFromSnapshot(plan, work.id, records);
-        if (work.id === workId) selected = authoritative;
-        return [work.id, authoritative.status];
-      }));
-    } else {
-      selected = selectAssemblyFromSnapshot(plan, records);
-    }
-    if (!selected) fail('AUTHORITATIVE_STATUS_MISSING', 'assembly has not been prepared');
-    const previous = selected.status;
-    if (scope === 'assembly') {
-      validateAssemblyStatus(repo, plan, previous, {
-        snapshot: before,
-        recordRootAdmission: productExclusionAdmission,
-      });
-      validateAssemblyStatus(repo, plan, next, {
-        snapshot: before,
-        recordRootAdmission: productExclusionAdmission,
-      });
-    }
-    if (isDeepStrictEqual(previous, next)) {
-      if (!resultMatchesDurableStatus(result, previous)) {
-        fail('INVALID_RECONCILIATION', `${result} does not match the durable post-state`);
-      }
-      if (result === 'NO_VERDICT') {
-        let previousWorkStatus = null;
-        if (scope === 'work') {
-          assertWorkMayAdvance(plan, trackStatuses, workContext.track.id, workId);
-          const workIndex = workContext.track.work.findIndex((work) => work.id === workId);
-          previousWorkStatus = workIndex === 0
-            ? null
-            : selectAuthoritativeStatusFromSnapshot(
-              plan,
-              workContext.track.work[workIndex - 1].id,
-              records,
-            ).status;
-        }
-        validateAdmittedTransition(previous, next, result, {
-          previousAdmission: admit(previous),
-          nextAdmission: admit(next),
-          profile,
-        });
-        validateRetryHandoffs(repo, plan, previous, selected.head, handoffs);
-        if (scope === 'work' && previous.proof) {
-          validateWorkCandidateHistory(repo, plan, previous, previousWorkStatus, {
-            authorityHead: selected.head,
-            recordRootAdmission: productExclusionAdmission,
-          });
-        }
-        return receipt('recordTransition', {
-          changed: false,
-          scope,
-          work_id: workId ?? null,
-          result,
-          authority_ref: selected.ref,
-          commit: selected.head,
-          before,
-          after: before,
-        });
-      }
-      const parents = commitParents(repo, selected.head);
-      if (parents.length !== 1) {
-        fail('INVALID_RECONCILIATION', `${result} has no exact record predecessor`);
-      }
-      const predecessorSnapshot = deriveProspectiveRefSnapshot(plan, before, [{
-        ref: selected.ref,
-        head: parents[0],
-      }]);
-      const predecessorRecords = readAuthoritativeRecordSnapshot(
-        repo,
-        plan,
-        predecessorSnapshot,
-        { recordRootAdmission: recordPathAdmission },
-      );
-      let durablePrevious;
-      let previousWorkStatus = null;
-      if (scope === 'work') {
-        const predecessorTrackStatuses = Object.fromEntries(
-          workContext.track.work.map((work) => {
-            const authoritative = selectAuthoritativeStatusFromSnapshot(
-              plan,
-              work.id,
-              predecessorRecords,
-            );
-            if (work.id === workId) durablePrevious = authoritative;
-            return [work.id, authoritative.status];
-          }),
-        );
-        if (
-          durablePrevious?.ref !== selected.ref
-          || durablePrevious.head !== parents[0]
-        ) {
-          fail('INVALID_RECONCILIATION', `${result} predecessor has different authority`);
-        }
-        assertWorkMayAdvance(
-          plan,
-          predecessorTrackStatuses,
-          workContext.track.id,
-          workId,
-        );
-        const workIndex = workContext.track.work.findIndex((work) => work.id === workId);
-        previousWorkStatus = workIndex === 0
-          ? null
-          : selectAuthoritativeStatusFromSnapshot(
-            plan,
-            workContext.track.work[workIndex - 1].id,
-            predecessorRecords,
-          ).status;
-      } else {
-        durablePrevious = selectAssemblyFromSnapshot(plan, predecessorRecords);
-        if (
-          durablePrevious?.ref !== selected.ref
-          || durablePrevious.head !== parents[0]
-        ) {
-          fail('INVALID_RECONCILIATION', `${result} predecessor has different authority`);
-        }
-        validateAssemblyStatus(repo, plan, durablePrevious.status, {
-          snapshot: predecessorSnapshot,
-          recordRootAdmission: productExclusionAdmission,
-        });
-      }
-      validateAdmittedTransition(durablePrevious.status, previous, result, {
-        previousAdmission: admit(durablePrevious.status),
-        nextAdmission: admit(previous),
-        profile,
-      });
-      validateRetryHandoffs(repo, plan, previous, selected.head, handoffs);
-      if (scope === 'work' && previous.proof) {
-        validateWorkCandidateHistory(repo, plan, previous, previousWorkStatus, {
-          authorityHead: selected.head,
-          recordRootAdmission: productExclusionAdmission,
-        });
-      }
-      const replay = unsafePrepareRecordTransition(repo, {
-        expectedHead: parents[0],
-        message: `Record ${scope} ${workId ?? plan.metadata.release} ${result}`,
-        recordPathAdmission,
-        productExclusionAdmission,
-        changes: durableTransitionChanges(
-          repo,
-          plan,
-          durablePrevious.status,
-          previous,
-          selected.head,
-        ),
-      });
-      if (replay.commit !== selected.head) {
-        fail('INVALID_RECONCILIATION', `${result} does not match the exact Baton effect`);
-      }
-      return receipt('recordTransition', {
-        changed: false,
-        scope,
-        work_id: workId ?? null,
+    const checks = evidenceRequired
+      ? digestBytes(evidenceBytes(input.checkResults, 'checkResults'))
+      : null;
+    const state = stateFor(release);
+
+    let ownerRef;
+    let ownerHead;
+    let parent;
+    let receipt;
+    let current;
+    if (sliceID !== null) {
+      const slice = currentSlice(state, sliceID);
+      const location = slice.location;
+      const track = currentTrack(state, location.track.id);
+      ownerRef = track.ref;
+      ownerHead = track.head;
+      current = slice.current_receipt;
+      if (exactRetry(current, {
+        role,
         result,
-        authority_ref: selected.ref,
-        commit: selected.head,
-        before,
-        after: before,
-      });
-    }
-    if (scope === 'work') {
-      assertWorkMayAdvance(plan, trackStatuses, workContext.track.id, workId);
-    }
-    validateAdmittedTransition(previous, next, result, {
-      previousAdmission: admit(previous),
-      nextAdmission: admit(next),
-      profile,
-    });
-    const changes = {
-      ...handoffChanges(plan, previous, next, handoffs),
-      [scope === 'work'
-        ? workStatusPath(plan, workId)
-        : assemblyStatusPath(plan)]: statusBytes(next),
-    };
-    const prepared = unsafePrepareRecordTransition(repo, {
-      expectedHead: selected.head,
-      message: `Record ${scope} ${workId ?? plan.metadata.release} ${result}`,
-      recordPathAdmission,
-      productExclusionAdmission,
-      changes,
-    });
-    validateStatusHandoffsAtRef(repo, plan, next, prepared.commit);
-    if (scope === 'work') {
-      if (next.proof) {
-        const { track } = workContext;
-        const workIndex = track.work.findIndex((work) => work.id === workId);
-        const prior = workIndex === 0
-          ? null
-          : selectAuthoritativeStatusFromSnapshot(
-            plan,
-            track.work[workIndex - 1].id,
-            records,
-          ).status;
-        validateWorkCandidateHistory(repo, plan, next, prior, {
-          authorityHead: prepared.commit,
-          recordRootAdmission: productExclusionAdmission,
-        });
+        summary,
+        detail,
+        candidate,
+        checks,
+      })) {
+        return appendResult(false, ownerRef, current);
+      }
+      requireSlicePrerequisites(state, slice);
+
+      let attempt;
+      let binds;
+      const common = {
+        version: 1,
+        release,
+        slice: sliceID,
+        plan: state.plan.oid,
+        contract: state.plan.metadata.contracts[sliceID],
+        detail: digestBytes(Buffer.alloc(0)),
+        summary,
+      };
+      if (role === 'implementer' && result === 'designed') {
+        if (slice.next_role !== 'implementer' || slice.stage !== 'design') {
+          fail('ROLE_NOT_ELIGIBLE', `${sliceID} does not currently need an Implementer design`);
+        }
+        attempt = slice.attempt;
+        binds = current.oid;
+        receipt = { ...common, role, result, attempt, binds };
+        parent = ownerHead ?? state.refs.release.head;
+        if (
+          ownerHead !== null
+          && ownerHead !== current.oid
+          && current.receipt.role !== 'planner'
+        ) {
+          fail('CHANGED_OWNER_HEAD', `${ownerRef} changed after its authoritative receipt`);
+        }
+      } else if (role === 'captain' && ['proceed', 'revise', 'escalate'].includes(result)) {
+        if (slice.next_role !== 'captain') {
+          fail('ROLE_NOT_ELIGIBLE', `${sliceID} does not currently need Captain review`);
+        }
+        attempt = current.receipt.attempt;
+        binds = current.oid;
+        receipt = { ...common, role, result, attempt, binds };
+        parent = ownerHead;
+        if (ownerHead !== current.oid) {
+          fail('CHANGED_OWNER_HEAD', `${ownerRef} changed after its design receipt`);
+        }
+      } else if (role === 'implementer' && result === 'candidate') {
+        if (slice.next_role !== 'implementer' || slice.stage !== 'implement') {
+          fail('ROLE_NOT_ELIGIBLE', `${sliceID} does not currently need an implementation candidate`);
+        }
+        if (candidate === null || ownerHead !== candidate) {
+          fail('CHANGED_CANDIDATE', 'candidate must be the exact captured track head');
+        }
+        const identity = productTreeIdentity(
+          repo,
+          candidate,
+          admissions.productExclusionAdmission,
+        );
+        attempt = slice.attempt;
+        binds = current.oid;
+        receipt = {
+          ...common,
+          role,
+          result,
+          attempt,
+          binds,
+          candidate,
+          product_tree: identity.productTree,
+          inputs: slice.input_pins ?? {},
+          checks,
+        };
+        parent = candidate;
+      } else if (role === 'verifier' && ['pass', 'fail', 'blocked'].includes(result)) {
+        if (slice.next_role !== 'verifier') {
+          fail('ROLE_NOT_ELIGIBLE', `${sliceID} does not currently need verification`);
+        }
+        const evidence = current.receipt;
+        if (candidate === null || candidate !== evidence.candidate) {
+          fail('CHANGED_CANDIDATE', 'Verifier must bind the exact current candidate');
+        }
+        attempt = evidence.attempt;
+        binds = current.oid;
+        receipt = {
+          ...common,
+          role,
+          result,
+          attempt,
+          binds,
+          candidate,
+          product_tree: evidence.product_tree,
+          inputs: evidence.inputs,
+          checks,
+        };
+        parent = ownerHead;
+        if (ownerHead !== current.oid) {
+          fail('CHANGED_OWNER_HEAD', `${ownerRef} changed after its candidate receipt`);
+        }
+      } else {
+        fail('INVALID_ACTION_INPUT', `unsupported slice receipt ${role}/${result}`);
       }
     } else {
-      const prospective = deriveProspectiveRefSnapshot(plan, before, [{
-        ref: selected.ref,
-        head: prepared.commit,
-      }]);
-      validateAssemblyStatus(repo, plan, next, {
-        snapshot: prospective,
-        recordRootAdmission: productExclusionAdmission,
+      ownerRef = state.refs.release.ref;
+      ownerHead = state.refs.release.head;
+      current = state.assembly.current_receipt;
+      if (exactRetry(current, {
+        role,
+        result,
+        summary,
+        detail,
+        candidate,
+        checks,
+      })) {
+        return appendResult(false, ownerRef, current);
+      }
+      if (
+        role !== 'verifier'
+        || !['pass', 'fail', 'blocked'].includes(result)
+        || state.assembly.next_role !== 'verifier'
+      ) {
+        fail('ROLE_NOT_ELIGIBLE', 'the assembly does not currently need a Verifier verdict');
+      }
+      const evidence = state.assembly.candidate?.receipt;
+      if (!evidence || candidate === null || evidence.candidate !== candidate) {
+        fail('CHANGED_CANDIDATE', 'Verifier must bind the exact current assembly candidate');
+      }
+      receipt = {
+        version: 1,
+        release,
+        role,
+        result,
+        plan: state.plan.oid,
+        binds: state.assembly.candidate.oid,
+        detail: digestBytes(Buffer.alloc(0)),
+        summary,
+        candidate,
+        product_tree: evidence.product_tree,
+        inputs: evidence.inputs,
+        checks,
+      };
+      parent = ownerHead;
+      if (ownerHead !== state.assembly.current_receipt.oid) {
+        fail('CHANGED_OWNER_HEAD', `${ownerRef} changed after its assembly candidate receipt`);
+      }
+    }
+
+    const message = renderReceiptCommit({
+      subject: `baton(${release}${sliceID ? `/${sliceID}` : ''}): ${role} ${result}`,
+      detail,
+      receipt,
+    });
+    const prepared = unsafePrepareMetadataCommit(repo, {
+      expectedHead: parent,
+      message,
+    });
+    const operations = [];
+    if (ownerRef !== state.refs.release.ref) {
+      operations.push({
+        kind: 'verify',
+        ref: state.refs.release.ref,
+        expectedHead: state.refs.release.head,
       });
     }
-    unsafeAtomicUpdateRefs(repo, [
-      {
-        kind: 'update',
-        ref: selected.ref,
-        newHead: prepared.commit,
-        expectedHead: selected.head,
-      },
-      ...verifySnapshotOperations(before, new Set([selected.ref])),
-    ]);
-    const after = captureRefSnapshot(repo, plan);
-    assertExactHead(after, selected.ref, prepared.commit);
-    assertSameUnchangedRefs(before, after, selected.ref);
-    return receipt('recordTransition', {
-      changed: true,
-      scope,
-      work_id: workId ?? null,
-      result,
-      authority_ref: selected.ref,
-      commit: prepared.commit,
-      before,
-      after,
-    });
-  }
-
-  function materializeTrack(options) {
-    const { trackId } = exactOptions(options, ['trackId'], [], 'materializeTrack');
-    const track = findTrack(plan, trackId);
-    const before = captureRefSnapshot(repo, plan);
-    if (trackRefSnapshot(before, trackId).head !== null) {
-      const ownerHead = trackRefSnapshot(before, trackId).head;
-      if (before.release.head !== ownerHead) {
-        fail('INVALID_RECONCILIATION', `track ${trackId} is no longer at its exact materialization effect`);
-      }
-      const parents = commitParents(repo, ownerHead);
-      if (parents.length !== 1) {
-        fail('INVALID_RECONCILIATION', `track ${trackId} marker has no exact baseline parent`);
-      }
-      const predecessorSnapshot = deriveProspectiveRefSnapshot(plan, before, [
-        { ref: before.release.ref, head: parents[0] },
-        { ref: track.ref, head: null },
-      ]);
-      const predecessorRecords = readAuthoritativeRecordSnapshot(
-        repo,
-        plan,
-        predecessorSnapshot,
-        { recordRootAdmission: recordPathAdmission },
-      );
-      const currentRecords = readAuthoritativeRecordSnapshot(
-        repo,
-        plan,
-        before,
-        { recordRootAdmission: recordPathAdmission },
-      );
-      const previousStatuses = {};
-      const currentStatuses = {};
-      const evidenceAdmissions = {};
-      for (const work of track.work) {
-        const previous = selectAuthoritativeStatusFromSnapshot(
-          plan,
-          work.id,
-          predecessorRecords,
-        );
-        const selected = selectAuthoritativeStatusFromSnapshot(plan, work.id, currentRecords);
-        if (
-          previous.source !== 'baseline'
-          || selected.source !== 'owner'
-          || selected.head !== ownerHead
-        ) {
-          fail('INVALID_MATERIALIZATION', `track ${trackId} has advanced beyond its marker`);
-        }
-        previousStatuses[work.id] = previous.status;
-        currentStatuses[work.id] = selected.status;
-        evidenceAdmissions[work.id] = admit(previous.status);
-      }
-      const aggregate = validateTrackMaterializationTransition(
-        repo,
-        plan,
-        trackId,
-        previousStatuses,
-        currentStatuses,
-        {
-          beforeSnapshot: predecessorSnapshot,
-          afterSnapshot: before,
-          recordRootAdmission: recordPathAdmission,
-          evidenceAdmissions,
-          profile,
+    operations.push(
+      ownerHead === null
+        ? { kind: 'create', ref: ownerRef, newHead: prepared.commit }
+        : {
+          kind: 'update',
+          ref: ownerRef,
+          newHead: prepared.commit,
+          expectedHead: ownerHead,
         },
-      );
-      const replay = unsafePrepareRecordTransition(repo, {
-        expectedHead: parents[0],
-        message: `Materialize Baton track ${trackId}`,
-        recordPathAdmission,
-        productExclusionAdmission,
-        changes: Object.fromEntries(track.work.map((work) => [
-          workStatusPath(plan, work.id),
-          statusBytes(currentStatuses[work.id]),
-        ])),
-      });
-      if (replay.commit !== ownerHead) {
-        fail('INVALID_RECONCILIATION', `track ${trackId} marker is not the exact Baton effect`);
-      }
-      return receipt('materializeTrack', {
-        changed: false,
-        ...aggregate,
-        before,
-        after: before,
-      });
-    }
-    const records = readAuthoritativeRecordSnapshot(
-      repo,
-      plan,
-      before,
-      { recordRootAdmission: recordPathAdmission },
     );
-    const previousStatuses = {};
-    const nextStatuses = {};
-    const evidenceAdmissions = {};
-    const materialization = expectedTrackMaterialization(repo, plan, trackId, before);
-    for (const work of track.work) {
-      const selected = selectAuthoritativeStatusFromSnapshot(plan, work.id, records);
-      if (selected.source !== 'baseline') {
-        fail('INVALID_MATERIALIZATION', `work ${work.id} is not one release baseline`);
-      }
-      const previous = selected.status;
-      const next = structuredClone(previous);
-      next.authority_ref = track.ref;
-      next.materialization = materialization;
-      const canonical = canonicalStatus(next, plan);
-      unsafeValidateTransition(previous, canonical, 'MATERIALIZE');
-      previousStatuses[work.id] = previous;
-      nextStatuses[work.id] = canonical;
-      evidenceAdmissions[work.id] = admit(previous);
-    }
-    const prepared = unsafePrepareRecordTransition(repo, {
-      expectedHead: before.release.head,
-      message: `Materialize Baton track ${trackId}`,
-      recordPathAdmission,
-      productExclusionAdmission,
-      changes: Object.fromEntries(track.work.map((work) => [
-        workStatusPath(plan, work.id),
-        statusBytes(nextStatuses[work.id]),
-      ])),
-    });
-    const prospective = deriveProspectiveRefSnapshot(plan, before, [
-      { ref: before.release.ref, head: prepared.commit },
-      { ref: track.ref, head: prepared.commit },
-    ]);
-    const aggregate = validateTrackMaterializationTransition(
-      repo,
-      plan,
-      trackId,
-      previousStatuses,
-      nextStatuses,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: prospective,
-        recordRootAdmission: recordPathAdmission,
-        evidenceAdmissions,
-        profile,
-      },
+    unsafeAtomicUpdateRefs(repo, operations);
+    return appendResult(
+      true,
+      ownerRef,
+      actionEntry(prepared.commit, parent, message),
     );
-    unsafeAtomicUpdateRefs(repo, [
-      {
-        kind: 'update',
-        ref: before.release.ref,
-        newHead: prepared.commit,
-        expectedHead: before.release.head,
-      },
-      {
-        kind: 'create',
-        ref: track.ref,
-        newHead: prepared.commit,
-      },
-      ...verifySnapshotOperations(before, new Set([before.release.ref, track.ref])),
-    ]);
-    const after = captureRefSnapshot(repo, plan);
-    assertExactHead(after, before.release.ref, prepared.commit);
-    assertExactHead(after, track.ref, prepared.commit);
-    validateTrackMaterializationTransition(
-      repo,
-      plan,
-      trackId,
-      previousStatuses,
-      nextStatuses,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: after,
-        recordRootAdmission: recordPathAdmission,
-        evidenceAdmissions,
-        profile,
-      },
-    );
-    return receipt('materializeTrack', {
-      changed: true,
-      ...aggregate,
-      before,
-      after,
-    });
   }
 
-  function composeTrack(options) {
-    const { trackId } = exactOptions(options, ['trackId'], [], 'composeTrack');
-    const track = findTrack(plan, trackId);
-    const before = captureRefSnapshot(repo, plan);
-    const frozenTrackHead = trackRefSnapshot(before, trackId).head;
-    if (frozenTrackHead === null) {
-      fail('AUTHORITATIVE_STATUS_MISSING', `track ${trackId} is not materialized`);
-    }
-    const records = readAuthoritativeRecordSnapshot(
-      repo,
-      plan,
-      before,
-      { recordRootAdmission: recordPathAdmission },
-    );
-    const previousStatuses = {};
-    const evidenceAdmissions = {};
-    const selections = track.work.map((work) => (
-      selectAuthoritativeStatusFromSnapshot(plan, work.id, records)
-    ));
-    if (selections.every((selected) => selected.source === 'composed')) {
-      const owner = records.refs.find((entry) => entry.track_id === track.id);
-      if (!owner || owner.head !== frozenTrackHead) {
-        fail('INVALID_AUTHORITY_TRANSFER', `track ${trackId} has no exact frozen owner`);
-      }
-      let expectedReleaseHead;
-      for (const [index, work] of track.work.entries()) {
-        const status = selections[index].status;
-        if (
-          status.stage !== 'merge'
-          || status.status !== 'complete'
-          || status.merge?.scope !== 'track'
-          || status.merge.frozen_track_head !== frozenTrackHead
-        ) {
-          fail('INVALID_AUTHORITY_TRANSFER', `work ${work.id} has a divergent transfer`);
-        }
-        if (
-          expectedReleaseHead !== undefined
-          && expectedReleaseHead !== status.merge.expected_target
-        ) {
-          fail('INVALID_AUTHORITY_TRANSFER', `track ${trackId} has inconsistent transfer bindings`);
-        }
-        expectedReleaseHead = status.merge.expected_target;
-        const previous = owner.statuses.find((entry) => entry.work_id === work.id)?.status;
-        if (!previous) fail('AUTHORITATIVE_STATUS_MISSING', `owner lacks ${work.id}`);
-        previousStatuses[work.id] = previous;
-        evidenceAdmissions[work.id] = admit(previous);
-      }
-      const originalBefore = deriveProspectiveRefSnapshot(plan, before, [{
-        ref: before.release.ref,
-        head: expectedReleaseHead,
-      }]);
-      const composedStatuses = Object.fromEntries(track.work.map((work, index) => [
-        work.id,
-        selections[index].status,
-      ]));
-      const aggregate = validateTrackCompositionTransition(
-        repo,
-        plan,
-        trackId,
-        previousStatuses,
-        composedStatuses,
-        {
-          beforeSnapshot: originalBefore,
-          afterSnapshot: before,
-          recordRootAdmission: productExclusionAdmission,
-          evidenceAdmissions,
-          profile,
-        },
-      );
-      const composition = unsafePrepareExactComposition(repo, {
-        targetRef: plan.metadata.release_ref,
-        expectedHead: expectedReleaseHead,
-        candidate: frozenTrackHead,
-        productExclusionAdmission,
-      });
-      if (composition.result !== aggregate.composition_commit) {
-        fail('INVALID_RECONCILIATION', `track ${trackId} composition is not the exact Baton effect`);
-      }
-      const transfer = unsafePrepareRecordTransition(repo, {
-        expectedHead: composition.result,
-        message: `Transfer composed Baton track ${trackId}`,
-        recordPathAdmission,
-        productExclusionAdmission,
-        changes: Object.fromEntries(track.work.map((work) => [
-          workStatusPath(plan, work.id),
-          statusBytes(composedStatuses[work.id]),
-        ])),
-      });
-      if (transfer.commit !== before.release.head) {
-        fail('INVALID_RECONCILIATION', `track ${trackId} transfer is not the exact Baton effect`);
-      }
-      return receipt('composeTrack', {
-        changed: false,
-        ...aggregate,
-        before,
-        after: before,
-      });
-    }
-    if (selections.some((selected) => selected.source === 'composed')) {
-      fail('PARTIAL_TRACK_TRANSFER', `track ${trackId} is only partially transferred`);
-    }
-    for (const work of track.work) {
-      const selected = selections[track.work.findIndex((entry) => entry.id === work.id)];
-      if (selected.source !== 'owner' || selected.head !== frozenTrackHead) {
-        fail('INVALID_AUTHORITY_TRANSFER', `work ${work.id} is not owned by ${trackId}`);
-      }
-      previousStatuses[work.id] = selected.status;
-      evidenceAdmissions[work.id] = admit(selected.status);
-    }
-    const composition = unsafePrepareExactComposition(repo, {
-      targetRef: plan.metadata.release_ref,
-      expectedHead: before.release.head,
-      candidate: frozenTrackHead,
-      productExclusionAdmission,
-    });
-    const nextStatuses = Object.fromEntries(track.work.map((work) => [
-      work.id,
-      mergedWorkStatus(
-        previousStatuses[work.id],
-        plan,
-        frozenTrackHead,
-        before.release.head,
-        composition.result,
-      ),
-    ]));
-    const transfer = unsafePrepareRecordTransition(repo, {
-      expectedHead: composition.result,
-      message: `Transfer composed Baton track ${trackId}`,
-      recordPathAdmission,
-      productExclusionAdmission,
-      changes: Object.fromEntries(track.work.map((work) => [
-        workStatusPath(plan, work.id),
-        statusBytes(nextStatuses[work.id]),
-      ])),
-    });
-    const prospective = deriveProspectiveRefSnapshot(plan, before, [{
-      ref: before.release.ref,
-      head: transfer.commit,
-    }]);
-    const aggregate = validateTrackCompositionTransition(
-      repo,
-      plan,
-      trackId,
-      previousStatuses,
-      nextStatuses,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: prospective,
-        recordRootAdmission: productExclusionAdmission,
-        evidenceAdmissions,
-        profile,
-      },
-    );
-    unsafeAtomicUpdateRefs(repo, [
-      {
-        kind: 'update',
-        ref: before.release.ref,
-        newHead: transfer.commit,
-        expectedHead: before.release.head,
-      },
-      ...verifySnapshotOperations(before, new Set([before.release.ref])),
-    ]);
-    const after = captureRefSnapshot(repo, plan);
-    assertExactHead(after, before.release.ref, transfer.commit);
-    validateTrackCompositionTransition(
-      repo,
-      plan,
-      trackId,
-      previousStatuses,
-      nextStatuses,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: after,
-        recordRootAdmission: productExclusionAdmission,
-        evidenceAdmissions,
-        profile,
-      },
-    );
-    return receipt('composeTrack', {
-      changed: true,
-      ...aggregate,
-      before,
-      after,
-    });
-  }
-
-  function prepareAssembly(options) {
-    const {
-      proofBytes,
-      producerInvocation,
-    } = exactOptions(
-      options,
-      ['proofBytes', 'producerInvocation'],
-      [],
+  function prepareAssembly(rawOptions) {
+    const input = exactOptions(
+      rawOptions,
+      ['release', 'summary'],
+      ['detail', 'checkResults'],
       'prepareAssembly',
     );
-    if (typeof producerInvocation !== 'string') {
-      fail('INVALID_ACTION_INPUT', 'prepareAssembly producerInvocation must be a string');
-    }
-    const exactProofBytes = Buffer.isBuffer(proofBytes)
-      ? Buffer.from(proofBytes)
-      : typeof proofBytes === 'string'
-        ? Buffer.from(proofBytes)
-        : null;
-    if (!exactProofBytes) fail('INVALID_ACTION_INPUT', 'prepareAssembly proofBytes must be bytes or text');
-    const before = captureRefSnapshot(repo, plan);
-    const records = readAuthoritativeRecordSnapshot(
-      repo,
-      plan,
-      before,
-      { recordRootAdmission: recordPathAdmission },
-    );
-    const existingAssembly = selectAssemblyFromSnapshot(plan, records);
-    if (existingAssembly !== null) {
-      const status = existingAssembly.status;
-      if (
-        statusProjection(status) !== 'verify/ready/verifier'
-        || status.outcome !== 'none'
-        || status.proof?.digest !== digestBytes(exactProofBytes)
-        || status.proof?.producer_invocation !== producerInvocation
-        || status.proof.base_commit !== status.proof.candidate_commit
-      ) {
-        fail('ASSEMBLY_ALREADY_PREPARED', 'assembly exists with a different or advanced durable state');
-      }
-      const evidenceAdmission = admit(status);
-      const originalBefore = deriveProspectiveRefSnapshot(plan, before, [{
-        ref: before.release.ref,
-        head: status.proof.candidate_commit,
-      }]);
-      const aggregate = validateAssemblyPreparationTransition(
-        repo,
-        plan,
-        status,
-        {
-          beforeSnapshot: originalBefore,
-          afterSnapshot: before,
-          recordRootAdmission: productExclusionAdmission,
-          evidenceAdmission,
-          profile,
-        },
+    const release = identity(input.release, 'release');
+    const summary = text(input.summary, 'summary', MAX_SUMMARY);
+    const detail = detailBytes(input.detail);
+    const state = stateFor(release);
+    if (state.plan.target_stale) {
+      fail(
+        'TARGET_MOVED',
+        `the target moved from ${state.plan.approval.receipt.target} `
+          + `to ${state.refs.target.head}; revise and reapprove the plan`,
       );
-      const replay = unsafePrepareRecordTransition(repo, {
-        expectedHead: status.proof.candidate_commit,
-        message: `Prepare Baton assembly ${plan.metadata.release}`,
-        recordPathAdmission,
-        productExclusionAdmission,
-        changes: {
-          [assemblyProofPath(plan)]: exactProofBytes,
-          [assemblyStatusPath(plan)]: statusBytes(status),
-        },
-      });
-      if (replay.commit !== before.release.head) {
-        fail('INVALID_RECONCILIATION', 'assembly preparation is not the exact Baton effect');
-      }
-      return receipt('prepareAssembly', {
-        changed: false,
-        ...aggregate,
-        before,
-        after: before,
-      });
     }
-    const firstWork = allPlannedWork(plan)[0].work.id;
-    const approvalDigest = selectAuthoritativeStatusFromSnapshot(
-      plan,
-      firstWork,
-      records,
-    ).status.plan.approval.digest;
-    const candidate = before.release.head;
-    const identity = productTreeIdentity(repo, candidate, productExclusionAdmission);
-    const status = canonicalStatus({
-      $schema: STATUS_SCHEMA,
-      schema_version: STATUS_VERSION,
-      kind: 'assembly',
-      release: plan.metadata.release,
-      owner_ref: plan.metadata.release_ref,
-      authority_ref: plan.metadata.release_ref,
-      target_ref: plan.metadata.target_ref,
-      plan: {
-        digest: plan.digest,
-        approval: {
-          ref: plan.metadata.approval_ref,
-          digest: approvalDigest,
-        },
-      },
-      stage: 'verify',
-      status: 'ready',
-      next_role: 'verifier',
-      outcome: 'none',
-      proof: {
-        digest: digestBytes(exactProofBytes),
-        producer_invocation: producerInvocation,
-        repository: plan.metadata.repository,
-        base_commit: candidate,
-        candidate_commit: candidate,
-        candidate_tree: identity.candidateTree,
-        product_tree: identity.productTree,
-        plan_digest: plan.digest,
-        approval_digest: approvalDigest,
-        components: plan.metadata.tracks.map((track) => {
-          const head = trackRefSnapshot(before, track.id).head;
-          if (head === null) fail('INCOMPLETE_ASSEMBLY', `track ${track.id} has no owner head`);
-          return { track_id: track.id, head };
-        }),
-      },
-    }, plan);
-    const evidenceAdmission = admit(status);
-    const prepared = unsafePrepareRecordTransition(repo, {
-      expectedHead: before.release.head,
-      message: `Prepare Baton assembly ${plan.metadata.release}`,
-      recordPathAdmission,
-      productExclusionAdmission,
-      changes: {
-        [assemblyProofPath(plan)]: exactProofBytes,
-        [assemblyStatusPath(plan)]: statusBytes(status),
-      },
-    });
-    const prospective = deriveProspectiveRefSnapshot(plan, before, [{
-      ref: before.release.ref,
-      head: prepared.commit,
-    }]);
-    const aggregate = validateAssemblyPreparationTransition(
-      repo,
-      plan,
-      status,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: prospective,
-        recordRootAdmission: productExclusionAdmission,
-        evidenceAdmission,
-        profile,
-      },
-    );
-    unsafeAtomicUpdateRefs(repo, [
-      {
-        kind: 'update',
-        ref: before.release.ref,
-        newHead: prepared.commit,
-        expectedHead: before.release.head,
-      },
-      ...verifySnapshotOperations(before, new Set([before.release.ref])),
-    ]);
-    const after = captureRefSnapshot(repo, plan);
-    assertExactHead(after, before.release.ref, prepared.commit);
-    validateAssemblyPreparationTransition(
-      repo,
-      plan,
-      status,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: after,
-        recordRootAdmission: productExclusionAdmission,
-        evidenceAdmission,
-        profile,
-      },
-    );
-    return receipt('prepareAssembly', {
-      changed: true,
-      ...aggregate,
-      before,
-      after,
-    });
-  }
+    for (const slice of state.slices) {
+      if (!slice.pass) {
+        fail('SLICE_PASS_REQUIRED', `${slice.location.slice.id} has no current PASS`);
+      }
+    }
 
-  function integrateRelease(options) {
-    exactOptions(options, [], [], 'integrateRelease');
-    const before = captureRefSnapshot(repo, plan);
-    const records = readAuthoritativeRecordSnapshot(
-      repo,
-      plan,
-      before,
-      { recordRootAdmission: recordPathAdmission },
-    );
-    const selected = selectAssemblyFromSnapshot(plan, records);
-    if (!selected) fail('AUTHORITATIVE_STATUS_MISSING', 'assembly has not been prepared');
-    const previous = selected.status;
-    if (statusProjection(previous) === 'merge/complete/none' && previous.outcome === 'merged') {
-      if (before.target.head !== previous.merge?.result_commit) {
-        fail('ACTION_EFFECT_MISMATCH', 'terminal assembly does not match the current target');
+    const trackCandidates = [];
+    for (const track of state.tracks) {
+      const finalPass = track.slices.at(-1)?.pass;
+      if (!finalPass) fail('SLICE_PASS_REQUIRED', `track ${track.id} has no final PASS`);
+      for (const slice of track.slices) {
+        if (!isAncestor(repo, slice.pass.receipt.candidate, finalPass.receipt.candidate)) {
+          fail('INVALID_TRACK_TOPOLOGY', `track ${track.id} candidates are not one serial lineage`);
+        }
       }
-      const parents = commitParents(repo, before.release.head);
-      if (parents.length !== 1) {
-        fail('UNEXPECTED_RECORD_TRANSITION', 'terminal assembly status has no exact predecessor');
-      }
-      const prior = parseStatusBytes(
-        readFileAtOID(repo, parents[0], assemblyStatusPath(plan)),
-        {
-          planDigest: plan.digest,
-          approvalRef: plan.metadata.approval_ref,
-        },
-      );
-      const originalBefore = deriveProspectiveRefSnapshot(plan, before, [
-        { ref: before.target.ref, head: previous.merge.expected_target },
-        { ref: before.release.ref, head: parents[0] },
-      ]);
-      const aggregate = validateAssemblyMergeTransition(
-        repo,
-        plan,
-        prior,
-        previous,
-        {
-          beforeSnapshot: originalBefore,
-          afterSnapshot: before,
-          recordRootAdmission: productExclusionAdmission,
-          evidenceAdmission: admit(prior),
-          profile,
-        },
-      );
-      const integration = unsafePrepareExactComposition(repo, {
-        targetRef: plan.metadata.target_ref,
-        expectedHead: previous.merge.expected_target,
-        candidate: prior.proof.candidate_commit,
-        productExclusionAdmission,
-      });
-      if (
-        integration.result !== previous.merge.result_commit
-        || integration.result !== before.target.head
-      ) {
-        fail('INVALID_RECONCILIATION', 'release integration is not the exact Baton effect');
-      }
-      const finalStatus = unsafePrepareRecordTransition(repo, {
-        expectedHead: parents[0],
-        message: `Integrate Baton release ${plan.metadata.release}`,
-        recordPathAdmission,
-        productExclusionAdmission,
-        changes: {
-          [assemblyStatusPath(plan)]: statusBytes(previous),
-        },
-      });
-      if (finalStatus.commit !== before.release.head) {
-        fail('INVALID_RECONCILIATION', 'release status is not the exact Baton effect');
-      }
-      return receipt('integrateRelease', {
-        changed: false,
-        ...aggregate,
-        before,
-        after: before,
+      trackCandidates.push({
+        id: track.id,
+        candidate: finalPass.receipt.candidate,
+        product_tree: finalPass.receipt.product_tree,
       });
     }
-    const evidenceAdmission = admit(previous);
-    validateAssemblyStatus(repo, plan, previous, {
-      snapshot: before,
-      recordRootAdmission: productExclusionAdmission,
-    });
-    const integration = unsafePrepareExactComposition(repo, {
-      targetRef: plan.metadata.target_ref,
-      expectedHead: before.target.head,
-      candidate: previous.proof.candidate_commit,
-      productExclusionAdmission,
-    });
-    const next = mergedAssemblyStatus(
-      previous,
-      plan,
-      before.target.head,
-      integration.result,
+    const inputs = Object.fromEntries(
+      trackCandidates.map((track) => [track.id, track.product_tree]),
     );
-    unsafeValidateTransition(previous, next, 'MERGED');
-    const finalStatus = unsafePrepareRecordTransition(repo, {
-      expectedHead: before.release.head,
-      message: `Integrate Baton release ${plan.metadata.release}`,
-      recordPathAdmission,
-      productExclusionAdmission,
-      changes: {
-        [assemblyStatusPath(plan)]: statusBytes(next),
-      },
-    });
-    const prospective = deriveProspectiveRefSnapshot(plan, before, [
-      { ref: before.target.ref, head: integration.result },
-      { ref: before.release.ref, head: finalStatus.commit },
-    ]);
-    const aggregate = validateAssemblyMergeTransition(
+    const target = state.refs.target.head;
+    if (
+      trackCandidates.length === 1
+      && isAncestor(repo, target, trackCandidates[0].candidate)
+    ) {
+      return receiptResult('prepareAssembly', false, {
+        release,
+        direct: true,
+        candidate: trackCandidates[0].candidate,
+        inputs,
+        receipt_commit: state.tracks[0].slices.at(-1).pass.oid,
+      });
+    }
+    const existing = state.assembly.candidate;
+    if (
+      existing
+      && existing.receipt.target === target
+      && sameInputs(existing.receipt.inputs, inputs)
+    ) {
+      return receiptResult('prepareAssembly', false, {
+        release,
+        direct: false,
+        candidate: existing.receipt.candidate,
+        inputs,
+        receipt_commit: existing.oid,
+      });
+    }
+
+    let candidate = target;
+    for (const component of [state.refs.release.head, ...trackCandidates.map((item) => item.candidate)]) {
+      if (component === candidate || isAncestor(repo, component, candidate)) continue;
+      const prepared = unsafePrepareExactComposition(repo, {
+        targetRef: state.refs.target.ref,
+        expectedHead: candidate,
+        candidate: component,
+        productExclusionAdmission: admissions.productExclusionAdmission,
+      });
+      candidate = prepared.result;
+    }
+    const productIdentity = productTreeIdentity(
       repo,
-      plan,
-      previous,
-      next,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: prospective,
-        recordRootAdmission: productExclusionAdmission,
-        evidenceAdmission,
-        profile,
-      },
+      candidate,
+      admissions.productExclusionAdmission,
     );
+    const checks = Object.hasOwn(input, 'checkResults')
+      ? digestBytes(evidenceBytes(input.checkResults, 'checkResults'))
+      : digestBytes(Buffer.from(canonicalJSON(inputs)));
+    const binds = state.assembly.current_receipt?.oid ?? state.plan.approval_oid;
+    const receipt = {
+      version: 1,
+      release,
+      role: 'implementer',
+      result: 'candidate',
+      plan: state.plan.oid,
+      binds,
+      detail: digestBytes(Buffer.alloc(0)),
+      summary,
+      target,
+      base: target,
+      candidate,
+      product_tree: productIdentity.productTree,
+      inputs,
+      checks,
+    };
+    const message = renderReceiptCommit({
+      subject: `baton(${release}): assembly candidate`,
+      detail,
+      receipt,
+    });
+    const prepared = unsafePrepareMetadataCommit(repo, {
+      expectedHead: candidate,
+      message,
+    });
     unsafeAtomicUpdateRefs(repo, [
       {
-        kind: 'update',
-        ref: before.target.ref,
-        newHead: integration.result,
-        expectedHead: before.target.head,
-      },
-      {
-        kind: 'update',
-        ref: before.release.ref,
-        newHead: finalStatus.commit,
-        expectedHead: before.release.head,
-      },
-      ...before.tracks.map((track) => ({
         kind: 'verify',
-        ref: track.ref,
-        expectedHead: track.head,
-      })),
-    ]);
-    const after = captureRefSnapshot(repo, plan);
-    assertExactHead(after, before.target.ref, integration.result);
-    assertExactHead(after, before.release.ref, finalStatus.commit);
-    validateAssemblyMergeTransition(
-      repo,
-      plan,
-      previous,
-      next,
-      {
-        beforeSnapshot: before,
-        afterSnapshot: after,
-        recordRootAdmission: productExclusionAdmission,
-        evidenceAdmission,
-        profile,
+        ref: state.refs.target.ref,
+        expectedHead: target,
       },
-    );
-    return receipt('integrateRelease', {
-      changed: true,
-      ...aggregate,
-      before,
-      after,
+      {
+        kind: 'update',
+        ref: state.refs.release.ref,
+        newHead: prepared.commit,
+        expectedHead: state.refs.release.head,
+      },
+    ]);
+    const entry = actionEntry(prepared.commit, candidate, message);
+    return receiptResult('prepareAssembly', true, {
+      release,
+      direct: false,
+      candidate,
+      inputs,
+      receipt_commit: prepared.commit,
+      receipt: entry.receipt,
     });
   }
 
-  return frozen({
-    installApprovedPlan,
-    reboundPristinePlan,
-    recordTransition,
-    materializeTrack,
-    composeTrack,
+  function mergePassedCandidate(rawOptions) {
+    const input = exactOptions(
+      rawOptions,
+      ['release', 'summary'],
+      ['detail'],
+      'mergePassedCandidate',
+    );
+    const release = identity(input.release, 'release');
+    const summary = text(input.summary, 'summary', MAX_SUMMARY);
+    const detail = detailBytes(input.detail);
+    const state = stateFor(release);
+    if (state.assembly.outcome === 'merged') {
+      return receiptResult('mergePassedCandidate', false, {
+        release,
+        candidate: state.assembly.candidate.receipt.candidate,
+        target: state.refs.target.ref,
+        result_commit: state.assembly.result_commit,
+        receipt_commit: state.assembly.current_receipt.oid,
+        receipt: state.assembly.current_receipt.receipt,
+      });
+    }
+    if (state.plan.target_stale) {
+      fail(
+        'TARGET_MOVED',
+        `the target moved from ${state.plan.approval.receipt.target} `
+          + `to ${state.refs.target.head}; revise and reapprove the plan`,
+      );
+    }
+
+    let passed;
+    if (state.assembly.pass) {
+      passed = state.assembly.pass;
+    } else if (state.tracks.length === 1) {
+      const finalPass = state.tracks[0].slices.at(-1)?.pass;
+      if (
+        finalPass
+        && isAncestor(repo, state.refs.target.head, finalPass.receipt.candidate)
+      ) {
+        passed = finalPass;
+      }
+    }
+    if (!passed) {
+      fail('ASSEMBLY_PASS_REQUIRED', 'the current exact candidate has no applicable PASS');
+    }
+    const candidate = passed.receipt.candidate;
+    const prepared = unsafePrepareExactComposition(repo, {
+      targetRef: state.refs.target.ref,
+      expectedHead: state.refs.target.head,
+      candidate,
+      productExclusionAdmission: admissions.productExclusionAdmission,
+    });
+    const productIdentity = productTreeIdentity(
+      repo,
+      prepared.result,
+      admissions.productExclusionAdmission,
+    );
+    const receipt = {
+      version: 1,
+      release,
+      role: 'merge',
+      result: 'merged',
+      plan: state.plan.oid,
+      binds: passed.oid,
+      detail: digestBytes(Buffer.alloc(0)),
+      summary,
+      target: state.refs.target.head,
+      candidate,
+      product_tree: productIdentity.productTree,
+      result_commit: prepared.result,
+    };
+    const message = renderReceiptCommit({
+      subject: `baton(${release}): merge passed candidate`,
+      detail,
+      receipt,
+    });
+    const preparedReceipt = unsafePrepareMetadataCommit(repo, {
+      expectedHead: state.refs.release.head,
+      message,
+    });
+    unsafeAtomicUpdateRefs(repo, [
+      {
+        kind: 'update',
+        ref: state.refs.target.ref,
+        newHead: prepared.result,
+        expectedHead: state.refs.target.head,
+      },
+      {
+        kind: 'update',
+        ref: state.refs.release.ref,
+        newHead: preparedReceipt.commit,
+        expectedHead: state.refs.release.head,
+      },
+    ]);
+    return receiptResult('mergePassedCandidate', true, {
+      release,
+      candidate,
+      target: state.refs.target.ref,
+      result_commit: prepared.result,
+      receipt_commit: preparedReceipt.commit,
+      receipt: parseReceiptCommitMessage(message).receipt,
+    });
+  }
+
+  return Object.freeze({
+    recordPlanRevision,
+    appendReceipt,
     prepareAssembly,
-    integrateRelease,
+    mergePassedCandidate,
   });
 }
+
+export const referenceNames = Object.freeze({
+  releaseRef,
+  trackRef,
+  planPath,
+});

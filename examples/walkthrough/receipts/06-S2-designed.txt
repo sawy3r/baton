@@ -1,0 +1,8 @@
+baton(S2): design attempt 1
+
+Baton-Detail-Begin
+Approach: add one runbook naming the retry key, safe retry, and stop condition.
+Evidence: run link and required-section checks.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"b614893f77b74f188230f37cdd5698b122abca3e","contract":"sha256:8811b98b0635ec64fcd8ed8b35ade5763c46e7392a42a493e1b57a50a9f3d6ac","detail":"sha256:3b701dc3989e0298675a241cd2533b80bf790c580b6d6201ef5d313221b17c1b","plan":"b614893f77b74f188230f37cdd5698b122abca3e","release":"checkout-recovery","result":"designed","role":"implementer","slice":"S2","summary":"S2 has a bounded operator-runbook design.","version":1}

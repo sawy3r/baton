@@ -1,0 +1,7 @@
+baton(assembly): verifier pass
+
+Baton-Detail-Begin
+Fresh assembly verification covered both acceptance outcomes and the exact track input pins.
+Baton-Detail-End
+
+Baton-Receipt: {"binds":"7777777777777777777777777777777777777777","candidate":"7777777777777777777777777777777777777777","checks":"sha256:8888888888888888888888888888888888888888888888888888888888888888","detail":"sha256:e7d2cd76f55df6fb6dd09c9eecb2ffe2d91dc4922108f2f1452c104a40863426","inputs":{"T1":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","T2":"sha256:3333333333333333333333333333333333333333333333333333333333333333"},"plan":"b614893f77b74f188230f37cdd5698b122abca3e","product_tree":"sha256:9999999999999999999999999999999999999999999999999999999999999999","release":"checkout-recovery","result":"pass","role":"verifier","summary":"The exact assembly candidate satisfies the release plan.","target":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","version":1}

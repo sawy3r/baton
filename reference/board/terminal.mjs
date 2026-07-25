@@ -32,7 +32,6 @@ export function sanitizeTerminalText(value, max = MAX_TEXT) {
 function paint(enabled, color, value) {
   return enabled ? `${COLORS[color]}${value}${COLORS.reset}` : value;
 }
-
 function display(value, fallback = '\u2014') {
   if (value === null || value === undefined || value === '') return fallback;
   return sanitizeTerminalText(value);
@@ -66,8 +65,9 @@ function renderDiagnostic(lines, item, color) {
 
 function renderWork(lines, work, color) {
   const state = `${display(work.stage)} / ${display(work.status)} / ${display(work.next_role)}`;
+  const attempt = work.attempt === undefined ? '' : `  attempt=${display(work.attempt)}`;
   lines.push(
-    `    ${display(work.id)}  ${paint(color, stateColor(work.status), state)}  outcome=${display(work.outcome)}`,
+    `    ${display(work.id)}  ${paint(color, stateColor(work.status), state)}${attempt}  outcome=${display(work.outcome)}`,
   );
   lines.push(
     `      source ${display(work.source?.mode)} ${display(work.source?.ref)} @ ${display(work.source?.head)}`,
@@ -133,7 +133,6 @@ function colorEnabled(mode, isTTY) {
   }
   return mode === 'always' || (mode === 'auto' && isTTY === true);
 }
-
 export function renderTerminal(board, { color = 'auto', isTTY = false } = {}) {
   if (!board || board.schema_version !== BOARD_VERSION || !Array.isArray(board.releases)) {
     throw new TypeError(`board must be ${BOARD_VERSION}`);
@@ -157,7 +156,8 @@ export function renderTerminal(board, { color = 'auto', isTTY = false } = {}) {
         paint(useColor, stateColor(release.status), display(release.status))
       }`,
     );
-    lines.push(`  plan ${display(release.plan_digest)}`);
+    const revision = release.plan_revision === undefined ? '' : ` r${display(release.plan_revision)}`;
+    lines.push(`  plan${revision} ${display(release.plan_digest)}`);
     lines.push(`  release ${display(release.release_ref)} @ ${display(release.release_head)}`);
     lines.push(`  target  ${display(release.target_ref)} @ ${display(release.target_head)}`);
     for (const item of release.diagnostics ?? []) renderDiagnostic(lines, item, useColor);
@@ -177,7 +177,6 @@ export function renderTerminal(board, { color = 'auto', isTTY = false } = {}) {
 function usage() {
   return 'Usage: node reference/board/terminal.mjs [--color auto|always|never] < board.json\n';
 }
-
 function main(argv) {
   let color = 'auto';
   if (argv.length === 2 && argv[0] === '--color') {
@@ -189,17 +188,13 @@ function main(argv) {
   }
   try {
     const board = JSON.parse(readFileSync(0, 'utf8'));
-    process.stdout.write(renderTerminal(board, {
-      color,
-      isTTY: Boolean(process.stdout.isTTY),
-    }));
+    process.stdout.write(renderTerminal(board, { color, isTTY: Boolean(process.stdout.isTTY) }));
     process.exitCode = board.valid === false ? 2 : 0;
   } catch (error) {
     process.stderr.write(`${sanitizeTerminalText(error?.message ?? 'invalid board')}\n`);
     process.exitCode = error instanceof TypeError ? 64 : 2;
   }
 }
-
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv.slice(2));
 }

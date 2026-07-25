@@ -1,111 +1,108 @@
-# Install Baton RC3
+# Install Baton
 
-Baton installs the same protocol, records, operations, and local board for
-Claude Code and Codex. The host-specific files are thin Skills around identical
-canonical operation bytes.
+Baton installs the same protocol, five operations, compact receipt/state/action
+kit, and read-only terminal and browser board for Claude Code or Codex. It does
+not install Sworn, a driver, a model, provider credentials, or a background
+service.
 
-The installer does not contact a model provider, read credentials, or install a
-model. A clean install does not add or change a global instruction file; the
-exact Claude v0.16 migration removes only the audited legacy block described
-below. The installer needs only:
+## Before you install
 
-- Git;
-- Bash; and
-- Node.js 22 or 24.
+Use an exact reviewed Baton tag. Run the installer from that checkout and
+preview every action before approving it. The installers require Node.js 22 or
+24, Git, and a supported Linux or macOS user environment.
+
+Do not edit agent instruction files to install Baton. The only supported
+instruction-file mutation is the exact audited Claude v0.16 migration described
+below.
 
 ## Ask your agent to install it
 
-This is the easiest route. Open Claude Code or Codex and paste:
+The easiest route is to paste this into Claude Code or Codex:
 
 ```text
-Install Baton v1.0.0-rc.3 for this coding agent. Clone
-https://github.com/sawy3r/baton at that exact tag, read the root INSTALL.md,
-and install it for this tool—Claude Code or Codex—at user scope. Run the
-matching installer with --dry-run and show me the exact actions first. After I
-approve, run the same scope with --yes. Do not edit instruction files directly;
-only allow an instruction-file change made by the reviewed installer as part
-of its exact audited v0.16 migration. Do not install Sworn or a model, or read
-provider credentials. If this host is not supported, stop and tell me.
+Install Baton v1.0.0-rc.4 for me.
+
+Clone the exact v1.0.0-rc.4 tag from https://github.com/sawy3r/baton.git,
+read its INSTALL.md, and use the installer that matches this tool. Show me the
+user-scope dry-run first and wait for my approval before applying it. Do not
+edit my instruction files or install Sworn.
 ```
 
-The prompt pins the reviewed release and makes the dry-run the approval point.
-The ready-made RC3 installers support Claude Code and Codex. Baton itself is
-platform-agnostic, but the agent should not invent an unreviewed host adapter.
+The agent should stop after the dry-run. Approving that preview authorises the
+matching `--yes` install; it does not authorise unrelated changes.
 
 ## Install it yourself
 
-Clone Baton at `v1.0.0-rc.3`, run the commands below from that checkout, and
-preview every install before applying it.
-
-## User install
-
-A user install is available in every Git project unless that project has its
-own Baton install.
-
 ### Claude Code
+
+Preview and install at user scope:
 
 ```sh
 ./install-claude.sh --user --dry-run
 ./install-claude.sh --user --yes
 ```
 
-This writes the support package below
-`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/baton` and five launchers below the same
-configuration directory’s `skills/`.
+Or install into the current Git project:
+
+```sh
+./install-claude.sh --project --dry-run
+./install-claude.sh --project --yes
+```
+
+The default user paths are:
+
+```text
+~/.claude/skills/baton-*/
+~/.claude/baton/
+~/.claude/.baton-install/
+```
+
+Project scope uses:
+
+```text
+.claude/skills/baton-*/
+.claude/baton/
+.claude/.baton-install/
+```
 
 ### Codex
+
+Preview and install at user scope:
 
 ```sh
 ./install-codex.sh --user --dry-run
 ./install-codex.sh --user --yes
 ```
 
-This writes the support package below
-`${CODEX_HOME:-$HOME/.codex}/baton` and five launchers below
-`${AGENTS_HOME:-$HOME/.agents}/skills`.
-
-## Project install
-
-A project install is pinned inside one Git repository and wins over the user
-install when a Skill resolves its package. Pass any path inside the intended
-repository; the installer resolves the Git root.
-
-### Claude Code
+Or install into the current Git project:
 
 ```sh
-./install-claude.sh --project /path/to/repository --dry-run
-./install-claude.sh --project /path/to/repository --yes
+./install-codex.sh --project --dry-run
+./install-codex.sh --project --yes
 ```
 
-Managed files live in:
+The default user paths are:
 
 ```text
-.claude/baton/
-.claude/skills/baton-*/
-.claude/.baton-install/
+~/.agents/skills/baton-*/
+~/.codex/baton/
+~/.codex/.baton-install/
 ```
 
-### Codex
-
-```sh
-./install-codex.sh --project /path/to/repository --dry-run
-./install-codex.sh --project /path/to/repository --yes
-```
-
-Managed files live in:
+Project scope uses:
 
 ```text
-.codex/baton/
 .agents/skills/baton-*/
+.codex/baton/
 .codex/.baton-install/
 ```
 
-Commit a project install only if your repository intentionally vendors these
-generated files. Baton does not edit `.gitignore` for you.
+Commit a project install only when the repository intentionally vendors the
+generated package. Baton does not edit `.gitignore`.
 
 ## Use the operations
 
-Each host exposes the same five operations:
+Both tools expose the same operations:
 
 ```text
 baton-plan
@@ -115,161 +112,91 @@ baton-verify
 baton-merge
 ```
 
-In Claude Code, invoke a Skill as a slash command, for example:
-
-```text
-/baton-plan Plan release checkout-recovery in this repository.
-```
-
-In Codex, name the Skill in the request:
-
-```text
-$baton-plan Plan release checkout-recovery in this repository.
-```
-
-Free-form text supplies the operation inputs. The Skill resolves a valid
-project package first, then the host’s user package. Planning still needs
-external approval; invoking `baton-plan` cannot approve its own Plan.
+Free-form text supplies their inputs. Project packages take precedence over
+user packages. Invoking `baton-plan` can propose a plan but cannot approve it.
 
 The ordinary guided sequence is:
 
-1. `baton-plan` writes and admits the externally approved Plan.
-2. `baton-implement` writes one eligible work item’s design.
-3. `baton-design-review` records the distinct Captain decision.
-4. `baton-implement` builds the exact candidate and proof.
-5. A fresh, read-only `baton-verify` invocation records PASS, FAIL, or BLOCKED.
-6. `baton-merge` composes passed tracks, prepares assembly, and—after a fresh
-   assembly PASS—integrates the release.
+1. `baton-plan` proposes the applicable plan revision for external approval.
+2. `baton-implement` returns one eligible slice’s design TL;DR and stops.
+3. `baton-design-review` returns the distinct Captain decision.
+4. After `PROCEED`, `baton-implement` builds the candidate, runs required
+   checks, and returns observable evidence.
+5. A fresh, read-only `baton-verify` returns `PASS`, `FAIL`, or `BLOCKED`.
+6. `baton-merge` composes passed tracks, obtains fresh whole-product
+   verification, and integrates only the exact candidate covered by `PASS`.
 
-Independent tracks may advance together. Work inside one track stays serial.
-The board shows the next eligible operation; it does not run it.
+The surrounding tool or engine writes compact receipts for those boundaries.
+The role does not hand-author lifecycle records. A runtime failure produces no
+Baton verdict and may be retried without a new plan or slice identity.
 
 ## Use the board
 
-The JSON oracle reads local `refs/heads/release-wt/*` refs and their exact
-records:
+The reference board reads the repository’s committed plan, receipts, and Git
+facts. JSON, terminal, and WebUI views share one read-only projection and
+cannot advance delivery.
 
 ```sh
 node reference/board/oracle.mjs /path/to/repository
-```
 
-Pipe that projection to the terminal renderer:
-
-```sh
 node reference/board/oracle.mjs /path/to/repository \
   | node reference/board/terminal.mjs
-```
 
-Or start the local WebUI:
-
-```sh
 node reference/board/web.mjs /path/to/repository
 ```
 
-The server prints its loopback URL and defaults to
-`http://127.0.0.1:4177`. It accepts GET only. An installed package has the same
-programs below its support root; for example, the default Codex user paths are:
+The WebUI listens on loopback, defaults to `http://127.0.0.1:4177`, and accepts
+GET only.
+
+## Repeat, upgrade, rollback, and uninstall
+
+Every install owns an exact manifest. Repeating the same install is a no-op.
+An upgrade replaces only bytes owned by the previous Baton manifest and stops
+on a collision, modified managed file, symlink, unsupported layout, or changed
+instruction block.
+
+Preview rollback or uninstall before applying it:
 
 ```sh
-node "$HOME/.codex/baton/reference/board/oracle.mjs" /path/to/repository \
-  | node "$HOME/.codex/baton/reference/board/terminal.mjs"
-node "$HOME/.codex/baton/reference/board/web.mjs" /path/to/repository
-```
+./install-claude.sh --user --rollback --dry-run
+./install-claude.sh --user --rollback --yes
+./install-claude.sh --user --uninstall --dry-run
+./install-claude.sh --user --uninstall --yes
 
-JSON uses the projection contract `baton.board/v1`. It is deliberately not a
-second lifecycle schema or an action API.
-
-## Dry-run and confirmation
-
-`--dry-run` prints the exact intended actions and does not mutate the target.
-Without `--dry-run`, an interactive terminal asks for confirmation. Scripts and
-other non-interactive callers must pass `--yes` or `-y`; otherwise installation
-stops with `CONFIRMATION_REQUIRED`.
-
-Examples:
-
-```sh
-./install-codex.sh --project . --dry-run
-./install-codex.sh --project . --yes
-```
-
-Running the same installer again with identical managed bytes and manifest is a
-true no-op.
-
-## Exact Claude v0.16 migration
-
-Only a Claude **user** install can migrate Baton v0.16. The installer recognizes
-the exact audited v0.16 package: 79 known support files, eight known commands,
-and the exact legacy block at the end of `CLAUDE.md`.
-
-On an exact match, one transaction preserves preimages, installs RC3, removes
-only those known legacy commands and block, and leaves unrelated commands and
-the preceding instruction bytes unchanged. If any managed byte, path, or block
-differs, installation stops with `LEGACY_FINGERPRINT_MISMATCH` before mutation.
-The installer does not guess how to migrate a modified setup.
-
-This moves the local host package; it does not reinterpret old Baton delivery
-records as RC3 records.
-
-## Roll back or uninstall
-
-Every mutation records a private transaction and prints its ID. Preview and
-restore the most recent committed transaction:
-
-```sh
-./install-claude.sh --user --rollback latest --dry-run
-./install-claude.sh --user --rollback latest --yes
-```
-
-Or use the exact printed ID:
-
-```sh
-./install-codex.sh --project /path/to/repository \
-  --rollback 20260724T120000000Z-12345-abcdef123456 --yes
-```
-
-Preview and remove only Baton-owned support files and launchers:
-
-```sh
+./install-codex.sh --user --rollback --dry-run
+./install-codex.sh --user --rollback --yes
 ./install-codex.sh --user --uninstall --dry-run
 ./install-codex.sh --user --uninstall --yes
 ```
 
-Rollback and uninstall first verify the managed manifest, file digests, and
-absence of foreign content. They stop rather than delete a modified or unowned
-file.
+Use the matching `--project` scope for project installs. Rollback restores the
+last complete manifest snapshot. Uninstall removes only current Baton-owned
+paths.
 
-## Failure and recovery behavior
+## Exact Claude v0.16 migration
 
-The installer fails closed. Common errors include:
+The Claude user installer recognizes one audited Baton v0.16 installation:
+the known support package, eight legacy commands, and the exact trailing
+instruction block. A dry-run shows the migration. With `--yes`, the installer
+archives the owned bytes, removes only those known files and block, and installs
+the new package transactionally.
 
-- `PROJECT_NOT_GIT` — the project path is not in a Git repository;
-- `UNSAFE_ROOT`, `UNSAFE_OWNERSHIP`, or `SYMLINK_COMPONENT` — the target cannot
-  be changed safely;
-- `UNOWNED_COLLISION` — Baton would overwrite content it does not own;
-- `MODIFIED_OWNED_FILE` — an installed managed file no longer matches its
-  manifest;
-- `PACKAGE_MISMATCH` — checked-in generated bytes and package identity differ;
-  and
-- `ROLLBACK_NOT_FOUND` — the selected committed transaction does not exist.
+Any modified, missing, additional, symlinked, or differently placed managed
+byte makes that migration ineligible. The installer stops without guessing and
+does not touch unrelated commands or earlier instruction text.
 
-Normal failures restore transaction preimages before returning. If the process
-is interrupted after preparation, the next non-dry-run invocation restores the
-prepared transaction before considering the new request. A dry-run reports the
-pending recovery but does not perform it.
+Codex has no implicit legacy migration.
 
-Never remove a managed directory to work around one of these errors. Inspect
-the named path, preserve local content, then either restore the expected bytes
-or choose a different install scope.
+## Failure and recovery
 
-## Autonomous engines and models
+Install mutations use a transaction journal and staged replacement. An
+interruption before commit leaves the prior installation authoritative; an
+interruption after an effect is reconciled from the journal and manifests on
+the next run. A mixed or ambiguous state is reported without deleting user
+data.
 
-Installing Baton does not install Sworn. Guided use can coordinate the five
-responsibilities manually. Autonomous use needs an engine to enforce authority,
-single-writer scheduling, fresh Verifier context, read-only verification,
-credential isolation, cancellation, recovery, and exact effects.
-
-Baton’s common process-driver seam can serve every responsibility. The engine
-selects the driver and passes an explicit model string or deliberate `null` on
-each invocation. Baton provides no default model, fallback chain, provider
-lifecycle, managed inference, or bundled credentials.
+Installer recovery is separate from delivery recovery. During delivery,
+Sworn or another engine owns scheduling, retries, worktrees, receipt
+persistence, projections, and effect reconciliation. Baton operations never
+turn a runner or bookkeeping failure into approval, `PROCEED`, `PASS`, or
+`MERGED`.

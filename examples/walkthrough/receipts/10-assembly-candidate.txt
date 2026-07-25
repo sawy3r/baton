@@ -1,0 +1,8 @@
+baton(assembly): candidate
+
+Baton-Detail-Begin
+Deterministic composition includes the current passed product trees for T1 and T2.
+Check: complete product test (exit 0).
+Baton-Detail-End
+
+Baton-Receipt: {"base":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","binds":"7777777777777777777777777777777777777777","candidate":"7777777777777777777777777777777777777777","checks":"sha256:8888888888888888888888888888888888888888888888888888888888888888","detail":"sha256:c890002eb2a0f7f2ef513b93459f920645c3686d3caff6c85192b2e0459cf24a","inputs":{"T1":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","T2":"sha256:3333333333333333333333333333333333333333333333333333333333333333"},"plan":"b614893f77b74f188230f37cdd5698b122abca3e","product_tree":"sha256:9999999999999999999999999999999999999999999999999999999999999999","release":"checkout-recovery","result":"candidate","role":"implementer","summary":"The exact two-track assembly is ready for fresh verification.","target":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","version":1}

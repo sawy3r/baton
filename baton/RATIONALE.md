@@ -1,73 +1,47 @@
 # Why Baton has this shape
 
-Baton began as a working Bash Coach loop: plan a release, run ordered slices in
-parallel-safe tracks, review design with a Captain, verify from fresh context,
-and merge through a release worktree. It proved that a useful autonomous loop
-did not require a large framework.
+Baton began as a useful five-responsibility delivery loop. It later accumulated
+schemas, repeated manuals, universal reviews, and incident-specific procedure.
+Each addition answered a real failure, but every future role paid for it.
 
-The protocol later accumulated twelve rules, many schemas, repeated role
-manuals, copied platform prompts, universal model reviews, and incident-specific
-artefacts. Each addition addressed a real failure, but every future invocation
-paid for all of them. Token cost and procedural churn rose while attention to
-the load-bearing boundaries fell.
+The durable value was smaller:
 
-The first Baton 1.0 release candidate compressed too far in the other direction.
-It preserved a strong trust kernel but removed the portable five-responsibility
-workflow, installers, and board that made Baton immediately usable.
+- externally bounded authority;
+- a design decision before implementation;
+- evidence over the real candidate;
+- a fresh independent verdict; and
+- exact safe composition.
 
-RC2 restores the useful operating model without restoring the accumulated
-ceremony.
-
-## Archaeological basis
-
-The recovery lineage is recorded in Fired:
-
-- `e984d658` — earliest complete recoverable responsibility loop and board;
-- `5d836ed6` — fresh inline dispatch without tmux;
-- `2c8ce241` — authored plan separated from derived board state;
-- `0c7b1460` — calibrated Captain triage; and
-- `b7654a30` — one role-independent runtime-driver boundary.
-
-The later `124265bd` checkpoint preserves broad provider compatibility
-requirements but also shows why provider code, model rotation, worker controls,
-and active mission control belong in Sworn rather than Baton.
-
-The immutable `v0.16.0` tag remains the complete 0.x archaeology point.
-`v1.0.0-rc.1` remains the trust-kernel experiment. Neither is silently migrated
-or reinterpreted.
+Git already retains prior plans, attempts, candidates, and decisions. Replacing
+a release or slice to preserve ordinary iteration adds ceremony without adding
+immutability.
 
 ## The boundary
 
-Baton owns five principles, five responsibilities, four concise handoff forms,
-one status schema, the fixed `.baton/releases` root, deterministic reference
-validation, and a read-only board.
+Baton owns the five principles, five responsibilities, plan and receipt
+meanings, trust bindings, and observable conformance.
 
-The board deliberately stops at structural and authority truth. Protected
-approval and clean Verifier dispatch are resolved into opaque action admissions
-outside the candidate. Likewise, Merge prepares the assembly handoff but does
-not certify it: work `PASS` advances a track, while a separate assembly `PASS`
-alone authorizes release integration.
-
-Recovery stays equally small. `NO_VERDICT` redispatches the unchanged
-candidate. `REBOUND` exists only before materialisation. Once work has an owner,
-`ESCALATE`, `BLOCKED`, or assembly `FAIL` preserves the lineage and starts a
-newly approved work and release identity instead of growing an in-place repair
-protocol.
-
-Sworn owns autonomous scheduling, leases, retries, cancellation, crash recovery,
-process and credential isolation, concrete provider drivers, runtime events,
+Sworn owns scheduling, worktrees, leases, retries, cancellation, crash recovery,
+drivers, process and credential isolation, projections, runtime events,
 evaluation, cost, alerts, and hosted operations.
 
-That separation keeps manual Baton useful, lets Sworn automate the same
-contract, and prevents another provider-specific orchestration stack from
-growing inside the protocol.
+The portable reference kit chooses one deterministic receipt representation and
+board so Baton remains useful without Sworn. Those mechanics demonstrate the
+protocol; they do not expand it.
 
-## How the protocol grows
+## Recovery
+
+A design revision and implementation repair remain attempts on one stable
+slice. A plan revision advances one release and retains unaffected slices. Only
+a replacement goal, target, or authority needs a new release identity.
+
+Operational defects produce no Baton verdict. An engine reconstructs or retries
+them when the applicable trust facts are present. It stops only when those facts
+are missing, conflicting, or unsafe to infer.
+
+## Growth rule
 
 New incident knowledge should normally become a deterministic check, negative
-fixture, clearer existing field, project policy, or engine invariant. A new
+fixture, clearer receipt binding, project policy, or engine invariant. A new
 universal instruction is justified only when its absence breaks trust for
 nearly every delivery and no smaller mechanism can enforce it.
-
-The goal is not the fewest possible files. It is the smallest causal chain that
-still makes autonomous completion believable.

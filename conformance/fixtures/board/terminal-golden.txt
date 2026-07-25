@@ -1,20 +1,22 @@
 Baton baton.board/v1  example/baton  valid
 
 Release v1.0.0  in_progress
-  plan sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  plan r1 sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   release refs/heads/release-wt/v1.0.0 @ 1111111111111111111111111111111111111111
   target  refs/heads/main @ 2222222222222222222222222222222222222222
+  ! TRACK_REF_ABSENT v1.0.0 / T1: track T1 may be materialized from approved facts
+  ! TRACK_REF_ABSENT v1.0.0 / T2: track T2 may be materialized from approved facts
   Track T1  pending  materialisation=baseline
     ref refs/heads/track/v1.0.0/T1 @ —
-    W1  design / ready / implementer  outcome=none
-      source baseline refs/heads/release-wt/v1.0.0 @ 1111111111111111111111111111111111111111
+    W1  design / ready / implementer  attempt=1  outcome=none
+      source plan refs/heads/track/v1.0.0/T1 @ 1111111111111111111111111111111111111111
       next baton-implement [work] v1.0.0 / T1 / W1
   Track T2  pending  materialisation=baseline
     ref refs/heads/track/v1.0.0/T2 @ —
     depends T1
     waiting for T1
-    W2  design / ready / implementer  outcome=none
-      source baseline refs/heads/release-wt/v1.0.0 @ 1111111111111111111111111111111111111111
+    W2  design / waiting / none  attempt=1  outcome=none
+      source plan refs/heads/track/v1.0.0/T2 @ 1111111111111111111111111111111111111111
       depends W1
   Assembly  verify / waiting / none  outcome=none
 

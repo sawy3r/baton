@@ -1,0 +1,7 @@
+baton(S1): captain proceed
+
+Baton-Detail-Begin
+Decision: proceed.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"cccccccccccccccccccccccccccccccccccccccc","contract":"sha256:b97ff3e4960d4594fa5bd078d65126541c6385ebed10d74bc21659b297145cef","cursor":"implement","detail":"sha256:4473e9f5f8c6a5ea5f4bbc5d6a520c450673480feabdef94cf11d03a824c6e95","plan":"981de418ca5cc98104f794d3ccfe914f47e63894","release":"portable-receipts","result":"proceed","role":"captain","slice":"S1","summary":"Proceed.","version":1}

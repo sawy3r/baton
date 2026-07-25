@@ -1,21 +1,23 @@
 # Baton roadmap
 
-## RC2 — publish the portable kit
+## RC4 — keep the trusted loop small
 
-`v1.0.0-rc.2` is the first release candidate of the current Baton model. It
-delivers:
+`v1.0.0-rc.4` corrects the procedural overhead that grew through earlier
+release candidates. It delivers:
 
 - five principles and five responsibilities;
-- four durable handoffs and one status schema;
+- one approved plan with stable release and slice identities;
+- compact machine-written receipts instead of mandatory status, design, and
+  proof documents;
 - five concise canonical operations generated as Claude Code and Codex Skills;
 - transactional user and project installation;
-- an owner-aware JSON, terminal, and local-WebUI board;
-- one role-independent driver seam with explicit per-invocation model choice;
-- real-Git multi-track dogfood through assembly and exact Merge; and
+- a Git-derived JSON, terminal, and local browser board;
+- forward-only plan revisions, stable attempts, and selective invalidation;
+- exact-candidate multi-track assembly and fresh verification; and
 - reproducible conformance and overhead measurement.
 
-The publication work for RC2 is to keep the repository, website, prerelease,
-and immutable package object aligned with that delivered behavior.
+Baton does not package drivers or a scheduler. Sworn owns that operational
+layer and lets each role select a model through common provider drivers.
 
 ## Final 1.0 — prove autonomous boundaries
 
@@ -35,9 +37,9 @@ The standing tests are:
 
 - Does it prevent a demonstrated false green?
 - Can it be a project check or engine policy instead?
-- Does it preserve one authoritative status and a read-only board?
+- Does it preserve one authoritative plan and Git-derived read-only board?
 - Does it keep common drivers independent of roles, providers, and model
-  policy?
+  policy in the engine?
 - What can be removed or simplified in exchange?
 
 ## Deliberate boundaries

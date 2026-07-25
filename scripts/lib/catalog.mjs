@@ -1,5 +1,5 @@
 export const PACKAGE_VERSION_FILE = 'VERSION';
-export const OPERATION_VERSION = 'baton.operation/v1';
+export const OPERATION_VERSION = 'baton.operation/v2';
 export const GENERATOR_VERSION = 'baton.adapter-generator/v1';
 export const GENERATED_MANIFEST_VERSION = 'baton.generated-adapters/v1';
 export const INSTALL_MANIFEST_VERSION = 'baton.install/v1';
@@ -10,31 +10,31 @@ export const OPERATIONS = Object.freeze([
     name: 'baton-plan',
     source: 'operations/baton-plan.md',
     description:
-      'Create or revise an externally approved Baton plan. Use when starting delivery or authorised replanning is required.',
+      'Propose an externally approved Baton plan or forward-only revision with stable slice identities.',
   }),
   Object.freeze({
     name: 'baton-implement',
     source: 'operations/baton-implement.md',
     description:
-      'Design or implement one authoritative Baton work item. Use for an Implementer handoff or repair after verification failure.',
+      'Design or implement one eligible Baton slice attempt without crossing review boundaries.',
   }),
   Object.freeze({
     name: 'baton-design-review',
     source: 'operations/baton-design-review.md',
     description:
-      'Record the Captain decision over exact Baton plan and design bytes. Use when a work item is awaiting design review.',
+      'Return the Captain decision over one exact Baton plan revision, slice, and design attempt.',
   }),
   Object.freeze({
     name: 'baton-verify',
     source: 'operations/baton-verify.md',
     description:
-      'Independently verify Baton work or assembly evidence. Use only from a fresh read-only verification context.',
+      'Independently verify an exact Baton slice candidate or assembled product from fresh read-only context.',
   }),
   Object.freeze({
     name: 'baton-merge',
     source: 'operations/baton-merge.md',
     description:
-      'Deterministically compose a Baton track, prepare assembly, or integrate a passed release. Use for an eligible Merge handoff.',
+      'Mechanically compose passed Baton candidates or integrate the exact assembled candidate that passed.',
   }),
 ]);
 
@@ -42,8 +42,10 @@ export const PORTABLE_RUNTIME_FILES = Object.freeze([
   'reference/board/oracle.mjs',
   'reference/board/terminal.mjs',
   'reference/board/web.mjs',
-  'reference/driver/contract.md',
-  'reference/driver/fake-driver.mjs',
+  'reference/records/actions.mjs',
+  'reference/records/git.mjs',
+  'reference/records/receipts.mjs',
+  'reference/records/state.mjs',
 ]);
 
 export const SUPPORT_FILES = Object.freeze([
@@ -54,17 +56,11 @@ export const SUPPORT_FILES = Object.freeze([
   'baton/CONFORMANCE.md',
   'baton/RATIONALE.md',
   'baton/README.md',
-  'schemas/work-status-v1.json',
+  'schemas/receipt-v1.json',
   'reference/records/README.md',
-  'reference/records/actions.mjs',
-  'reference/records/git.mjs',
-  'reference/records/records.mjs',
-  'reference/records/transition.mjs',
   ...PORTABLE_RUNTIME_FILES,
   ...OPERATIONS.map(({ source }) => source),
   'templates/plan.md',
-  'templates/design.md',
-  'templates/proof.md',
 ]);
 
 export const HOSTS = Object.freeze({

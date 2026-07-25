@@ -1,0 +1,7 @@
+baton(S1): captain proceed
+
+Baton-Detail-Begin
+Decision: proceed.
+Baton-Detail-End
+
+Baton-Receipt: {"attempt":1,"binds":"cccccccccccccccccccccccccccccccccccccccc","contract":"sha256:b97ff3e4960d4594fa5bd078d65126541c6385ebed10d74bc21659b297145cef","detail":"sha256:0000000000000000000000000000000000000000000000000000000000000000","plan":"981de418ca5cc98104f794d3ccfe914f47e63894","release":"portable-receipts","result":"proceed","role":"captain","slice":"S1","summary":"The detail digest is stale.","version":1}

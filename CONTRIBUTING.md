@@ -6,11 +6,11 @@ overhead.
 
 ## Start with the right repository
 
-Baton owns the protocol, portable operations, records, installers, board,
-driver contract, and conformance corpus. Sworn owns reference-engine
-orchestration. Provider SDK integration, model selection policy, credentials,
-retry strategy, and deployment belong in an engine or project, not in Baton’s
-common driver.
+Baton owns the protocol, portable operations, plan and receipt records, the
+reference action kit, installers, thin board, and conformance corpus. Sworn
+owns orchestration and the shared driver layer. Provider SDK integration,
+model selection policy, credentials, retry strategy, and deployment belong in
+an engine or project, not in Baton.
 
 ## Changing the protocol
 
@@ -24,16 +24,16 @@ Before changing normative text, explain:
 5. what wording or mechanism can be simplified in exchange.
 
 Keep the distinction between responsibilities and software processes. A person
-can coordinate guided use, and one driver can serve every role, but the
-required authority and independence boundaries still apply.
+or any compatible engine can coordinate guided use; the required authority and
+independence boundaries still apply.
 
 ## Records and schemas
 
-RC2 has one authored JSON Schema:
-`schemas/work-status-v1.json`. Plan metadata is closed strict JSON embedded in
-`plan.md`; `design.md` and `proof.md` are exact Markdown handoffs.
+Baton has one authored JSON Schema: `schemas/receipt-v1.json`. Plan metadata is
+closed strict JSON embedded in `plan.md`; short machine-written receipts are
+bound to Git history by the `Baton-Receipt` trailer.
 
-Any status or plan change needs:
+Any plan or receipt contract change needs:
 
 - a positive fixture;
 - a relevant negative fixture;
@@ -53,9 +53,9 @@ node scripts/generate-adapters.mjs
 node scripts/generate-adapters.mjs --check
 ```
 
-Executable release budgets keep every canonical operation at or below 400
-words, all five at or below 2,000 words, a complete generated Skill at or below
-500 words, and the normal fixed-word ratio at or below 20% of v0.16.
+Executable release budgets keep every canonical operation at or below 350
+words, all five at or below 1,700 words, and normal happy-path fixed guidance
+below the measured release threshold relative to v0.16.
 
 ## Run the checks
 
@@ -64,7 +64,7 @@ Use the isolated Python environment described in
 
 ```sh
 .venv/bin/python conformance/check.py
-node --test test/records/*.test.mjs test/operations/*.test.mjs test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs test/driver/*.test.mjs test/dogfood/*.test.mjs test/release/*.test.mjs
+node --test test/records/*.test.mjs test/operations/*.test.mjs test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs test/release/*.test.mjs
 node scripts/generate-adapters.mjs --check
 node scripts/measure-overhead.mjs --check
 sh -n install-claude.sh

@@ -1,12 +1,12 @@
 ---
 name: baton-design-review
-description: "Record the Captain decision over exact Baton plan and design bytes. Use when a work item is awaiting design review."
+description: "Return the Captain decision over one exact Baton plan revision, slice, and design attempt."
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.3
-operation-version: baton.operation/v1
-operation-sha256: sha256:ead3a7d0e22a794ca5430fdbaca5c29f3ae5d5f6fad7c102d1f2bd878f28e356
+package-version: 1.0.0-rc.4
+operation-version: baton.operation/v2
+operation-sha256: sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve the Baton package root from the current Git project .claude/baton install when present and valid; otherwise use the configured Claude user directory baton install. Read package-relative files from that root.
@@ -14,55 +14,49 @@ Treat the free-form invocation text as the operation inputs. Resolve the Baton p
 <!-- BATON_CANONICAL_BEGIN baton-design-review -->
 ---
 operation: baton-design-review
-version: baton.operation/v1
+version: baton.operation/v2
 ---
 
 ## Purpose
 
-Make the distinct Captain decision over one exact plan and design before
-implementation begins.
+Make the distinct Captain decision over one exact plan revision, slice, and
+design attempt before implementation.
 
 ## Inputs
 
-- The admitted plan and authoritative work status.
-- The exact `design.md` bytes and their recorded digest.
-- Relevant live repository facts needed to judge the proposed approach.
-- The Captain invocation identity.
+- The applicable approved plan revision and stable slice contract.
+- The exact design TL;DR and immutable object it binds.
+- Relevant repository facts and the Captain invocation identity.
 
 ## Authority
 
-Review only `design / ready / captain`. The Captain invocation must differ from
-the design producer and bind the current plan and design digests. The decision
-does not alter approved scope or approve a plan.
+Review only the presented design attempt. The Captain must differ from its
+producer and cannot change approved scope, approve a plan, implement, or issue
+a delivery verdict.
 
 ## Actions
 
-1. Confirm the design digest matches the current bytes and the work remains
-   authoritative on its owning ref.
-2. Check that the approach covers acceptance, respects scope and dependencies,
-   identifies consequential decisions and risks, and proposes credible
-   evidence.
-3. Choose exactly one result:
-   - `PROCEED` when implementation may begin under this design.
-   - `REVISE` when the Implementer must produce new design bytes.
-   - `ESCALATE` when new planning authority or an external decision is needed.
-4. Construct the exact next status and record the chosen result through
-   `recordTransition`.
+1. Confirm the plan, slice, design attempt, and immutable binding agree.
+2. Check acceptance coverage, scope, dependencies, consumed inputs,
+   consequential decisions, risks, and proposed evidence.
+3. Return exactly one decision:
+   - `PROCEED` when implementation may begin;
+   - `REVISE` when the same slice needs another design attempt; or
+   - `ESCALATE` when an external decision or revised approved plan is needed.
 
 ## Required output
 
-Return only the decision, plan digest, design digest, Captain invocation,
-resulting durable projection, and action receipt. Include concise reasons as
-review evidence outside the status.
+Return only the decision, exact bindings, Captain invocation, and concise
+reason. Do not write the Captain receipt.
 
 ## Stop conditions
 
-Stop without a decision on missing or changed bytes, stale authority, an
-invalid invocation boundary, absent evidence needed for review, or any action
-error. Do not implement, verify, or silently expand scope.
+Stop without a decision when approval, scope, authority, design identity, or
+evidence needed for review is ambiguous. An execution or persistence failure
+is operational and creates no Captain decision.
 
 ## Next handoff
 
-`PROCEED` hands back to `baton-implement`; `REVISE` hands back for a new design;
-`ESCALATE` hands to `baton-plan` for new authority.
+`PROCEED` returns to `baton-implement`; `REVISE` starts another design attempt
+on the same slice; `ESCALATE` hands to `baton-plan`.
 <!-- BATON_CANONICAL_END baton-design-review -->

@@ -1,21 +1,19 @@
-```baton-plan-v1
+```baton-plan-v2
 {
-  "schema_version": "baton.plan/v1",
+  "schema_version": "baton.plan/v2",
   "release": "checkout-recovery",
+  "revision": 1,
+  "previous_plan": null,
   "repository": "acme/checkout",
   "target_ref": "refs/heads/main",
-  "release_ref": "refs/heads/release-wt/checkout-recovery",
-  "record_root": ".baton/releases",
   "approval_ref": "approval://checkout-recovery/1",
   "tracks": [
     {
       "id": "T1",
-      "ref": "refs/heads/track/checkout-recovery/T1",
       "depends_on": [],
-      "touch_surfaces": ["src/checkout", "test/checkout"],
-      "work": [
+      "slices": [
         {
-          "id": "W1",
+          "id": "S1",
           "outcome": "A timed-out checkout can be retried without a duplicate charge.",
           "scope": {
             "include": ["src/checkout", "test/checkout"],
@@ -29,18 +27,17 @@
           ],
           "checks": ["npm test -- checkout-retry"],
           "constraints": ["Do not change the payment-provider contract."],
-          "depends_on": []
+          "depends_on": [],
+          "consumes": []
         }
       ]
     },
     {
       "id": "T2",
-      "ref": "refs/heads/track/checkout-recovery/T2",
       "depends_on": [],
-      "touch_surfaces": ["docs/runbooks"],
-      "work": [
+      "slices": [
         {
-          "id": "W2",
+          "id": "S2",
           "outcome": "An operator can safely recover a timed-out checkout.",
           "scope": {
             "include": ["docs/runbooks/checkout-recovery.md"],
@@ -54,7 +51,8 @@
           ],
           "checks": ["npm test -- runbook-links"],
           "constraints": ["Do not describe unimplemented provider controls."],
-          "depends_on": []
+          "depends_on": [],
+          "consumes": []
         }
       ]
     }
@@ -81,20 +79,23 @@ The payment-provider contract is excluded.
 A1 observes charge identity across a repeated checkout key. A2 checks that the
 operator instructions name the same key and a safe stop condition.
 
-# Ordered tracks and work
+# Ordered tracks and slices
 
-T1/W1 and T2/W2 are independent. Work remains serial within either track.
+T1/S1 and T2/S2 are independent. Slice attempts remain serial within either
+track.
 
-# Dependencies and touch surfaces
+# Dependencies and inputs
 
-The tracks have no dependency edge and their declared touch surfaces do not
-overlap.
+The tracks have no dependency edge, their scopes do not overlap, and neither
+slice consumes the other slice's passed product tree.
 
 # Checks
 
-Each work item retains its named test output with its proof.
+Each candidate receipt binds the normalized result of its named check. The raw
+output remains engine evidence rather than a second protocol artefact.
 
 # Constraints
 
-No provider-contract change, invented operator control, or behavioral
-`.baton/releases` content is allowed.
+No provider-contract change or invented operator control is allowed. Merge may
+advance the target only to the exact assembly candidate covered by the current
+fresh-context PASS.
