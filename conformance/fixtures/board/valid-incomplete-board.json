@@ -9,8 +9,25 @@
       "release": "v1.0.0",
       "repository": "example/baton",
       "valid": true,
-      "diagnostics": [],
+      "diagnostics": [
+        {
+          "code": "TRACK_REF_ABSENT",
+          "release": "v1.0.0",
+          "track": "T1",
+          "work": null,
+          "message": "track T1 may be materialized from approved facts"
+        },
+        {
+          "code": "TRACK_REF_ABSENT",
+          "release": "v1.0.0",
+          "track": "T2",
+          "work": null,
+          "message": "track T2 may be materialized from approved facts"
+        }
+      ],
       "plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "plan_object": "3333333333333333333333333333333333333333",
+      "plan_revision": 1,
       "release_ref": "refs/heads/release-wt/v1.0.0",
       "release_head": "1111111111111111111111111111111111111111",
       "target_ref": "refs/heads/main",
@@ -72,8 +89,8 @@
             "from": "slice:W1",
             "to": "slice:W2",
             "kinds": [
-              "track_dependency",
-              "depends_on"
+              "depends_on",
+              "track_dependency"
             ]
           },
           {
@@ -113,14 +130,17 @@
             {
               "id": "W1",
               "depends_on": [],
+              "consumes": [],
+              "plan_revision": 1,
+              "attempt": 1,
               "stage": "design",
               "status": "ready",
               "next_role": "implementer",
               "outcome": "none",
               "blocker": null,
               "source": {
-                "mode": "baseline",
-                "ref": "refs/heads/release-wt/v1.0.0",
+                "mode": "plan",
+                "ref": "refs/heads/track/v1.0.0/T1",
                 "head": "1111111111111111111111111111111111111111"
               },
               "next_operation": {
@@ -159,14 +179,17 @@
               "depends_on": [
                 "W1"
               ],
+              "consumes": [],
+              "plan_revision": 1,
+              "attempt": 1,
               "stage": "design",
-              "status": "ready",
-              "next_role": "implementer",
+              "status": "waiting",
+              "next_role": "none",
               "outcome": "none",
               "blocker": null,
               "source": {
-                "mode": "baseline",
-                "ref": "refs/heads/release-wt/v1.0.0",
+                "mode": "plan",
+                "ref": "refs/heads/track/v1.0.0/T2",
                 "head": "1111111111111111111111111111111111111111"
               },
               "next_operation": null
