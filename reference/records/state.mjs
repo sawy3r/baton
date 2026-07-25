@@ -709,7 +709,12 @@ export function readBatonState(
     && !isAncestor(repo, assembly.result_commit, captured[1].head)
   ) fail('MOVED_TARGET', `target ${names.target} no longer contains the recorded merge`);
 
-  const targetStale = approval.receipt.target !== captured[1].head;
+  // A completed Merge necessarily advances the target beyond the plan's
+  // approved starting point. Once the recorded result is proven to remain in
+  // the target ancestry above, that movement is the successful terminal
+  // outcome, not a reason to revise the plan.
+  const targetStale = assembly.status !== 'complete'
+    && approval.receipt.target !== captured[1].head;
   const diagnostics = [];
   if (targetStale) diagnostics.push(diagnostic(
     'TARGET_MOVED',

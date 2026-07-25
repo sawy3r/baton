@@ -377,6 +377,11 @@ test('one slice advances through concise receipts and merges the exact fresh PAS
       productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(afterMerge.assembly.outcome, 'merged');
+    assert.equal(afterMerge.plan.target_stale, false);
+    assert.equal(
+      afterMerge.diagnostics.some(({ code }) => code === 'TARGET_MOVED'),
+      false,
+    );
     const retry = engine.mergePassedCandidate({
       release: 'actions-v2',
       summary: 'Merged the exact candidate covered by fresh PASS.',
@@ -526,6 +531,14 @@ test('two passed tracks produce one exact assembly, one fresh verdict, and one m
     assert.equal(merged.result_commit, assembled.candidate);
     assert.equal(resolveRef(fixture.repo, 'refs/heads/main'), assembled.candidate);
     assert.equal(isDescendant(fixture.repo, target, merged.result_commit), true);
+    const afterMerge = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(afterMerge.plan.target_stale, false);
+    assert.equal(
+      afterMerge.diagnostics.some(({ code }) => code === 'TARGET_MOVED'),
+      false,
+    );
   } finally {
     fixture.cleanup();
   }
