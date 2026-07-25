@@ -995,7 +995,7 @@ test('resolving and dangling aliases refuse create, update, and verify atomicall
   }
 });
 
-test('after-capture alias races refuse every operation beneath exact prepared locks', () => {
+test('after-capture alias races refuse every operation, including beneath prepared exact locks', () => {
   const parentSeam = [
     '  let helperOutcome = null;',
     '  try {',
@@ -1159,15 +1159,21 @@ test('after-capture alias races refuse every operation beneath exact prepared lo
       }
     }
   }
-  // Git itself rejects create-over-resolving and update-over-dangling while
-  // preparing their CAS. The other four cells reach prepared exact locks and
-  // the helper's representation check.
-  assert.deepEqual(preparedCells, [
-    'create-dangling',
-    'update-resolving',
-    'verify-resolving',
-    'verify-dangling',
-  ]);
+  // Git itself always rejects create-over-resolving and update-over-dangling
+  // while preparing their CAS. Git 2.43 lets the two null-OID dangling cells
+  // reach prepared exact locks, while Git 2.54 rejects them during prepare.
+  // Both versions reach the helper's representation check for these two
+  // resolving cells; no other prepared cell is permitted.
+  assert.deepEqual(
+    preparedCells.filter((cell) => ![
+      'create-dangling',
+      'verify-dangling',
+    ].includes(cell)),
+    [
+      'update-resolving',
+      'verify-resolving',
+    ],
+  );
 });
 
 test('every pre-commit helper and acknowledgement fault aborts and releases its lock', async () => {

@@ -110,9 +110,10 @@ PASS  RC2-to-RC3 diff under operations/ and schemas/
 The true after-capture race matrix covers create, update, and verify against
 both resolving and dangling aliases. Every cell preserves the raced alias,
 referent, paired ref, and their raw reflog bytes. Git 2.43 refuses
-create-over-resolving and update-over-dangling during prepare. The other four
-cells reach exact prepared locks, prove a cooperative Git update fails against
-the lock, and then abort at the helper's representation recheck.
+create-over-resolving and update-over-dangling during prepare, while Git 2.54
+also refuses the two null-OID dangling cells there. The remaining cells reach
+exact prepared locks, prove a cooperative Git update fails against the lock,
+and then abort at the helper's representation recheck.
 
 Captain's deterministic condition covers injected pre-commit SIGKILL, timeout,
 early exit, malformed/extra/missing acknowledgement, forced inspection error,
