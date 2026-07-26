@@ -125,6 +125,7 @@ export function passSlice(fixture, sliceID, {
   inputs = {},
   implementerChecks = 'implementer checks',
   verifierChecks = 'verifier checks',
+  verifierResult = 'pass',
 } = {}) {
   const { track, item } = plannedSlice(fixture, sliceID);
   switchTrack(fixture, track.id);
@@ -168,13 +169,13 @@ export function passSlice(fixture, sliceID, {
   const verified = appendReceipt(fixture.repo, {
     ...common,
     role: 'verifier',
-    result: 'pass',
+    result: verifierResult,
     binds: implemented.oid,
     candidate,
     product_tree: identity.productTree,
     inputs,
     checks: digestBytes(Buffer.from(verifierChecks)),
-    summary: `${sliceID} passes.`,
+    summary: `${sliceID} verification is ${verifierResult}.`,
   });
   return { design, captain, candidate, identity, implemented, verified };
 }

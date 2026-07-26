@@ -456,6 +456,18 @@ export function createBatonActions(options) {
         });
       }
       assertRevision(previous.parsed, parsed, previous.object);
+      const retiredIDs = new Set(
+        receiptHistory(repo, priorHead)
+          .filter(({ receipt }) => (
+            receipt.role === 'planner' && receipt.result === 'retired'
+          ))
+          .map(({ receipt }) => receipt.slice),
+      );
+      for (const slice of parsed.metadata.tracks.flatMap((track) => track.slices)) {
+        if (retiredIDs.has(slice.id)) {
+          fail('INVALID_RETIREMENT', `retired slice ${slice.id} cannot be re-added`);
+        }
+      }
       parent = priorHead;
     }
 
@@ -822,6 +834,7 @@ export function createBatonActions(options) {
     const target = state.refs.target.head;
     if (
       trackCandidates.length === 1
+      && state.tracks[0].slices.length === 1
       && isAncestor(repo, target, trackCandidates[0].candidate)
     ) {
       return receiptResult('prepareAssembly', false, {
@@ -948,8 +961,8 @@ export function createBatonActions(options) {
     let passed;
     if (state.assembly.pass) {
       passed = state.assembly.pass;
-    } else if (state.tracks.length === 1) {
-      const finalPass = state.tracks[0].slices.at(-1)?.pass;
+    } else if (state.tracks.length === 1 && state.tracks[0].slices.length === 1) {
+      const finalPass = state.tracks[0].slices[0].pass;
       if (
         finalPass
         && isAncestor(repo, state.refs.target.head, finalPass.receipt.candidate)
