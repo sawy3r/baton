@@ -14,10 +14,12 @@ approval. Baton accepts that exclusive floor only when the exact topology is:
 `approved target -> revision-1 plan commit -> revision-1 approval receipt`
 
 The floor must occur on the bounded first-parent chain and must not already
-contain this release's plan path. Release, track, approval, and retirement
-scans share the resulting epoch. Every receipt above the floor is parsed before
-ownership filtering; foreign receipts above it still fail closed. Receipts at
-or below the floor belong to inherited history and are not interpreted.
+contain this release's plan path or follow an earlier first-parent change to
+that path. The revision-1 plan commit is therefore its unique first
+introduction. Release, track, approval, and retirement scans share the
+resulting epoch. Every receipt above the floor is parsed before ownership
+filtering; foreign receipts above it still fail closed. Receipts at or below
+the floor belong to inherited history and are not interpreted.
 
 ## Why
 

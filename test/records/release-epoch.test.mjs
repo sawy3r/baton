@@ -6,8 +6,10 @@ import {
   referenceNames,
 } from '../../reference/records/actions.mjs';
 import {
+  readFilesAtOID,
   resolveRef,
   unsafePrepareMetadataCommit,
+  unsafePrepareRecordTransition,
 } from '../../reference/records/git.mjs';
 import {
   digestBytes,
@@ -22,6 +24,7 @@ import {
   git,
   temporaryRepository,
   testProductExclusionAdmission,
+  testRecordPathAdmission,
   write,
 } from './helpers.mjs';
 
@@ -184,6 +187,81 @@ test('retirement remains local to its release epoch and does not reserve reused 
     const secondB = approve(engine, 'retire-b', 2, firstB.plan, ['S2']);
     assert.equal(secondB.retirements.length, 0);
     assert.equal(state(fixture.repo, 'retire-b').slices[0].location.slice.id, 'S2');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('deleting and reinstalling an identical revision-1 plan cannot move its epoch floor', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'base\n');
+    write(fixture.repo, '.baton/releases/anchor/plan.md', 'unrelated release record\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const release = 'epoch-replay';
+    const bytes = planBytes(metadata(release));
+    const original = engine.recordPlanRevision({
+      planBytes: bytes,
+      summary: 'Approve the original revision-1 plan.',
+    });
+    const recordPathAdmission = testRecordPathAdmission(fixture.repo);
+    const productExclusionAdmission = testProductExclusionAdmission(fixture.repo);
+    const relativePlanPath = referenceNames.planPath(release);
+
+    const deleted = unsafePrepareRecordTransition(fixture.repo, {
+      expectedHead: original.receipt_commit,
+      message: 'test: delete the installed plan path',
+      recordPathAdmission,
+      productExclusionAdmission,
+      changes: { [relativePlanPath]: null },
+    });
+    const reinstalled = unsafePrepareRecordTransition(fixture.repo, {
+      expectedHead: deleted.commit,
+      message: 'test: reinstall the identical revision-1 plan',
+      recordPathAdmission,
+      productExclusionAdmission,
+      changes: { [relativePlanPath]: bytes },
+    });
+    assert.equal(
+      readFilesAtOID(fixture.repo, deleted.commit, [relativePlanPath])[0].object,
+      null,
+    );
+    const [reinstalledPlan] = readFilesAtOID(
+      fixture.repo,
+      reinstalled.commit,
+      [relativePlanPath],
+    );
+    assert.equal(reinstalledPlan.object, original.plan);
+
+    const replayApproval = unsafePrepareMetadataCommit(fixture.repo, {
+      expectedHead: reinstalled.commit,
+      message: renderReceiptCommit({
+        subject: 'approve the replayed revision-1 plan',
+        receipt: {
+          ...original.receipt,
+          binds: reinstalled.commit,
+          target: deleted.commit,
+          summary: 'Attempt to replace the original release epoch.',
+        },
+      }),
+    });
+    const releaseRef = referenceNames.releaseRef(release);
+    git(
+      fixture.repo,
+      'update-ref',
+      releaseRef,
+      replayApproval.commit,
+      original.receipt_commit,
+    );
+
+    assert.throws(
+      () => state(fixture.repo, release),
+      (error) => (
+        error?.code === 'INVALID_PLAN_HISTORY'
+        && /already introduced/.test(error.message)
+      ),
+    );
   } finally {
     fixture.cleanup();
   }

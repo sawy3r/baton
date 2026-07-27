@@ -1,6 +1,7 @@
 import {
-  GitRecordError, captureHeadRefs, commitParents, isAncestor, productTreeIdentity,
-  readFilesAtOID, readFirstParentHistory, verifyReleaseIntegration,
+  GitRecordError, captureHeadRefs, commitParents, firstParentPathChange,
+  isAncestor, productTreeIdentity, readFilesAtOID, readFirstParentHistory,
+  verifyReleaseIntegration,
   unsafePrepareExactComposition,
 } from './git.mjs';
 import { ReceiptError, parsePlanBytes, parseReceiptHistoryEntry } from './receipts.mjs';
@@ -283,6 +284,17 @@ export function readReleaseReceiptHistory(repo, release, head) {
       fail(
         'INVALID_PLAN_HISTORY',
         `revision-1 target ${receipt.target} already contains release ${release}`,
+      );
+    }
+    const priorPlanPathChange = firstParentPathChange(
+      repo,
+      receipt.target,
+      planPath(release),
+    );
+    if (priorPlanPathChange !== null) {
+      fail(
+        'INVALID_PLAN_HISTORY',
+        `revision-1 plan path was already introduced at ${priorPlanPathChange}`,
       );
     }
     boundary = receipt.target;
