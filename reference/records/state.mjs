@@ -399,7 +399,7 @@ function validateSlice(
         && (
           (bound.role === 'implementer' && bound.result === 'designed')
           || (bound.role === 'implementer' && bound.result === 'candidate')
-          || bound.role === 'captain'
+          || (bound.role === 'captain' && bound.result === 'proceed')
           || (bound.role === 'verifier' && bound.result === 'pass')
         );
       if (
@@ -721,7 +721,7 @@ function validateConsumedHistories(
           )
           || (
             bound.receipt.role === 'captain'
-            && bound.receipt.result !== 'revise'
+            && bound.receipt.result === 'proceed'
           )
           || (
             bound.receipt.role === 'verifier'
@@ -965,6 +965,7 @@ function deriveSlices(
     state.consumed_inputs = consumesReady ? inputs : [];
 
     let requiresFreshDesign = false;
+    const externallyBlocked = state.status === 'blocked' && state.next_role === 'planner';
     const design = governingDesign(state.history, state.current_receipt);
     if (design && slice.consumes.length > 0) {
       state.reviewed_base = design.parent;
@@ -989,7 +990,11 @@ function deriveSlices(
         || (receipt?.role === 'implementer' && receipt.result === 'designed')
       );
       const reviewEstablished = reviewed !== null;
-      if (reviewStale && (beforeCandidate || reviewEstablished)) {
+      if (
+        !externallyBlocked
+        && reviewStale
+        && (beforeCandidate || reviewEstablished)
+      ) {
         requiresFreshDesign = true;
         state.stage = 'design';
         state.status = 'ready';
@@ -1005,7 +1010,7 @@ function deriveSlices(
 
     const evidence = state.candidate?.receipt;
     if (
-      !requiresFreshDesign && evidence
+      !externallyBlocked && !requiresFreshDesign && evidence
       && consumesReady
       && !sameInputs(evidence.inputs, pins)
     ) {
@@ -1017,7 +1022,12 @@ function deriveSlices(
       state.pass = null;
       state.retained = false;
       state.stale_reason = 'consumed input lineage or product changed';
-    } else if (!requiresFreshDesign && evidence && !consumesReady) {
+    } else if (
+      !externallyBlocked
+      && !requiresFreshDesign
+      && evidence
+      && !consumesReady
+    ) {
       state.stage = 'implement';
       state.status = 'ready';
       state.next_role = 'implementer';

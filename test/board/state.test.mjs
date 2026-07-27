@@ -298,6 +298,160 @@ test('a newer approval resolves an unchanged Verifier blocker into a new design 
   }
 });
 
+function blockedConsumerFixture() {
+  return baselineFixture(oneSliceMetadata({
+    tracks: [
+      {
+        id: 'T1',
+        depends_on: [],
+        slices: [slice('S1', 'src/producer.txt')],
+      },
+      {
+        id: 'T2',
+        depends_on: [],
+        slices: [slice('S2', 'src/consumer.txt', {
+          depends_on: ['S1'],
+          consumes: ['S1'],
+        })],
+      },
+    ],
+  }));
+}
+
+test('consumed-product drift cannot override Captain escalation', () => {
+  const fixture = blockedConsumerFixture();
+  try {
+    passSlice(fixture, 'S1');
+    git(
+      fixture.repo,
+      'switch',
+      '-q',
+      '-c',
+      'track/v1.0.0/T2',
+      fixture.approval.oid,
+    );
+    const common = {
+      version: 1,
+      release: fixture.metadata.release,
+      slice: 'S2',
+      attempt: 1,
+      plan: fixture.plan,
+      contract: fixture.parsed.metadata.contracts.S2,
+    };
+    const design = appendReceipt(fixture.repo, {
+      ...common,
+      role: 'implementer',
+      result: 'designed',
+      binds: fixture.approval.oid,
+      summary: 'Legacy review lacks consumed authority ancestry.',
+    });
+    const escalated = appendReceipt(fixture.repo, {
+      ...common,
+      role: 'captain',
+      result: 'escalate',
+      binds: design.oid,
+      summary: 'Planner intervention remains required.',
+    });
+
+    let state = readBatonState(fixture.repo, fixture.metadata.release, {
+      productExclusionAdmission: fixture.admission,
+    });
+    let consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(consumer.current_receipt.oid, escalated.oid);
+    assert.equal(consumer.status, 'blocked');
+    assert.equal(consumer.next_role, 'planner');
+    assert.equal(consumer.outcome, 'escalate');
+
+    revisePlan(fixture, null);
+    state = readBatonState(fixture.repo, fixture.metadata.release, {
+      productExclusionAdmission: fixture.admission,
+    });
+    consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(consumer.stage, 'design');
+    assert.equal(consumer.status, 'ready');
+    assert.equal(consumer.next_role, 'implementer');
+    assert.equal(consumer.attempt, escalated.receipt.attempt + 1);
+    assert.equal(consumer.current_receipt.oid, fixture.approval.oid);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('consumed-product drift cannot override Verifier BLOCKED', () => {
+  const fixture = blockedConsumerFixture();
+  try {
+    passSlice(fixture, 'S1');
+    const blocked = passSlice(fixture, 'S2', {
+      inputs: { S1: `sha256:${'f'.repeat(64)}` },
+      legacyConsumed: true,
+      verifierResult: 'blocked',
+    });
+
+    let state = readBatonState(fixture.repo, fixture.metadata.release, {
+      productExclusionAdmission: fixture.admission,
+    });
+    let consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(consumer.current_receipt.oid, blocked.verified.oid);
+    assert.equal(consumer.status, 'blocked');
+    assert.equal(consumer.next_role, 'planner');
+    assert.equal(consumer.outcome, 'blocked');
+
+    revisePlan(fixture, null);
+    state = readBatonState(fixture.repo, fixture.metadata.release, {
+      productExclusionAdmission: fixture.admission,
+    });
+    consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(consumer.stage, 'design');
+    assert.equal(consumer.status, 'ready');
+    assert.equal(consumer.next_role, 'implementer');
+    assert.equal(consumer.attempt, blocked.verified.receipt.attempt + 1);
+    assert.equal(consumer.current_receipt.oid, fixture.approval.oid);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a design cannot bind directly to Captain escalation', () => {
+  const fixture = baselineFixture();
+  try {
+    const design = designSlice(fixture, 'S1');
+    const escalated = appendReceipt(fixture.repo, {
+      version: 1,
+      release: fixture.metadata.release,
+      slice: 'S1',
+      role: 'captain',
+      result: 'escalate',
+      attempt: design.receipt.attempt,
+      plan: fixture.plan,
+      contract: fixture.parsed.metadata.contracts.S1,
+      binds: design.oid,
+      summary: 'Planner intervention is required.',
+    });
+    appendReceipt(fixture.repo, {
+      version: 1,
+      release: fixture.metadata.release,
+      slice: 'S1',
+      role: 'implementer',
+      result: 'designed',
+      attempt: escalated.receipt.attempt + 1,
+      plan: fixture.plan,
+      contract: fixture.parsed.metadata.contracts.S1,
+      binds: escalated.oid,
+      summary: 'Attempt to bypass the planner blocker.',
+    });
+    assert.throws(
+      () => readBatonState(fixture.repo, fixture.metadata.release),
+      (error) => (
+        error instanceof BatonStateError
+        && error.code === 'STALE_BINDING'
+        && /has no predecessor/.test(error.message)
+      ),
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('a forged Captain binding is invalid, not a procedural blocker', () => {
   const fixture = baselineFixture();
   try {
