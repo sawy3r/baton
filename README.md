@@ -42,6 +42,23 @@ carry implementation evidence. Longer design or evidence documents are
 optional when the work needs them; Baton does not universally require
 `design.md`, `proof.md`, or a hand-maintained `status.json`.
 
+## Commitment, not inventory
+
+An approved plan commits the delivery to observable behavior, product surfaces,
+acceptance, minimum checks, semantic limits, authority, and real product
+dependencies. It is not a prediction of every file that implementation will
+touch or every command that evidence will need.
+
+Discovering an ancillary test, oracle, support file, or useful additional check
+does not change that commitment. Record the actual paths and check results in
+the candidate and evidence, then continue under the same approved plan and
+stable slice. The same applies to evidence corrections and procedural recovery.
+
+A material change to behavior, consumed product, contract, authority, or an
+externally owned decision still stops for the appropriate Captain, Planner, or
+authorizer. Exact approval, fresh verification, and exact-candidate Merge do
+not weaken.
+
 ## Revision without churn
 
 A plan advances at one path under one release identity. Its slices keep stable
@@ -92,7 +109,7 @@ a fresh Verifier then checks the complete assembled product before final Merge.
 The easiest route is to ask Claude Code or Codex:
 
 ```text
-Install Baton v1.0.0-rc.5 for me.
+Install Baton v1.0.0-rc.6 for me.
 
 Clone the exact tag, read its INSTALL.md, show me the matching user-scope
 dry-run, and wait for my approval before applying it.
@@ -102,7 +119,7 @@ If you prefer the shell, clone the reviewed tag and preview the matching
 installer yourself:
 
 ```sh
-git clone --branch v1.0.0-rc.5 --depth 1 https://github.com/sawy3r/baton.git
+git clone --branch v1.0.0-rc.6 --depth 1 https://github.com/sawy3r/baton.git
 cd baton
 ./install-codex.sh --user --dry-run    # or ./install-claude.sh
 ```

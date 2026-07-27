@@ -26,7 +26,11 @@ Every implementation MUST:
     lifecycle cursor;
 11. reconcile duplicate dispatch, stale projection, interruption, and known Git
     effects without manufacturing trust facts; and
-12. compose and integrate only exact candidates covered by current `PASS`.
+12. compose and integrate only exact candidates covered by current `PASS`; and
+13. treat approved behavior, product surfaces, minimum checks, semantic limits,
+    authority, and real product dependencies as commitments while keeping
+    ancillary path discovery, additional checks, evidence correction, and
+    procedural recovery as candidate or engine facts.
 
 A consuming design MUST be reviewed against an exact base containing the
 applicable producer `PASS` authorities. Before design and again before
@@ -91,13 +95,16 @@ Merge.
 
 Recovery cases cover missing derived status, stale board output, duplicate
 dispatch, runner interruption, skipped procedural cursor, and reconcilable Git
-effects without a new model role or human approval.
+effects without a new model role or human approval. They also cover discovering
+ancillary test or oracle paths, running additional focused checks, and
+correcting evidence under the same approved plan and stable slice identity.
 
 Negative cases cover missing or substituted approval; self-review; changed
 plan, design, candidate, proof, product tree, or target; ambiguous authority;
 runtime events presented as role outcomes; missing, stale, or ambiguous
 consumed authority; unsafe dependency reuse; composition conflict; and forged
-Merge results.
+Merge results. A material behavioral, consumed-product, contract, authority, or
+external-decision change still crosses the applicable decision boundary.
 
 ## Board and engine handoff
 

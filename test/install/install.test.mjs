@@ -208,9 +208,14 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
   }
 });
 
-test('pinned RC2, RC3, and RC4 packages upgrade, roll back exactly, and re-upgrade', async (t) => {
+test('pinned RC2 through RC5 packages upgrade, roll back exactly, and re-upgrade', async (t) => {
   const currentVersion = (await readFile(join(ROOT, 'VERSION'), 'utf8')).trim();
-  for (const version of ['1.0.0-rc.2', '1.0.0-rc.3', '1.0.0-rc.4']) {
+  for (const version of [
+    '1.0.0-rc.2',
+    '1.0.0-rc.3',
+    '1.0.0-rc.4',
+    '1.0.0-rc.5',
+  ]) {
     for (const host of ['claude', 'codex']) {
       for (const scope of ['user', 'project']) {
         const fixture = await temporaryFixture(t, `baton-upgrade-${version}-${host}-${scope}-`);

@@ -1,5 +1,15 @@
 # Baton roadmap
 
+## RC6 — constrain commitment, not cognition
+
+`v1.0.0-rc.6` makes operational discovery repair forward. Plans commit
+behavior, product surfaces, acceptance, minimum proof, semantic limits,
+authority, and real product dependencies without pretending to inventory every
+support path or check. Ancillary tests and oracles, additional evidence, and
+procedural recovery stay on the same stable work identity. Material behavior,
+contract, consumed-product, authority, and external-decision changes still
+cross the existing review and approval boundaries.
+
 ## RC5 — make upgrades boring
 
 `v1.0.0-rc.5` keeps the RC4 protocol unchanged and repairs its installer

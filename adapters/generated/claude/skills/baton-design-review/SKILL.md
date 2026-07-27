@@ -4,9 +4,9 @@ description: "Return the Captain decision over one exact Baton plan revision, sl
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.5
+package-version: 1.0.0-rc.6
 operation-version: baton.operation/v2
-operation-sha256: sha256:c12847c8b91f71e96a5996cb064588ff1612df37878065577d3f00ee1073a541
+operation-sha256: sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve the Baton package root from the current Git project .claude/baton install when present and valid; otherwise use the configured Claude user directory baton install. Read package-relative files from that root.
@@ -33,7 +33,8 @@ design attempt before implementation.
 
 Review only the presented design attempt. The Captain must differ from its
 producer and cannot change approved scope, approve a plan, implement, or issue
-a delivery verdict.
+a delivery verdict. It may carry a bounded correction with `PROCEED` only when
+the correction leaves the approved contract and authority unchanged.
 
 ## Actions
 
@@ -42,9 +43,12 @@ a delivery verdict.
    base,
    consequential decisions, risks, and proposed evidence.
 3. Return exactly one decision:
-   - `PROCEED` when implementation may begin;
-   - `REVISE` when the same slice needs another design attempt; or
-   - `ESCALATE` when an external decision or revised approved plan is needed.
+   - `PROCEED` when implementation may begin, including with named bounded
+     corrections inside the approved contract;
+   - `REVISE` when a material design change needs another attempt on the same
+     slice; or
+   - `ESCALATE` when behavior, contract, authority, or an external decision
+     requires revised approval.
 
 ## Required output
 
@@ -59,6 +63,7 @@ is operational and creates no Captain decision.
 
 ## Next handoff
 
-`PROCEED` returns to `baton-implement`; `REVISE` starts another design attempt
-on the same slice; `ESCALATE` hands to `baton-plan`.
+`PROCEED` returns to `baton-implement` for implementation or bounded repair;
+`REVISE` starts another design attempt on the same slice; `ESCALATE` hands to
+`baton-plan`.
 <!-- BATON_CANONICAL_END baton-design-review -->

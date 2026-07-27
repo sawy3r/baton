@@ -457,6 +457,130 @@ test('one slice advances through concise receipts and merges the exact fresh PAS
   }
 });
 
+test('ancillary paths, extra checks, and evidence correction repair one commitment forward', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    const target = commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'The observable product commitment is approved.',
+    });
+    const contract = parsePlanBytes(planBytes()).metadata.contracts.S1;
+
+    appendDesign(
+      engine,
+      'Deliver src/product.txt and discover any ancillary test or oracle support needed.',
+    );
+    appendCaptain(engine);
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+    write(fixture.repo, 'src/product.txt', 'delivered\n');
+    write(fixture.repo, 'test/product.test.mjs', 'assert delivered behavior\n');
+    write(fixture.repo, 'test/oracles/product.mjs', 'observe delivered behavior\n');
+    write(fixture.repo, 'scripts/maintain-product.mjs', 'maintain test evidence\n');
+    const candidate = commitAll(fixture.repo, 'feat: deliver product with discovered support');
+    const candidateInput = {
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The outcome and discovered support pass required and focused checks.',
+      detail: (
+        'A1: src/product.txt is delivered. '
+        + 'Discovered test/product.test.mjs, test/oracles/product.mjs, '
+        + 'and scripts/maintain-product.mjs as ancillary evidence.'
+      ),
+      candidate,
+      checkResults: (
+        'required: node --test PASS\n'
+        + 'additional: node --test test/product.test.mjs PASS\n'
+      ),
+    };
+    const implemented = engine.appendReceipt(candidateInput);
+    const retry = engine.appendReceipt(candidateInput);
+    assert.equal(retry.changed, false);
+    assert.equal(retry.receipt_commit, implemented.receipt_commit);
+    assert.equal(implemented.receipt.plan, approved.plan);
+    assert.equal(implemented.receipt.contract, contract);
+    assert.equal(implemented.receipt.attempt, 1);
+
+    const changed = git(fixture.repo, 'diff', '--name-only', target, candidate)
+      .trim().split('\n');
+    for (const path of [
+      'src/product.txt',
+      'test/product.test.mjs',
+      'test/oracles/product.mjs',
+      'scripts/maintain-product.mjs',
+    ]) {
+      assert.equal(changed.includes(path), true, path);
+    }
+    let state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(state.plan.oid, approved.plan);
+    assert.equal(state.plan.metadata.revision, 1);
+    assert.equal(state.slices[0].location.slice.id, 'S1');
+    assert.equal(state.slices[0].attempt, 1);
+    assert.equal(state.slices[0].next_role, 'verifier');
+
+    const failed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'verifier',
+      result: 'fail',
+      summary: 'The contract is adequate but the oracle observation is incomplete.',
+      detail: 'A1 needs one corrected oracle observation; no plan change is required.',
+      candidate,
+      checkResults: 'required: node --test PASS\nadditional oracle evidence INCOMPLETE\n',
+    });
+    assert.equal(failed.receipt.plan, approved.plan);
+    assert.equal(failed.receipt.attempt, 1);
+
+    git(fixture.repo, 'commit', '--allow-empty', '-q', '-m', 'test: correct oracle evidence');
+    const correctedCandidate = git(fixture.repo, 'rev-parse', 'HEAD');
+    const corrected = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The same product has corrected acceptance evidence.',
+      detail: 'A1: corrected oracle observation binds the unchanged delivered product.',
+      candidate: correctedCandidate,
+      checkResults: (
+        'required: node --test PASS\n'
+        + 'additional: node --test test/product.test.mjs PASS\n'
+        + 'additional oracle observation PASS\n'
+      ),
+    });
+    assert.equal(corrected.receipt.plan, approved.plan);
+    assert.equal(corrected.receipt.binds, failed.receipt_commit);
+    assert.equal(corrected.receipt.attempt, 2);
+    assert.equal(corrected.receipt.product_tree, implemented.receipt.product_tree);
+
+    engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'Fresh verification observed the committed behavior and corrected evidence.',
+      candidate: correctedCandidate,
+      checkResults: 'required and additional checks independently PASS\n',
+    });
+    state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(state.plan.oid, approved.plan);
+    assert.equal(state.plan.metadata.revision, 1);
+    assert.equal(state.release, 'actions-v2');
+    assert.equal(state.slices[0].location.slice.id, 'S1');
+    assert.equal(state.slices[0].attempt, 2);
+    assert.ok(state.slices[0].pass);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 function isDescendant(repo, ancestor, descendant) {
   try {
     git(repo, 'merge-base', '--is-ancestor', ancestor, descendant);
@@ -520,6 +644,59 @@ test('Captain revision and Verifier failure keep one slice identity with new att
     });
     assert.equal(second.receipt.attempt, 3);
     assert.equal(second.receipt.binds, failed.receipt_commit);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('material behavior discovered in design still escalates before implementation', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'The original observable behavior is approved.',
+    });
+    const design = appendDesign(
+      engine,
+      'Discovery shows the requested behavior would replace the approved product contract.',
+    );
+    const escalated = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'captain',
+      result: 'escalate',
+      summary: 'The material behavior needs a revised externally approved contract.',
+      detail: 'ESCALATE: this is not ancillary support or an evidence correction.',
+    });
+    assert.equal(escalated.receipt.binds, design.receipt_commit);
+    assert.equal(escalated.receipt.plan, approved.plan);
+
+    const state = readBatonState(fixture.repo, 'actions-v2');
+    assert.equal(state.plan.metadata.revision, 1);
+    assert.equal(state.slices[0].location.slice.id, 'S1');
+    assert.equal(state.slices[0].attempt, 1);
+    assert.equal(state.slices[0].status, 'blocked');
+    assert.equal(state.slices[0].next_role, 'planner');
+    assert.equal(state.slices[0].outcome, 'escalate');
+
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+    write(fixture.repo, 'src/product.txt', 'unapproved replacement behavior\n');
+    const candidate = commitAll(fixture.repo, 'feat: unapproved replacement');
+    assert.throws(
+      () => engine.appendReceipt({
+        release: 'actions-v2',
+        slice: 'S1',
+        role: 'implementer',
+        result: 'candidate',
+        summary: 'This candidate must not bypass escalation.',
+        candidate,
+        checkResults: 'node --test PASS\n',
+      }),
+      (error) => error?.code === 'ROLE_NOT_ELIGIBLE',
+    );
   } finally {
     fixture.cleanup();
   }

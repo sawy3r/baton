@@ -95,6 +95,27 @@ test('operations return trust decisions and evidence for machine-written receipt
   for (const text of Object.values(byName)) assert.match(text, /receipt/i);
 });
 
+test('operations repair operational discovery without weakening material stops', async () => {
+  const byName = Object.fromEntries(await Promise.all(OPERATION_NAMES.map(async (name) => [
+    name,
+    await readFile(join(ROOT, 'operations', `${name}.md`), 'utf8'),
+  ])));
+  assert.match(byName['baton-plan'], /commitment, not an inventory/i);
+  assert.match(byName['baton-plan'], /additional checks/);
+  assert.match(byName['baton-implement'], /Ancillary support\s+paths/);
+  assert.match(byName['baton-implement'], /same stable slice/);
+  assert.match(byName['baton-implement'], /hard exclusion/);
+  assert.match(byName['baton-design-review'], /bounded correction/);
+  assert.match(byName['baton-design-review'], /material design change/);
+  assert.match(byName['baton-verify'], /not scope failures\s+by themselves/);
+  assert.match(byName['baton-verify'], /same stable slice/);
+  assert.match(byName['baton-verify'], /consumed product/);
+  assert.match(byName['baton-merge'], /exact passed candidate/);
+  for (const name of OPERATION_NAMES) {
+    assert.doesNotMatch(byName[name], /new (?:role|lifecycle|schema|receipt type)/i);
+  }
+});
+
 test('the only required template is one concise stable-slice plan', async () => {
   assert.deepEqual((await readdir(join(ROOT, 'templates'))).sort(), ['plan.md']);
   const bytes = await readFile(join(ROOT, 'templates', 'plan.md'));

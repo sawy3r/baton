@@ -1,0 +1,67 @@
+---
+name: baton-implement
+description: "Design or implement one eligible Baton slice attempt without crossing review boundaries."
+---
+
+<!-- baton-adapter
+package-version: 1.0.0-rc.5
+operation-version: baton.operation/v2
+operation-sha256: sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1
+-->
+
+Treat the free-form invocation text as the operation inputs. Resolve the Baton package root from the current Git project .codex/baton install when present and valid; otherwise use the configured Codex user directory baton install. Read package-relative files from that root.
+
+<!-- BATON_CANONICAL_BEGIN baton-implement -->
+---
+operation: baton-implement
+version: baton.operation/v2
+---
+
+## Purpose
+
+Design or implement one eligible slice without crossing the Captain or
+Verifier boundary.
+
+## Inputs
+
+- The applicable approved plan revision and stable slice identity.
+- The current attempt, dependencies, consumed inputs, scope, acceptance,
+  checks, constraints, and exclusions.
+- The applicable Captain decision and prior Verifier decision when present.
+
+## Authority
+
+Work only inside the approved slice and current attempt. Implementation
+requires an applicable `PROCEED` bound to this plan revision, slice, and design
+attempt. A `REVISE` adds a design attempt; a `FAIL` adds an implementation
+attempt. Neither replaces the slice.
+
+## Actions
+
+1. If Captain review is needed, inspect the work and return a concise design
+   TL;DR covering approach, touched surfaces, consequential decisions, risks,
+   and evidence. Stop.
+2. After applicable `PROCEED`, build only the approved product scope.
+3. Run required checks and inspect the real diff and candidate.
+4. Return acceptance-linked evidence over the exact candidate and stop.
+
+## Required output
+
+For design, return the plan revision, slice, design attempt, TL;DR, exact
+binding, and Captain handoff. For implementation, return the implementation
+attempt, candidate and product identities, check results, evidence references,
+deviations, and Verifier handoff. Do not write protocol receipts or claim
+`PASS`.
+
+## Stop conditions
+
+Stop on missing approval, ambiguous eligibility, unmet dependencies, changed
+consumed inputs, missing `PROCEED`, scope escape, failed required checks, or an
+ambiguous candidate. Report operational failure without inventing a Baton
+outcome.
+
+## Next handoff
+
+Send a design to `baton-design-review`; send an implemented candidate and
+evidence to a fresh `baton-verify`.
+<!-- BATON_CANONICAL_END baton-implement -->

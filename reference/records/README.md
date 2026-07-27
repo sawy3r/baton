@@ -25,6 +25,15 @@ therefore bind immutable Git objects without mixing metadata into the product
 tree, and merge can advance the target only to the exact candidate covered by
 the current PASS.
 
+Plan scope is a commitment to owned behavioral and product surfaces, not a
+candidate-path allowlist. The action layer derives the complete candidate diff
+from Git and binds the product tree. It accepts ancillary support paths that
+remain inside the approved outcome; fresh verification decides whether the
+actual diff satisfies the unchanged contract or exposes a material change that
+must stop. Required plan checks are the minimum, while the candidate and
+Verifier receipt `checks` digests bind the complete results actually supplied,
+including additional focused checks.
+
 There is no hand-authored status cursor or proof bundle in the reference path.
 The board derives responsibility from the newest internally consistent plan,
 receipt history, dependency input pins, and Git topology. Missing cached board

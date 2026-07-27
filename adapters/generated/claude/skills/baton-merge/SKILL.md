@@ -4,9 +4,9 @@ description: "Mechanically compose passed Baton candidates or integrate the exac
 ---
 
 <!-- baton-adapter
-package-version: 1.0.0-rc.5
+package-version: 1.0.0-rc.6
 operation-version: baton.operation/v2
-operation-sha256: sha256:ccc995fd1b38814858f5fcf1122c61409acbbd281596cb259c6de4ba18a6df1b
+operation-sha256: sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve the Baton package root from the current Git project .claude/baton install when present and valid; otherwise use the configured Claude user directory baton install. Read package-relative files from that root.
@@ -34,6 +34,8 @@ candidate covered by current `PASS`.
 Merge never invents a verdict or resolves a product conflict. Derive candidates,
 topology, and expected targets from approved facts. Refuse unsafe mutation, then
 allow the surrounding system to rescan and reconcile operational outcomes.
+Merge acts on the exact passed candidate, including its verified support work;
+it does not compare that candidate with a predicted path inventory.
 
 ## Actions
 

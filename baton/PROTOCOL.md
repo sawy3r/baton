@@ -11,9 +11,11 @@ Roles are authority boundaries, not personas.
 ### Planner
 
 The Planner proposes a bounded plan or forward-only revision. It defines the
-goal, target, authority, tracks, stable slices, scope, acceptance, checks,
-dependencies, consumed inputs, constraints, and exclusions. It cannot approve,
-implement, or certify its own plan.
+goal, target, authority, tracks, stable slices, behavioral and product scope,
+acceptance, minimum checks, real dependencies and consumed inputs, semantic
+constraints, and exclusions. It cannot approve, implement, or certify its own
+plan. Predicted support paths, exhaustive commands, evidence notes, scheduling,
+retries, worktrees, and bookkeeping are not plan commitments.
 
 ### Implementer
 
@@ -74,6 +76,27 @@ Slice identities remain stable:
 Attempts never erase prior candidates or decisions. The applicable attempt is
 the latest one whose bindings agree with the current approved plan and inputs.
 
+### Commitment boundary
+
+Plan fields describe what must remain true, not every implementation step
+expected in advance:
+
+- `scope.include` identifies owned behavioral or product surfaces;
+  `scope.exclude` remains a hard boundary;
+- `checks` names the minimum required proof; additional focused checks and
+  their exact results are candidate evidence;
+- `constraints` records non-negotiable semantic and safety limits; and
+- `depends_on` and `consumes` record actual delivery or product relationships,
+  not test co-touch, scheduling convenience, or likely support work.
+
+An Implementer may discover ancillary tests, oracles, support files, extra
+checks, or evidence corrections and repair them under the current approved
+plan. A Captain may carry bounded corrections with `PROCEED` when they do not
+alter the contract. A Verifier `FAIL` returns the same stable slice directly to
+implementation. Material behavior, consumed product, contract, authority, or
+external-decision changes require the applicable Captain, Planner, or
+authorizer boundary.
+
 ## 3. Compact receipts
 
 Each responsibility boundary produces one small machine-written receipt. Every
@@ -92,6 +115,9 @@ their exact immutable identity. They do not become universal handoffs.
 
 Runtime facts such as workers, leases, retries, tokens, cost, and logs are
 engine data, not Baton receipts.
+
+Candidate evidence records the actual diff and checks. Their exact bindings
+make discovered support work observable without copying it into a revised plan.
 
 ## 4. Binding rules
 
@@ -149,6 +175,12 @@ Missing derived status, stale board output, duplicate dispatch, interrupted
 execution, a skipped procedural cursor, or a reconcilable Git effect is
 operational. An engine reconstructs, retries, or reports it without creating a
 plan revision or Baton verdict.
+
+Clerical omissions and evidence corrections are repaired at the role that owns
+them. A bounded Captain correction may proceed inline. Candidate or evidence
+defects produce `FAIL` and another implementation attempt on the same slice.
+Only a material design issue crosses back to Captain; only a material contract,
+authority, or external decision crosses to Planner or the authorizer.
 
 When competing evidence or an external effect cannot be reconciled safely, the
 honest result is an operational stop until the trust fact becomes unambiguous.
