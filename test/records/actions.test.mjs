@@ -59,6 +59,23 @@ function planBytes(value = metadata()) {
   );
 }
 
+function unrelatedTrack() {
+  return {
+    id: 'T2',
+    depends_on: [],
+    slices: [{
+      id: 'S2',
+      outcome: 'Deliver an unrelated observable product change.',
+      scope: { include: ['src/unrelated.txt'], exclude: [] },
+      acceptance: [{ id: 'A2', text: 'The unrelated product change is observable.' }],
+      checks: ['node --test'],
+      constraints: [],
+      depends_on: [],
+      consumes: [],
+    }],
+  };
+}
+
 function actions(repo) {
   return createBatonActions({
     repo,
@@ -300,6 +317,32 @@ test('an approved removal writes one compact retirement under the same release',
       state.slices.map(({ location }) => location.slice.id),
       ['S1'],
     );
+
+    const carried = engine.recordPlanRevision({
+      planBytes: planBytes(metadata(3, result.plan)),
+      summary: 'The retired slice remains absent without another retirement.',
+    });
+    assert.equal(carried.changed, true);
+    assert.equal(carried.retirements.length, 0);
+    assert.deepEqual(
+      readBatonState(fixture.repo, 'actions-v2').slices.map(
+        ({ location }) => location.slice.id,
+      ),
+      ['S1'],
+    );
+
+    const head = resolveRef(fixture.repo, referenceNames.releaseRef('actions-v2'));
+    assert.throws(
+      () => engine.recordPlanRevision({
+        planBytes: planBytes(metadata(4, carried.plan, { tracks: initial.tracks })),
+        summary: 'Invalidly reuse the retired slice identity.',
+      }),
+      (error) => error?.code === 'INVALID_RETIREMENT',
+    );
+    assert.equal(
+      resolveRef(fixture.repo, referenceNames.releaseRef('actions-v2')),
+      head,
+    );
   } finally {
     fixture.cleanup();
   }
@@ -462,6 +505,115 @@ test('Captain revision and Verifier failure keep one slice identity with new att
   }
 });
 
+test('an unchanged design crosses an unrelated plan revision into Captain review', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const initial = metadata(1, null, {
+      tracks: [metadata().tracks[0], unrelatedTrack()],
+    });
+    const first = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Two independent slices approved.',
+    });
+    const designed = appendDesign(engine);
+
+    const revisedTracks = structuredClone(initial.tracks);
+    revisedTracks[1].slices[0].acceptance[0].text = (
+      'The unrelated product change is independently observable.'
+    );
+    const revised = engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, first.plan, { tracks: revisedTracks })),
+      summary: 'Only the unrelated slice contract changed.',
+    });
+    const waiting = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(waiting.slices[0].next_role, 'captain');
+    assert.equal(waiting.slices[0].current_receipt.oid, designed.receipt_commit);
+
+    const captain = appendCaptain(engine);
+    assert.equal(captain.receipt.plan, revised.plan);
+    assert.equal(captain.receipt.binds, designed.receipt_commit);
+    assert.equal(captain.receipt.attempt, designed.receipt.attempt);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('Verifier FAIL repairs across an unrelated plan revision', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const initial = metadata(1, null, {
+      tracks: [metadata().tracks[0], unrelatedTrack()],
+    });
+    const first = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Two independent slices approved.',
+    });
+    appendDesign(engine);
+    appendCaptain(engine);
+
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+    write(fixture.repo, 'src/product.txt', 'first candidate\n');
+    const firstCandidate = commitAll(fixture.repo, 'feat: first candidate');
+    const implemented = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'First exact candidate.',
+      candidate: firstCandidate,
+      checkResults: 'implementer PASS\n',
+    });
+    const failed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'verifier',
+      result: 'fail',
+      summary: 'The first candidate violates A1.',
+      candidate: firstCandidate,
+      checkResults: 'verifier FAIL\n',
+    });
+    assert.equal(failed.receipt.binds, implemented.receipt_commit);
+
+    const revisedTracks = structuredClone(initial.tracks);
+    revisedTracks[1].slices[0].checks = ['node --test test/unrelated.test.mjs'];
+    const revised = engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, first.plan, { tracks: revisedTracks })),
+      summary: 'Only the unrelated slice checks changed.',
+    });
+    const repairState = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(repairState.slices[0].stage, 'implement');
+    assert.equal(repairState.slices[0].outcome, 'fail');
+    assert.equal(repairState.slices[0].current_receipt.oid, failed.receipt_commit);
+
+    write(fixture.repo, 'src/product.txt', 'repaired candidate\n');
+    const repairedCandidate = commitAll(fixture.repo, 'fix: repair candidate');
+    const repaired = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'Repaired exact candidate.',
+      candidate: repairedCandidate,
+      checkResults: 'implementer PASS after repair\n',
+    });
+    assert.equal(repaired.receipt.plan, revised.plan);
+    assert.equal(repaired.receipt.binds, failed.receipt_commit);
+    assert.equal(repaired.receipt.attempt, failed.receipt.attempt + 1);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('one track advances only its first incomplete slice', () => {
   const fixture = temporaryRepository();
   try {
@@ -522,6 +674,98 @@ test('one track advances only its first incomplete slice', () => {
       summary: 'The ordered follow-up is now eligible.',
     });
     assert.equal(designed.receipt.slice, 'S2');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a multi-slice track requires a fresh assembly PASS before Merge', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    const target = commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const serialPlan = metadata(1, null, {
+      tracks: [{
+        ...metadata().tracks[0],
+        slices: [
+          metadata().tracks[0].slices[0],
+          {
+            id: 'S2',
+            outcome: 'Deliver the ordered follow-up.',
+            scope: { include: ['src/second.txt'], exclude: [] },
+            acceptance: [{ id: 'A2', text: 'The follow-up is observable.' }],
+            checks: ['node --test'],
+            constraints: [],
+            depends_on: [],
+            consumes: [],
+          },
+        ],
+      }],
+    });
+    engine.recordPlanRevision({
+      planBytes: planBytes(serialPlan),
+      summary: 'Serial plan approved.',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'first\n',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T1',
+      file: 'src/second.txt',
+      value: 'second\n',
+    });
+
+    let state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(state.assembly.pass, null);
+    assert.equal(state.assembly.next_role, 'merge');
+    assert.throws(
+      () => engine.mergePassedCandidate({
+        release: 'actions-v2',
+        summary: 'Unsafe direct Merge attempt.',
+      }),
+      (error) => error?.code === 'ASSEMBLY_PASS_REQUIRED',
+    );
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/main'), target);
+
+    const assembled = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Bind the complete serial track as an assembly candidate.',
+    });
+    assert.equal(assembled.changed, true);
+    assert.equal(assembled.direct, false);
+    assert.throws(
+      () => engine.mergePassedCandidate({
+        release: 'actions-v2',
+        summary: 'Merge before fresh assembly verification.',
+      }),
+      (error) => error?.code === 'ASSEMBLY_PASS_REQUIRED',
+    );
+    const passed = engine.appendReceipt({
+      release: 'actions-v2',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'Fresh verification passed the complete serial assembly.',
+      candidate: assembled.candidate,
+      checkResults: 'assembly verifier PASS\n',
+    });
+    assert.equal(passed.receipt.binds, assembled.receipt_commit);
+
+    const merged = engine.mergePassedCandidate({
+      release: 'actions-v2',
+      summary: 'Merge the freshly verified serial assembly.',
+    });
+    assert.equal(merged.candidate, assembled.candidate);
+    state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(state.assembly.outcome, 'merged');
   } finally {
     fixture.cleanup();
   }

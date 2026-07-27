@@ -44,6 +44,38 @@ function locations(plan) {
   return result;
 }
 
+function predecessorIDs(location) {
+  const position = location.track.slices.indexOf(location.slice);
+  return location.track.slices.slice(0, position).map(({ id }) => id);
+}
+
+function sameIDs(left, right) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function slicePlanLineage(planByOID, current, sliceID) {
+  const currentLocation = locations(current.parsed).get(sliceID);
+  if (!currentLocation) return new Set();
+  const contract = current.parsed.metadata.contracts[sliceID];
+  const trackID = currentLocation.track.id;
+  const predecessors = predecessorIDs(currentLocation);
+  const lineage = new Set();
+  let cursor = current;
+  while (cursor) {
+    const location = locations(cursor.parsed).get(sliceID);
+    if (
+      !location
+      || location.track.id !== trackID
+      || cursor.parsed.metadata.contracts[sliceID] !== contract
+      || !sameIDs(predecessorIDs(location), predecessors)
+    ) break;
+    lineage.add(cursor.oid);
+    const prior = cursor.parsed.metadata.previous_plan;
+    cursor = prior === null ? null : planByOID.get(prior);
+  }
+  return lineage;
+}
+
 function planAt(repo, release, commit) {
   const [file] = readFilesAtOID(repo, commit, [planPath(release)]);
   if (!file?.bytes || !file.object) fail('PLAN_NOT_FOUND', `release ${release} has no plan`);
@@ -171,31 +203,49 @@ function planChain(repo, release, current, receipts) {
   return { chain, approvals };
 }
 
-function validateRetirements(current, chain, approvals, receipts) {
-  const active = locations(current.parsed);
-  const prior = new Map();
-  for (const entry of chain.slice(0, -1)) {
-    for (const [id, location] of locations(entry.parsed)) prior.set(id, { entry, location });
-  }
+function validateRetirements(chain, approvals, receipts) {
   const retired = receipts.filter(({ receipt }) => (
     receipt.role === 'planner' && receipt.result === 'retired'
   ));
-  for (const entry of retired) {
-    if (active.has(entry.receipt.slice)) {
-      fail('INVALID_RETIREMENT', `active slice ${entry.receipt.slice} is retired`);
+  const matched = new Set();
+  const retiredIDs = new Set();
+  for (let index = 1; index < chain.length; index += 1) {
+    const prior = chain[index - 1];
+    const next = chain[index];
+    const priorLocations = locations(prior.parsed);
+    const nextLocations = locations(next.parsed);
+    for (const id of nextLocations.keys()) {
+      if (retiredIDs.has(id)) {
+        fail('INVALID_RETIREMENT', `retired slice ${id} cannot be re-added`);
+      }
+    }
+    for (const id of priorLocations.keys()) {
+      if (nextLocations.has(id)) continue;
+      const matches = retired.filter(({ receipt }) => (
+        receipt.slice === id
+        && receipt.plan === next.oid
+        && receipt.binds === approvals.get(next.oid).oid
+        && receipt.contract === prior.parsed.metadata.contracts[id]
+      ));
+      if (matches.length === 0) {
+        fail(
+          'RETIREMENT_MISSING',
+          `removed slice ${id} requires one retirement at its first absent revision`,
+        );
+      }
+      if (matches.length !== 1) {
+        fail('INVALID_RETIREMENT', `removed slice ${id} has duplicate retirements`);
+      }
+      matched.add(matches[0].oid);
+      retiredIDs.add(id);
     }
   }
-  for (const [id, old] of prior) {
-    if (active.has(id)) continue;
-    const matches = retired.filter(({ receipt }) => (
-      receipt.slice === id
-      && receipt.plan === current.oid
-      && receipt.binds === approvals.get(current.oid).oid
-      && receipt.contract === old.entry.parsed.metadata.contracts[id]
-    ));
-    if (matches.length !== 1) {
-      fail('RETIREMENT_MISSING', `removed slice ${id} requires one current retirement`);
-    }
+  const unmatched = retired.find((entry) => !matched.has(entry.oid));
+  if (unmatched) {
+    fail(
+      'INVALID_RETIREMENT',
+      `retirement ${unmatched.oid} does not bind one first-removal transition`,
+    );
   }
 }
 
@@ -224,10 +274,13 @@ function sameCandidate(left, right) {
   );
 }
 
-function applicablePriorPass(entries, plan, sliceID) {
+function applicablePriorPass(entries, plan, sliceID, planByOID) {
   const contract = plan.parsed.metadata.contracts[sliceID];
+  const lineage = slicePlanLineage(planByOID, plan, sliceID);
   const matching = entries.filter(({ receipt }) => (
-    receipt.slice === sliceID && receipt.contract === contract
+    receipt.slice === sliceID
+    && receipt.contract === contract
+    && lineage.has(receipt.plan)
   ));
   const pass = latest(
     matching,
@@ -252,7 +305,7 @@ function validateSerialSliceOrder(track, entries, planByOID) {
       fail('AMBIGUOUS_AUTHORITY', `receipt ${entry.oid} uses the wrong track`);
     }
     for (const prior of plannedTrack.slices.slice(0, position)) {
-      if (!applicablePriorPass(priorEntries, plan, prior.id)) {
+      if (!applicablePriorPass(priorEntries, plan, prior.id, planByOID)) {
         fail(
           'DEPENDENCIES_NOT_READY',
           `${entry.receipt.slice} advanced before ${prior.id} PASS`,
@@ -299,9 +352,11 @@ function validateSlice(
     const bound = byOID.get(receipt.binds)?.receipt;
     const sameSlice = bound?.slice === receipt.slice;
     const samePlan = bound?.plan === receipt.plan;
+    const sameLineage = sameSlice
+      && slicePlanLineage(planByOID, plan, receipt.slice).has(bound?.plan);
     if (receipt.role === 'implementer' && receipt.result === 'designed') {
       const approved = bound?.role === 'planner' && bound.result === 'approved' && samePlan;
-      const retry = sameSlice
+      const retry = sameLineage
         && bound.attempt === receipt.attempt - 1
         && (
           (bound.role === 'captain' && bound.result === 'revise')
@@ -310,14 +365,14 @@ function validateSlice(
       if (!approved && !retry) fail('STALE_BINDING', `design ${entry.oid} has no predecessor`);
     } else if (receipt.role === 'captain') {
       if (
-        !sameSlice || !samePlan || bound.role !== 'implementer'
+        !sameLineage || bound.role !== 'implementer'
         || bound.result !== 'designed' || bound.attempt !== receipt.attempt
       ) fail('STALE_BINDING', `Captain ${entry.oid} does not bind its design`);
     } else if (receipt.role === 'implementer' && receipt.result === 'candidate') {
-      const proceeded = sameSlice && samePlan
+      const proceeded = sameLineage
         && bound.role === 'captain' && bound.result === 'proceed'
         && bound.attempt === receipt.attempt;
-      const retry = sameSlice && samePlan
+      const retry = sameLineage
         && bound.role === 'verifier' && bound.result === 'fail'
         && bound.attempt === receipt.attempt - 1;
       if (!proceeded && !retry) fail('STALE_BINDING', `candidate ${entry.oid} lacks PROCEED`);
@@ -331,7 +386,7 @@ function validateSlice(
       ) fail('CHANGED_CANDIDATE', `candidate ${entry.oid} has invalid Git evidence`);
     } else if (receipt.role === 'verifier') {
       if (
-        !sameSlice || !samePlan || bound.role !== 'implementer'
+        !sameLineage || bound.role !== 'implementer'
         || bound.result !== 'candidate' || bound.attempt !== receipt.attempt
         || !sameCandidate(receipt, bound)
       ) fail('STALE_BINDING', `Verifier ${entry.oid} does not bind its candidate`);
@@ -350,12 +405,27 @@ function latest(entries, predicate) {
   return null;
 }
 
-function deriveSlice(location, history, current, approval) {
+function deriveSlice(location, history, current, approval, planByOID) {
   const contract = current.parsed.metadata.contracts[location.slice.id];
-  const matching = history.entries.filter(({ receipt }) => receipt.contract === contract);
+  const lineage = slicePlanLineage(planByOID, current, location.slice.id);
+  const matching = history.entries.filter(({ receipt }) => (
+    receipt.contract === contract && lineage.has(receipt.plan)
+  ));
   const pass = latest(matching, ({ receipt }) => receipt.role === 'verifier' && receipt.result === 'pass');
   const passCurrent = pass && !matching.some(({ receipt }) => receipt.attempt > pass.receipt.attempt);
-  const currentReceipt = latest(matching, ({ receipt }) => receipt.plan === current.oid);
+  let currentReceipt = matching.at(-1) ?? null;
+  if (
+    currentReceipt
+    && currentReceipt.receipt.plan !== current.oid
+    && (
+      (currentReceipt.receipt.role === 'captain'
+        && currentReceipt.receipt.result === 'escalate')
+      || (currentReceipt.receipt.role === 'verifier'
+        && currentReceipt.receipt.result === 'blocked')
+    )
+  ) {
+    currentReceipt = null;
+  }
   const next = history.maximum_attempt + 1;
   const common = {
     history, input_pins: null,
@@ -403,12 +473,18 @@ function deriveSlice(location, history, current, approval) {
   return state;
 }
 
-function deriveSlices(current, histories, approvals) {
+function deriveSlices(current, histories, approvals, planByOID) {
   const states = new Map();
   for (const [id, location] of locations(current.parsed)) {
     states.set(id, {
       location,
-      ...deriveSlice(location, histories.get(id), current, approvals.get(current.oid)),
+      ...deriveSlice(
+        location,
+        histories.get(id),
+        current,
+        approvals.get(current.oid),
+        planByOID,
+      ),
     });
   }
   const pending = new Set();
@@ -526,9 +602,10 @@ function validateAssembly(
       const assemblyPass = bound?.receipt.role === 'verifier'
         && bound.receipt.result === 'pass'
         && !Object.hasOwn(bound.receipt, 'slice');
-      const oneTrack = plan.parsed.metadata.tracks.length === 1;
+      const oneSlice = plan.parsed.metadata.tracks.length === 1
+        && plan.parsed.metadata.tracks[0].slices.length === 1;
       const lastSlice = plan.parsed.metadata.tracks[0]?.slices.at(-1)?.id;
-      const directPass = oneTrack
+      const directPass = oneSlice
         && bound?.receipt.role === 'verifier'
         && bound.receipt.result === 'pass'
         && bound.receipt.slice === lastSlice;
@@ -572,7 +649,9 @@ function deriveAssembly(repo, current, history, approval, tracks, target) {
     current_receipt: null, candidate: null, pass: null,
   });
   if (!latestEntry) {
-    const lastSlice = tracks.length === 1 ? tracks[0].slices.at(-1) : null;
+    const lastSlice = tracks.length === 1 && tracks[0].slices.length === 1
+      ? tracks[0].slices[0]
+      : null;
     const direct = lastSlice?.pass
       && isAncestor(repo, approval.receipt.target, lastSlice.pass.receipt.candidate);
     return frozen({
@@ -670,7 +749,7 @@ export function readBatonState(
   }
   const plans = planChain(repo, release, current, releaseHistory.receipts);
   const planByOID = new Map(plans.chain.map((entry) => [entry.oid, entry]));
-  validateRetirements(current, plans.chain, plans.approvals, releaseHistory.receipts);
+  validateRetirements(plans.chain, plans.approvals, releaseHistory.receipts);
 
   const releasePlannerOIDs = new Set(
     releaseHistory.receipts
@@ -717,7 +796,7 @@ export function readBatonState(
       productCache,
     ));
   }
-  const states = deriveSlices(current, histories, plans.approvals);
+  const states = deriveSlices(current, histories, plans.approvals, planByOID);
   const tracks = current.parsed.metadata.tracks.map((track, index) => frozen({
     id: track.id,
     depends_on: [...track.depends_on],
@@ -726,9 +805,10 @@ export function readBatonState(
     slices: track.slices.map((slice) => frozen(states.get(slice.id))),
   }));
   for (const track of tracks) {
-    const active = track.slices.find((slice) => (
-      slice.pass || ['verifier', 'merge'].includes(slice.next_role)
-    ));
+    const incomplete = track.slices.find((slice) => !slice.pass);
+    const active = incomplete
+      ? (['verifier', 'merge'].includes(incomplete.next_role) ? incomplete : null)
+      : track.slices.at(-1);
     if (
       track.head && active?.candidate
       && productTree(repo, track.head, productExclusionAdmission, productCache)

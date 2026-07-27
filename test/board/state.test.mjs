@@ -17,6 +17,7 @@ import {
   oneSliceMetadata,
   passSlice,
   revisePlan,
+  slice,
 } from './helpers.mjs';
 
 test('approved plan derives missing procedural track state without BLOCKED', () => {
@@ -116,6 +117,176 @@ test('unchanged contracts retain PASS across an approved plan revision', () => {
     assert.equal(state.slices[0].pass.oid, passed.verified.oid);
     assert.equal(state.slices[0].retained, true);
     assert.equal(state.assembly.outcome, 'none');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a changed contract resets an unfinished slice to a new design attempt', () => {
+  const fixture = baselineFixture();
+  try {
+    const designed = designSlice(fixture, 'S1');
+    const priorContract = fixture.parsed.metadata.contracts.S1;
+    revisePlan(fixture, (metadata) => {
+      metadata.tracks[0].slices[0].acceptance[0].text = (
+        'S1 is observable under its changed contract.'
+      );
+    });
+    const state = readBatonState(fixture.repo, 'v1.0.0');
+    assert.notEqual(state.plan.metadata.contracts.S1, priorContract);
+    assert.equal(state.slices[0].stage, 'design');
+    assert.equal(state.slices[0].next_role, 'implementer');
+    assert.equal(state.slices[0].attempt, designed.receipt.attempt + 1);
+    assert.equal(state.slices[0].current_receipt.oid, fixture.approval.oid);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('an intermediate contract change prevents a reverted digest resurrecting old PASS', () => {
+  const fixture = baselineFixture();
+  try {
+    const originalTracks = structuredClone(fixture.metadata.tracks);
+    const originalContract = fixture.parsed.metadata.contracts.S1;
+    const passed = passSlice(fixture, 'S1');
+    revisePlan(fixture, (metadata) => {
+      metadata.tracks[0].slices[0].acceptance[0].text = (
+        'S1 is observable under an intermediate changed contract.'
+      );
+    });
+    assert.notEqual(fixture.parsed.metadata.contracts.S1, originalContract);
+    revisePlan(fixture, (metadata) => {
+      metadata.tracks = structuredClone(originalTracks);
+    });
+    assert.equal(fixture.parsed.metadata.contracts.S1, originalContract);
+
+    const state = readBatonState(fixture.repo, 'v1.0.0', {
+      productExclusionAdmission: fixture.admission,
+    });
+    assert.equal(state.plan.metadata.revision, 3);
+    assert.equal(state.slices[0].pass, null);
+    assert.equal(state.slices[0].retained, false);
+    assert.equal(state.slices[0].stage, 'design');
+    assert.equal(state.slices[0].next_role, 'implementer');
+    assert.equal(state.slices[0].attempt, passed.verified.receipt.attempt + 1);
+    assert.equal(state.slices[0].current_receipt.oid, fixture.approval.oid);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('an inserted serial predecessor invalidates only the affected suffix', () => {
+  const metadata = oneSliceMetadata();
+  metadata.tracks[0].slices.push(slice('S2', 'src/two.txt'));
+  const fixture = baselineFixture(metadata);
+  try {
+    const first = passSlice(fixture, 'S1');
+    const second = passSlice(fixture, 'S2');
+    revisePlan(fixture, (revised) => {
+      revised.tracks[0].slices.splice(1, 0, slice('S0', 'src/zero.txt'));
+    });
+
+    const state = readBatonState(fixture.repo, 'v1.0.0', {
+      productExclusionAdmission: fixture.admission,
+    });
+    const slices = new Map(state.slices.map((entry) => [
+      entry.location.slice.id,
+      entry,
+    ]));
+    assert.equal(slices.get('S1').pass.oid, first.verified.oid);
+    assert.equal(slices.get('S1').retained, true);
+    assert.equal(slices.get('S0').stage, 'design');
+    assert.equal(slices.get('S0').status, 'ready');
+    assert.equal(slices.get('S2').pass, null);
+    assert.equal(slices.get('S2').status, 'waiting');
+    assert.equal(slices.get('S2').attempt, second.verified.receipt.attempt + 1);
+    assert.equal(slices.get('S2').current_receipt.oid, fixture.approval.oid);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('reordering and then restoring a serial prefix cannot resurrect its old PASS', () => {
+  const metadata = oneSliceMetadata();
+  metadata.tracks[0].slices.push(slice('S2', 'src/two.txt'));
+  const original = structuredClone(metadata.tracks[0].slices);
+  const fixture = baselineFixture(metadata);
+  try {
+    passSlice(fixture, 'S1');
+    passSlice(fixture, 'S2');
+    revisePlan(fixture, (revised) => {
+      revised.tracks[0].slices.reverse();
+    });
+    revisePlan(fixture, (revised) => {
+      revised.tracks[0].slices = structuredClone(original);
+    });
+
+    const state = readBatonState(fixture.repo, 'v1.0.0', {
+      productExclusionAdmission: fixture.admission,
+    });
+    assert.equal(state.plan.metadata.revision, 3);
+    assert.equal(state.slices[0].pass, null);
+    assert.equal(state.slices[1].pass, null);
+    assert.equal(state.slices[0].status, 'ready');
+    assert.equal(state.slices[1].status, 'waiting');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a newer approval resolves an unchanged Captain escalation into a new design attempt', () => {
+  const fixture = baselineFixture();
+  try {
+    const designed = designSlice(fixture, 'S1');
+    const escalated = appendReceipt(fixture.repo, {
+      version: 1,
+      release: fixture.metadata.release,
+      slice: 'S1',
+      role: 'captain',
+      result: 'escalate',
+      attempt: designed.receipt.attempt,
+      plan: fixture.plan,
+      contract: fixture.parsed.metadata.contracts.S1,
+      binds: designed.oid,
+      summary: 'Planner intervention is required.',
+    });
+    let state = readBatonState(fixture.repo, 'v1.0.0');
+    assert.equal(state.slices[0].current_receipt.oid, escalated.oid);
+    assert.equal(state.slices[0].next_role, 'planner');
+    assert.equal(state.slices[0].status, 'blocked');
+
+    revisePlan(fixture, null);
+    state = readBatonState(fixture.repo, 'v1.0.0');
+    assert.equal(state.slices[0].stage, 'design');
+    assert.equal(state.slices[0].status, 'ready');
+    assert.equal(state.slices[0].next_role, 'implementer');
+    assert.equal(state.slices[0].attempt, escalated.receipt.attempt + 1);
+    assert.equal(state.slices[0].current_receipt.oid, fixture.approval.oid);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a newer approval resolves an unchanged Verifier blocker into a new design attempt', () => {
+  const fixture = baselineFixture();
+  try {
+    const blocked = passSlice(fixture, 'S1', { verifierResult: 'blocked' });
+    let state = readBatonState(fixture.repo, 'v1.0.0', {
+      productExclusionAdmission: fixture.admission,
+    });
+    assert.equal(state.slices[0].current_receipt.oid, blocked.verified.oid);
+    assert.equal(state.slices[0].next_role, 'planner');
+    assert.equal(state.slices[0].status, 'blocked');
+
+    revisePlan(fixture, null);
+    state = readBatonState(fixture.repo, 'v1.0.0', {
+      productExclusionAdmission: fixture.admission,
+    });
+    assert.equal(state.slices[0].stage, 'design');
+    assert.equal(state.slices[0].status, 'ready');
+    assert.equal(state.slices[0].next_role, 'implementer');
+    assert.equal(state.slices[0].attempt, blocked.verified.receipt.attempt + 1);
+    assert.equal(state.slices[0].current_receipt.oid, fixture.approval.oid);
   } finally {
     fixture.cleanup();
   }
