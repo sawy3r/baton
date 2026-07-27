@@ -6,7 +6,6 @@ import {
   isAncestor,
   productTreeIdentity,
   readFilesAtOID,
-  readFirstParentHistory,
   repositoryRoot,
   resolveProductExclusionAdmission,
   resolveRecordPathAdmission,
@@ -16,15 +15,16 @@ import {
   unsafePrepareRecordTransition,
 } from './git.mjs';
 import {
-  RECEIPT_TRAILER,
   canonicalJSON,
   digestBytes,
   parsePlanBytes,
   parseReceiptCommitMessage,
-  parseReceiptHistoryEntry,
   renderReceiptCommit,
 } from './receipts.mjs';
-import { readBatonState } from './state.mjs';
+import {
+  readBatonState,
+  readReleaseReceiptHistory,
+} from './state.mjs';
 
 const RECORD_ROOT = '.baton/releases';
 const MAX_SUMMARY = 280;
@@ -161,28 +161,8 @@ function captureMap(repo, refs) {
   return new Map(captureHeadRefs(repo, refs).map(({ ref, head }) => [ref, head]));
 }
 
-function receiptHistory(repo, head) {
-  const rows = readFirstParentHistory(repo, head);
-  const entries = [];
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
-    if (!row.message.includes(Buffer.from(RECEIPT_TRAILER))) continue;
-    const parent = rows[index + 1];
-    if (!parent || row.parents[0] !== parent.oid) {
-      fail(
-        'HISTORY_LIMIT',
-        `cannot establish the parent tree for receipt ${row.oid}`,
-      );
-    }
-    entries.push(parseReceiptHistoryEntry({
-      oid: row.oid,
-      parents: row.parents,
-      tree: row.tree,
-      parent_tree: parent.tree,
-      message: row.message,
-    }));
-  }
-  return Object.freeze(entries);
+function receiptHistory(repo, release, head) {
+  return readReleaseReceiptHistory(repo, release, head).receipts;
 }
 
 function fileAt(repo, commit, relativePath) {
@@ -201,8 +181,8 @@ function currentPlan(repo, release, releaseHead) {
   });
 }
 
-function findApproval(repo, releaseHead, planObject) {
-  const approval = receiptHistory(repo, releaseHead).find(({ receipt }) => (
+function findApproval(repo, release, releaseHead, planObject) {
+  const approval = receiptHistory(repo, release, releaseHead).find(({ receipt }) => (
     receipt.role === 'planner'
     && receipt.result === 'approved'
     && receipt.plan === planObject
@@ -526,7 +506,7 @@ export function createBatonActions(options) {
       previousState = stateFor(release);
       const previous = currentPlan(repo, release, priorHead);
       if (previous.parsed.bytes.equals(parsed.bytes)) {
-        const approval = findApproval(repo, priorHead, previous.object);
+        const approval = findApproval(repo, release, priorHead, previous.object);
         if (approval.receipt.target !== target) {
           fail(
             'TARGET_MOVED',
@@ -548,7 +528,7 @@ export function createBatonActions(options) {
       }
       assertRevision(previous.parsed, parsed, previous.object);
       const retiredIDs = new Set(
-        receiptHistory(repo, priorHead)
+        receiptHistory(repo, release, priorHead)
           .filter(({ receipt }) => (
             receipt.role === 'planner' && receipt.result === 'retired'
           ))
