@@ -2,11 +2,11 @@
 {
   "schema_version": "baton.plan/v2",
   "release": "baton-v1.0.0-rc.7-publication-recovery",
-  "revision": 1,
-  "previous_plan": null,
+  "revision": 2,
+  "previous_plan": "b7d676bd5b7eb9a56019b42d5e975591f0aba483",
   "repository": "sawy3r/baton",
   "target_ref": "refs/heads/main",
-  "approval_ref": "approval://baton-v1.0.0-rc.7-publication-recovery/1",
+  "approval_ref": "approval://baton-v1.0.0-rc.7-publication-recovery/2",
   "tracks": [
     {
       "id": "T1-publication-recovery",
@@ -108,7 +108,7 @@ track is needed.
 # Dependencies and inputs
 
 The slice begins from `origin/main` at
-`4203a699947a9e2e4b18ee1d5a28e8ec9131bfcf`. It consumes no delivery slice.
+`faf652dd585214e32bbebf59bba5219d9822d864`. It consumes no delivery slice.
 The exact RC6 tag and package are immutable predecessor evidence, not mutable
 inputs.
 
