@@ -1568,6 +1568,41 @@ export function changedPathsBetween(repo, base, candidate) {
   ));
 }
 
+/**
+ * Return the newest first-parent commit at or below `head` that changed one
+ * exact repository path. The query is output-bounded and never reads commit
+ * messages, so callers can prove path-introduction history without
+ * interpreting inherited receipt text.
+ */
+export function firstParentPathChange(repo, head, relativePath) {
+  const exactHead = resolveRef(repo, head);
+  const exactPath = assertRepositoryPath(relativePath);
+  const result = runGit(
+    repo,
+    [
+      'rev-list',
+      '--first-parent',
+      '--full-history',
+      '--max-count=1',
+      exactHead,
+      '--',
+      exactPath,
+    ],
+    {
+      maxBuffer: 1024,
+      label: `read first-parent path history for ${exactPath}`,
+    },
+  ).trim();
+  if (result === '') return null;
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(result)) {
+    throw new GitRecordError(
+      'MALFORMED_GIT_OUTPUT',
+      `first-parent path history for ${exactPath} is malformed`,
+    );
+  }
+  return result;
+}
+
 function repositoryObjectDirectory(repo) {
   const common = runGit(
     repo,
