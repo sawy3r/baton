@@ -6,6 +6,12 @@ import {
   readBatonState,
 } from '../../reference/records/state.mjs';
 import {
+  isAncestor,
+  productTreeIdentity,
+} from '../../reference/records/git.mjs';
+import { createBatonActions } from '../../reference/records/actions.mjs';
+import { digestBytes } from '../../reference/records/receipts.mjs';
+import {
   commitAll,
   git,
   write,
@@ -344,6 +350,262 @@ test('a later same-track slice cannot forge progress before the prior PASS', () 
       (error) => (
         error instanceof BatonStateError
         && error.code === 'DEPENDENCIES_NOT_READY'
+      ),
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+for (const legacyMode of ['missing', 'inexact']) {
+  test(`legacy ${legacyMode} consuming ancestry remains retainable by product pin`, () => {
+    const fixture = baselineFixture(oneSliceMetadata({
+      tracks: [
+        {
+          id: 'T1',
+          depends_on: [],
+          slices: [slice('S1', 'src/producer.txt')],
+        },
+        {
+          id: 'T2',
+          depends_on: [],
+          slices: [slice('S2', 'src/consumer.txt', {
+            depends_on: ['S1'],
+            consumes: ['S1'],
+          })],
+        },
+        {
+          id: 'T3',
+          depends_on: [],
+          slices: [slice('S3', 'src/unrelated.txt')],
+        },
+      ],
+    }));
+    try {
+      const producer = passSlice(fixture, 'S1');
+      const legacy = passSlice(fixture, 'S2', {
+        inputs: { S1: producer.identity.productTree },
+        legacyConsumed: true,
+        legacyBase: legacyMode === 'inexact' ? producer.verified.oid : null,
+      });
+      passSlice(fixture, 'S3');
+      revisePlan(fixture, (metadata) => {
+        metadata.tracks[2].slices[0].acceptance[0].text = 'S3 changed independently.';
+      });
+      const state = readBatonState(fixture.repo, 'v1.0.0', {
+        productExclusionAdmission: fixture.admission,
+      });
+      const consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
+      assert.equal(legacy.implemented.receipt.base, undefined);
+      assert.equal(
+        isAncestor(fixture.repo, producer.verified.oid, legacy.candidate),
+        legacyMode === 'inexact',
+      );
+      assert.equal(consumer.pass.oid, legacy.verified.oid);
+      assert.equal(consumer.retained, true);
+      assert.deepEqual(
+        consumer.reviewed_pins,
+        legacyMode === 'inexact'
+          ? { S1: producer.identity.productTree }
+          : null,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}
+
+test('marker-present consuming design rejects a forged prior track authority', () => {
+  const fixture = baselineFixture(oneSliceMetadata({
+    tracks: [
+      {
+        id: 'T1',
+        depends_on: [],
+        slices: [slice('S1', 'src/producer.txt')],
+      },
+      {
+        id: 'T2',
+        depends_on: [],
+        slices: [slice('S2', 'src/consumer.txt', {
+          depends_on: ['S1'],
+          consumes: ['S1'],
+        })],
+      },
+    ],
+  }));
+  try {
+    const producer = passSlice(fixture, 'S1');
+    const engine = createBatonActions({
+      repo: fixture.repo,
+      resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
+    });
+    const prepared = engine.prepareTrackBase({
+      release: fixture.metadata.release,
+      slice: 'S2',
+    });
+    git(fixture.repo, 'switch', '-q', 'track/v1.0.0/T2');
+    appendReceipt(fixture.repo, {
+      version: 1,
+      release: fixture.metadata.release,
+      slice: 'S2',
+      role: 'implementer',
+      result: 'designed',
+      attempt: 1,
+      plan: fixture.plan,
+      contract: fixture.parsed.metadata.contracts.S2,
+      binds: fixture.approval.oid,
+      base: producer.verified.oid,
+      inputs: prepared.pins,
+      summary: 'Forge the reviewed authority seed.',
+    });
+    assert.throws(
+      () => readBatonState(fixture.repo, fixture.metadata.release, {
+        productExclusionAdmission: fixture.admission,
+      }),
+      (error) => (
+        error instanceof BatonStateError
+        && error.code === 'STALE_BINDING'
+        && /wrong prior track authority/.test(error.message)
+      ),
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('marker-present consuming design rejects merely ancestral input authority', () => {
+  const fixture = baselineFixture(oneSliceMetadata({
+    tracks: [
+      {
+        id: 'T1',
+        depends_on: [],
+        slices: [slice('S1', 'src/producer.txt')],
+      },
+      {
+        id: 'T2',
+        depends_on: [],
+        slices: [slice('S2', 'src/consumer.txt', {
+          depends_on: ['S1'],
+          consumes: ['S1'],
+        })],
+      },
+    ],
+  }));
+  try {
+    const producer = passSlice(fixture, 'S1');
+    git(
+      fixture.repo,
+      'switch',
+      '-q',
+      '-c',
+      'track/v1.0.0/T2',
+      producer.verified.oid,
+    );
+    git(
+      fixture.repo,
+      'commit',
+      '--allow-empty',
+      '-q',
+      '-m',
+      'forge a non-deterministic reviewed base',
+    );
+    appendReceipt(fixture.repo, {
+      version: 1,
+      release: fixture.metadata.release,
+      slice: 'S2',
+      role: 'implementer',
+      result: 'designed',
+      attempt: 1,
+      plan: fixture.plan,
+      contract: fixture.parsed.metadata.contracts.S2,
+      binds: fixture.approval.oid,
+      base: fixture.approval.oid,
+      inputs: { S1: producer.identity.productTree },
+      summary: 'Record ancestry without exact composition.',
+    });
+    assert.throws(
+      () => readBatonState(fixture.repo, fixture.metadata.release, {
+        productExclusionAdmission: fixture.admission,
+      }),
+      (error) => (
+        error instanceof BatonStateError
+        && error.code === 'STALE_BINDING'
+        && /inexact reviewed base/.test(error.message)
+      ),
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('marker-present review rejects a changed-product retry after Verifier FAIL', () => {
+  const fixture = baselineFixture(oneSliceMetadata({
+    tracks: [
+      {
+        id: 'T1',
+        depends_on: [],
+        slices: [slice('S1', 'src/producer.txt')],
+      },
+      {
+        id: 'T2',
+        depends_on: [],
+        slices: [slice('S2', 'src/consumer.txt', {
+          depends_on: ['S1'],
+          consumes: ['S1'],
+        })],
+      },
+    ],
+  }));
+  try {
+    const firstProducer = passSlice(fixture, 'S1');
+    const consumer = passSlice(fixture, 'S2', {
+      inputs: { S1: firstProducer.identity.productTree },
+      verifierResult: 'fail',
+    });
+    revisePlan(fixture, (metadata) => {
+      metadata.tracks[0].slices[0].acceptance[0].text = 'The producer changes.';
+    });
+    const secondProducer = passSlice(fixture, 'S1', {
+      attempt: 2,
+      productValue: 'S1 changed product\n',
+    });
+    const engine = createBatonActions({
+      repo: fixture.repo,
+      resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
+    });
+    const prepared = engine.prepareTrackBase({
+      release: fixture.metadata.release,
+      slice: 'S2',
+    });
+    git(fixture.repo, 'switch', '-q', 'track/v1.0.0/T2');
+    write(fixture.repo, 'src/consumer.txt', 'forged changed-input retry\n');
+    const candidate = commitAll(fixture.repo, 'forge changed-input retry');
+    const identity = productTreeIdentity(fixture.repo, candidate, fixture.admission);
+    appendReceipt(fixture.repo, {
+      version: 1,
+      release: fixture.metadata.release,
+      slice: 'S2',
+      role: 'implementer',
+      result: 'candidate',
+      attempt: 2,
+      plan: fixture.plan,
+      contract: fixture.parsed.metadata.contracts.S2,
+      binds: consumer.verified.oid,
+      base: prepared.base,
+      candidate,
+      product_tree: identity.productTree,
+      inputs: { S1: secondProducer.identity.productTree },
+      checks: digestBytes(Buffer.from('forged retry checks')),
+      summary: 'Retry without a fresh reviewed design.',
+    });
+    assert.throws(
+      () => readBatonState(fixture.repo, fixture.metadata.release, {
+        productExclusionAdmission: fixture.admission,
+      }),
+      (error) => (
+        error instanceof BatonStateError
+        && error.code === 'STALE_BINDING'
+        && /differs from its reviewed inputs/.test(error.message)
       ),
     );
   } finally {

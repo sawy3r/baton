@@ -561,7 +561,13 @@ test('installed board and receipt/state/action runtime is host-identical and exe
   });
   assert.deepEqual(
     Object.keys(actions),
-    ['recordPlanRevision', 'appendReceipt', 'prepareAssembly', 'mergePassedCandidate'],
+    [
+      'recordPlanRevision',
+      'prepareTrackBase',
+      'appendReceipt',
+      'prepareAssembly',
+      'mergePassedCandidate',
+    ],
   );
 
   const web = spawn(

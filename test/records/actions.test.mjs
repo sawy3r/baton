@@ -115,7 +115,13 @@ function deliverSlice(engine, repo, {
   track,
   file,
   value,
+  allowEmpty = false,
+  extraWrites = {},
 }) {
+  engine.prepareTrackBase({
+    release: 'actions-v2',
+    slice,
+  });
   const designed = engine.appendReceipt({
     release: 'actions-v2',
     slice,
@@ -132,9 +138,22 @@ function deliverSlice(engine, repo, {
     summary: `${slice} design covers its contract.`,
     detail: 'PROCEED',
   });
+  const prepared = engine.prepareTrackBase({
+    release: 'actions-v2',
+    slice,
+  });
   git(repo, 'switch', '-q', `track/actions-v2/${track}`);
   write(repo, file, value);
-  const candidate = commitAll(repo, `feat: deliver ${slice}`);
+  for (const [relativePath, contents] of Object.entries(extraWrites)) {
+    write(repo, relativePath, contents);
+  }
+  const candidate = allowEmpty
+    ? (
+      git(repo, 'add', '-A'),
+      git(repo, 'commit', '--allow-empty', '-q', '-m', `test: reverify ${slice}`),
+      git(repo, 'rev-parse', 'HEAD')
+    )
+    : commitAll(repo, `feat: deliver ${slice}`);
   const implemented = engine.appendReceipt({
     release: 'actions-v2',
     slice,
@@ -142,6 +161,7 @@ function deliverSlice(engine, repo, {
     result: 'candidate',
     summary: `${slice} candidate passed focused checks.`,
     candidate,
+    ...(prepared.authorities.length > 0 ? { base: prepared.base } : {}),
     checkResults: `${slice} implementer PASS\n`,
   });
   const passed = engine.appendReceipt({
@@ -954,6 +974,574 @@ test('changed contract invalidates only its consumer, and equal product restores
     assert.ok(restored.slices[0].pass);
     assert.equal(restored.slices[1].pass.oid, consumer.passed.receipt_commit);
     assert.equal(restored.slices[1].retained, true);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+function consumedPlan() {
+  return metadata(1, null, {
+    tracks: [
+      metadata().tracks[0],
+      {
+        id: 'T2',
+        depends_on: [],
+        slices: [{
+          id: 'S2',
+          outcome: 'Consume the exact S1 product.',
+          scope: { include: ['src/consumer.txt'], exclude: [] },
+          acceptance: [{ id: 'A2', text: 'The consumer observes S1.' }],
+          checks: ['node --test'],
+          constraints: [],
+          depends_on: ['S1'],
+          consumes: ['S1'],
+        }],
+      },
+    ],
+  });
+}
+
+function designConsumer(engine, decision = null) {
+  const prepared = engine.prepareTrackBase({
+    release: 'actions-v2',
+    slice: 'S2',
+  });
+  const designInput = {
+    release: 'actions-v2',
+    slice: 'S2',
+    role: 'implementer',
+    result: 'designed',
+    summary: 'Design S2 against its exact consumed product.',
+  };
+  const designed = engine.appendReceipt(designInput);
+  assert.deepEqual(designed.receipt.inputs, prepared.pins);
+  assert.match(designed.receipt.base, /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+  const retried = engine.appendReceipt(designInput);
+  assert.equal(retried.changed, false);
+  assert.equal(retried.receipt_commit, designed.receipt_commit);
+  const captain = decision === null ? null : engine.appendReceipt({
+    release: 'actions-v2',
+    slice: 'S2',
+    role: 'captain',
+    result: decision,
+    summary: `Captain ${decision} for S2.`,
+  });
+  return { prepared, designed, captain };
+}
+
+function reviseProducer(engine, plan, tracks, summary) {
+  const revised = structuredClone(tracks);
+  revised[0].slices[0].acceptance[0].text = summary;
+  return {
+    tracks: revised,
+    result: engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, plan, { tracks: revised })),
+      summary,
+    }),
+  };
+}
+
+for (const stage of ['before design', 'after design', 'after PROCEED']) {
+  test(`changed producer ${stage} requires a freshly prepared design`, () => {
+    const fixture = temporaryRepository();
+    try {
+      write(fixture.repo, 'README.md', 'product\n');
+      commitAll(fixture.repo, 'base');
+      const engine = actions(fixture.repo);
+      const initial = consumedPlan();
+      const approved = engine.recordPlanRevision({
+        planBytes: planBytes(initial),
+        summary: 'Approve one producer and consumer.',
+      });
+      deliverSlice(engine, fixture.repo, {
+        slice: 'S1',
+        track: 'T1',
+        file: 'src/product.txt',
+        value: 'producer v1\n',
+      });
+      let prior = null;
+      if (stage === 'after design') prior = designConsumer(engine);
+      if (stage === 'after PROCEED') prior = designConsumer(engine, 'proceed');
+      const revised = reviseProducer(
+        engine,
+        approved.plan,
+        initial.tracks,
+        `Producer contract changed ${stage}.`,
+      );
+      let waiting = readBatonState(fixture.repo, 'actions-v2', {
+        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+      });
+      const consumer = waiting.slices.find(({ location }) => location.slice.id === 'S2');
+      assert.equal(consumer.status, 'waiting');
+      if (prior) assert.equal(consumer.outcome, 'stale');
+
+      const producer = deliverSlice(engine, fixture.repo, {
+        slice: 'S1',
+        track: 'T1',
+        file: 'src/product.txt',
+        value: 'producer v2\n',
+      });
+      waiting = readBatonState(fixture.repo, 'actions-v2', {
+        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+      });
+      const ready = waiting.slices.find(({ location }) => location.slice.id === 'S2');
+      assert.equal(ready.next_role, 'implementer');
+      assert.equal(ready.stage, 'design');
+      const prepared = engine.prepareTrackBase({
+        release: 'actions-v2',
+        slice: 'S2',
+      });
+      assert.equal(prepared.pins.S1, producer.passed.receipt.product_tree);
+      assert.equal(prepared.authorities[0].pass_receipt, producer.passed.receipt_commit);
+      const fresh = engine.appendReceipt({
+        release: 'actions-v2',
+        slice: 'S2',
+        role: 'implementer',
+        result: 'designed',
+        summary: `Fresh S2 design ${stage}.`,
+      });
+      assert.equal(fresh.receipt.plan, revised.result.plan);
+      if (prior) {
+        assert.equal(fresh.receipt.attempt, prior.designed.receipt.attempt + 1);
+        assert.equal(
+          fresh.receipt.binds,
+          stage === 'after design'
+            ? prior.designed.receipt_commit
+            : prior.captain.receipt_commit,
+        );
+      }
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}
+
+test('same-product producer PASS retains review and exact retries require candidate and base', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const initial = consumedPlan();
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Approve same-product continuity.',
+    });
+    const first = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'stable producer\n',
+    });
+    const review = designConsumer(engine, 'proceed');
+    reviseProducer(
+      engine,
+      approved.plan,
+      initial.tracks,
+      'Clarify producer acceptance without changing product.',
+    );
+    const second = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'stable producer\n',
+      allowEmpty: true,
+    });
+    assert.equal(
+      second.implemented.receipt.product_tree,
+      first.implemented.receipt.product_tree,
+    );
+    let state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    const retained = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(retained.current_receipt.oid, review.captain.receipt_commit);
+    assert.equal(retained.stage, 'implement');
+    assert.deepEqual(retained.reviewed_pins, retained.input_pins);
+
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S2',
+    });
+    assert.equal(prepared.changed, true);
+    assert.equal(
+      engine.prepareTrackBase({
+        release: 'actions-v2',
+        slice: 'S2',
+      }).changed,
+      false,
+    );
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T2');
+    write(fixture.repo, 'src/consumer.txt', 'consumer candidate\n');
+    const candidate = commitAll(fixture.repo, 'feat: consume stable producer');
+    const candidateInput = {
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'S2 exact candidate.',
+      base: prepared.base,
+      candidate,
+      checkResults: 'S2 checks PASS\n',
+    };
+    const implemented = engine.appendReceipt(candidateInput);
+    const retry = engine.appendReceipt(candidateInput);
+    assert.equal(retry.changed, false);
+    assert.equal(retry.receipt_commit, implemented.receipt_commit);
+    const head = resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T2'));
+    assert.throws(
+      () => engine.appendReceipt({
+        ...candidateInput,
+        base: undefined,
+      }),
+      (error) => error?.code === 'INVALID_ACTION_INPUT',
+    );
+    assert.throws(
+      () => engine.appendReceipt({
+        ...candidateInput,
+        base: review.captain.receipt_commit,
+      }),
+      (error) => error?.code === 'ROLE_NOT_ELIGIBLE',
+    );
+    assert.equal(resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T2')), head);
+
+    const verifierInput = {
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'S2 exact PASS.',
+      candidate,
+      checkResults: 'fresh S2 PASS\n',
+    };
+    const passed = engine.appendReceipt(verifierInput);
+    assert.equal(engine.appendReceipt(verifierInput).changed, false);
+    assert.throws(
+      () => engine.appendReceipt({
+        ...verifierInput,
+        candidate: undefined,
+      }),
+      (error) => error?.code === 'INVALID_ACTION_INPUT',
+    );
+    assert.equal(passed.receipt.inputs.S1, second.passed.receipt.product_tree);
+    state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(
+      state.slices.find(({ location }) => location.slice.id === 'S2').pass.oid,
+      passed.receipt_commit,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('changed candidate pins require a fresh reviewed design and exact prepared candidate', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const initial = consumedPlan();
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Approve candidate pin retry.',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'producer v1\n',
+    });
+    const firstConsumer = deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T2',
+      file: 'src/consumer.txt',
+      value: 'consumer v1\n',
+    });
+    reviseProducer(
+      engine,
+      approved.plan,
+      initial.tracks,
+      'Producer changes after consumer PASS.',
+    );
+    const producer = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'producer v2\n',
+    });
+    let state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    const stale = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(stale.stage, 'design');
+    assert.equal(stale.outcome, 'stale');
+    assert.equal(stale.current_receipt.oid, firstConsumer.passed.receipt_commit);
+
+    const review = designConsumer(engine, 'proceed');
+    const prepared = engine.prepareTrackBase({ release: 'actions-v2', slice: 'S2' });
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T2');
+    write(fixture.repo, 'src/consumer.txt', 'consumer v2\n');
+    const candidate = commitAll(fixture.repo, 'fix: consume producer v2');
+    const repaired = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'Exact candidate-pin stale retry.',
+      base: prepared.base,
+      candidate,
+      checkResults: 'S2 retry checks PASS\n',
+    });
+    assert.equal(repaired.receipt.binds, review.captain.receipt_commit);
+    assert.equal(repaired.receipt.attempt, firstConsumer.passed.receipt.attempt + 1);
+    assert.equal(repaired.receipt.inputs.S1, producer.passed.receipt.product_tree);
+    assert.notEqual(
+      repaired.receipt.inputs.S1,
+      firstConsumer.passed.receipt.inputs.S1,
+    );
+    state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(
+      state.slices.find(({ location }) => location.slice.id === 'S2').current_receipt.oid,
+      repaired.receipt_commit,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('track-base preparation is zero-input inert and serial same-ref ancestral', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const serial = metadata(1, null, {
+      tracks: [{
+        id: 'T1',
+        depends_on: [],
+        slices: [
+          metadata().tracks[0].slices[0],
+          {
+            id: 'S2',
+            outcome: 'Consume S1 serially.',
+            scope: { include: ['src/serial.txt'], exclude: [] },
+            acceptance: [{ id: 'A2', text: 'Serial input is observed.' }],
+            checks: ['node --test'],
+            constraints: [],
+            depends_on: ['S1'],
+            consumes: ['S1'],
+          },
+        ],
+      }],
+    });
+    engine.recordPlanRevision({
+      planBytes: planBytes(serial),
+      summary: 'Approve serial consumed input.',
+    });
+    const zero = engine.prepareTrackBase({ release: 'actions-v2', slice: 'S1' });
+    assert.equal(zero.changed, false);
+    assert.deepEqual(zero.pins, {});
+    const producer = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'serial producer\n',
+    });
+    const serialBase = engine.prepareTrackBase({ release: 'actions-v2', slice: 'S2' });
+    assert.equal(serialBase.changed, false);
+    assert.equal(serialBase.base, producer.passed.receipt_commit);
+    assert.equal(serialBase.authorities[0].pass_receipt, producer.passed.receipt_commit);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+function multipleConsumedPlan() {
+  const producer = (id, file) => ({
+    id,
+    outcome: `Deliver ${id}.`,
+    scope: { include: [file], exclude: [] },
+    acceptance: [{ id: `${id}-A1`, text: `${id} is observable.` }],
+    checks: ['node --test'],
+    constraints: [],
+    depends_on: [],
+    consumes: [],
+  });
+  return metadata(1, null, {
+    tracks: [
+      { id: 'T1', depends_on: [], slices: [producer('S1', 'src/one.txt')] },
+      { id: 'T2', depends_on: [], slices: [producer('S2', 'src/two.txt')] },
+      {
+        id: 'T3',
+        depends_on: [],
+        slices: [{
+          ...producer('S3', 'src/consumer.txt'),
+          depends_on: ['S1', 'S2'],
+          consumes: ['S2', 'S1'],
+        }],
+      },
+    ],
+  });
+}
+
+test('multiple consumed authorities compose in plan order and refuse owner drift', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    engine.recordPlanRevision({
+      planBytes: planBytes(multipleConsumedPlan()),
+      summary: 'Approve two producers and one consumer.',
+    });
+    const first = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/one.txt',
+      value: 'one\n',
+    });
+    const second = deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T2',
+      file: 'src/two.txt',
+      value: 'two\n',
+    });
+    assert.throws(
+      () => engine.appendReceipt({
+        release: 'actions-v2',
+        slice: 'S3',
+        role: 'implementer',
+        result: 'designed',
+        summary: 'Unsafe unprepared design.',
+      }),
+      (error) => error?.code === 'TRACK_BASE_NOT_PREPARED',
+    );
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S3',
+    });
+    assert.equal(prepared.changed, true);
+    assert.deepEqual(
+      prepared.authorities.map(({ slice }) => slice),
+      ['S2', 'S1'],
+    );
+    assert.deepEqual(prepared.pins, {
+      S2: second.passed.receipt.product_tree,
+      S1: first.passed.receipt.product_tree,
+    });
+    assert.equal(
+      engine.prepareTrackBase({ release: 'actions-v2', slice: 'S3' }).base,
+      prepared.base,
+    );
+
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T3');
+    write(fixture.repo, 'src/smuggled.txt', 'not an authoritative base\n');
+    const drifted = commitAll(fixture.repo, 'test: drift consumer owner');
+    assert.throws(
+      () => engine.prepareTrackBase({ release: 'actions-v2', slice: 'S3' }),
+      (error) => error?.code === 'CHANGED_OWNER_HEAD',
+    );
+    assert.equal(
+      resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T3')),
+      drifted,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('conflicting consumed authorities leave the consumer ref unmoved', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    engine.recordPlanRevision({
+      planBytes: planBytes(multipleConsumedPlan()),
+      summary: 'Approve adversarial undeclared producer overlap.',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/one.txt',
+      value: 'one\n',
+      extraWrites: { 'src/shared.txt': 'from one\n' },
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T2',
+      file: 'src/two.txt',
+      value: 'two\n',
+      extraWrites: { 'src/shared.txt': 'from two\n' },
+    });
+    assert.throws(
+      () => engine.prepareTrackBase({ release: 'actions-v2', slice: 'S3' }),
+      (error) => error?.code === 'COMPOSITION_CONFLICT',
+    );
+    assert.throws(
+      () => resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T3')),
+      /resolve refs\/heads\/track\/actions-v2\/T3 failed/,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('planner design preparation seeds after the active plan retirement chain', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const initial = consumedPlan();
+    initial.tracks.push({
+      ...unrelatedTrack(),
+      id: 'T3',
+      slices: [{
+        ...unrelatedTrack().slices[0],
+        id: 'S3',
+        scope: { include: ['src/unrelated.txt'], exclude: [] },
+      }],
+    });
+    const firstPlan = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Approve producer, consumer, and removable slice.',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'producer\n',
+    });
+    const retained = structuredClone(initial.tracks.slice(0, 2));
+    const revised = engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, firstPlan.plan, { tracks: retained })),
+      summary: 'Retire only the unrelated slice.',
+    });
+    assert.equal(revised.retirements.length, 1);
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S2',
+    });
+    assert.equal(
+      isDescendant(fixture.repo, revised.head, prepared.base),
+      true,
+    );
+    const design = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'designed',
+      summary: 'Design from the retirement-complete plan install.',
+    });
+    assert.equal(design.receipt.binds, revised.receipt_commit);
+    assert.equal(design.receipt.plan, revised.plan);
+    assert.equal(design.receipt.base, revised.head);
+    assert.deepEqual(design.receipt.inputs, prepared.pins);
   } finally {
     fixture.cleanup();
   }

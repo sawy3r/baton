@@ -1,11 +1,13 @@
 import {
-  GitRecordError, captureHeadRefs, isAncestor, productTreeIdentity,
+  GitRecordError, captureHeadRefs, commitParents, isAncestor, productTreeIdentity,
   readFilesAtOID, readFirstParentHistory, verifyReleaseIntegration,
+  unsafePrepareExactComposition,
 } from './git.mjs';
 import { ReceiptError, parsePlanBytes, parseReceiptHistoryEntry } from './receipts.mjs';
 
 const RECORD_ROOT = '.baton/releases';
 const MAX_PLAN_REVISIONS = 256;
+const MAX_CANDIDATE_LINEAGE = 4096;
 
 export class BatonStateError extends Error {
   constructor(code, message, cause) {
@@ -249,6 +251,27 @@ function validateRetirements(chain, approvals, receipts) {
   }
 }
 
+function planInstallResult(planOID, approval, receipts) {
+  let head = approval.oid;
+  for (const entry of receipts) {
+    const receipt = entry.receipt;
+    if (
+      receipt.role !== 'planner'
+      || receipt.result !== 'retired'
+      || receipt.plan !== planOID
+      || receipt.binds !== approval.oid
+    ) continue;
+    if (entry.parent !== head) {
+      fail(
+        'INVALID_RETIREMENT',
+        `retirements for plan ${planOID} do not form the exact post-approval chain`,
+      );
+    }
+    head = entry.oid;
+  }
+  return head;
+}
+
 function exactInputs(receipt, keys, label) {
   if (JSON.stringify(byteSort(Object.keys(receipt.inputs))) !== JSON.stringify(byteSort(keys))) {
     fail('STALE_BINDING', `${label} input keys do not match the plan`);
@@ -271,6 +294,15 @@ function sameCandidate(left, right) {
     left.candidate === right.candidate
     && left.product_tree === right.product_tree
     && JSON.stringify(left.inputs) === JSON.stringify(right.inputs)
+  );
+}
+
+function sameInputs(left, right) {
+  const leftKeys = byteSort(Object.keys(left ?? {}));
+  const rightKeys = byteSort(Object.keys(right ?? {}));
+  return (
+    sameIDs(leftKeys, rightKeys)
+    && leftKeys.every((key) => left[key] === right[key])
   );
 }
 
@@ -362,7 +394,28 @@ function validateSlice(
           (bound.role === 'captain' && bound.result === 'revise')
           || (bound.role === 'verifier' && bound.result === 'fail')
         );
-      if (!approved && !retry) fail('STALE_BINDING', `design ${entry.oid} has no predecessor`);
+      const staleReviewRetry = sameLineage
+        && bound.attempt === receipt.attempt - 1
+        && (
+          (bound.role === 'implementer' && bound.result === 'designed')
+          || (bound.role === 'implementer' && bound.result === 'candidate')
+          || bound.role === 'captain'
+          || (bound.role === 'verifier' && bound.result === 'pass')
+        );
+      if (
+        !approved && !retry && !staleReviewRetry
+      ) fail('STALE_BINDING', `design ${entry.oid} has no predecessor`);
+      const hasBase = Object.hasOwn(receipt, 'base');
+      const hasInputs = Object.hasOwn(receipt, 'inputs');
+      if (hasBase !== hasInputs) {
+        fail('STALE_BINDING', `design ${entry.oid} has incomplete reviewed-input evidence`);
+      }
+      if (hasInputs) {
+        if (planned.slice.consumes.length === 0) {
+          fail('STALE_BINDING', `design ${entry.oid} records inputs for a non-consuming slice`);
+        }
+        exactInputs(receipt, planned.slice.consumes, `design ${entry.oid}`);
+      }
     } else if (receipt.role === 'captain') {
       if (
         !sameLineage || bound.role !== 'implementer'
@@ -375,8 +428,23 @@ function validateSlice(
       const retry = sameLineage
         && bound.role === 'verifier' && bound.result === 'fail'
         && bound.attempt === receipt.attempt - 1;
-      if (!proceeded && !retry) fail('STALE_BINDING', `candidate ${entry.oid} lacks PROCEED`);
+      const staleRetry = sameLineage
+        && bound.attempt === receipt.attempt - 1
+        && (
+          (bound.role === 'implementer' && bound.result === 'candidate')
+          || (
+            bound.role === 'verifier'
+            && ['pass', 'fail'].includes(bound.result)
+          )
+        )
+        && !sameInputs(receipt.inputs, bound.inputs);
+      if (
+        !proceeded && !retry && !staleRetry
+      ) fail('STALE_BINDING', `candidate ${entry.oid} lacks PROCEED`);
       exactInputs(receipt, planned.slice.consumes, `candidate ${entry.oid}`);
+      if (planned.slice.consumes.length === 0 && Object.hasOwn(receipt, 'base')) {
+        fail('STALE_BINDING', `candidate ${entry.oid} records a base for a non-consuming slice`);
+      }
       if (
         entry.parent !== receipt.candidate
         || receipt.candidate === receipt.binds
@@ -388,6 +456,7 @@ function validateSlice(
       if (
         !sameLineage || bound.role !== 'implementer'
         || bound.result !== 'candidate' || bound.attempt !== receipt.attempt
+        || entry.parent !== byOID.get(receipt.binds)?.oid
         || !sameCandidate(receipt, bound)
       ) fail('STALE_BINDING', `Verifier ${entry.oid} does not bind its candidate`);
     } else {
@@ -403,6 +472,370 @@ function latest(entries, predicate) {
     if (predicate(entries[index])) return entries[index];
   }
   return null;
+}
+
+function governingDesign(history, current) {
+  if (!current) return null;
+  const byOID = new Map(history.entries.map((entry) => [entry.oid, entry]));
+  let cursor = current;
+  for (let steps = 0; cursor && steps <= history.entries.length; steps += 1) {
+    if (
+      cursor.receipt.role === 'implementer'
+      && cursor.receipt.result === 'designed'
+    ) return cursor;
+    cursor = byOID.get(cursor.receipt.binds) ?? null;
+  }
+  return null;
+}
+
+function consumedInputForPass(repo, sliceID, history, pass, admission, productCache) {
+  const receipt = pass.receipt;
+  if (
+    receipt.role !== 'verifier'
+    || receipt.result !== 'pass'
+    || receipt.slice !== sliceID
+  ) fail('STALE_BINDING', `consumed slice ${sliceID} has invalid PASS authority`);
+  const candidate = history.entries.find((entry) => entry.oid === receipt.binds);
+  if (
+    !candidate
+    || candidate.receipt.role !== 'implementer'
+    || candidate.receipt.result !== 'candidate'
+    || pass.parent !== candidate.oid
+    || candidate.parent !== candidate.receipt.candidate
+    || !sameCandidate(receipt, candidate.receipt)
+  ) fail('STALE_BINDING', `consumed PASS ${pass.oid} has no exact candidate chain`);
+  for (const commit of [candidate.receipt.candidate, candidate.oid, pass.oid]) {
+    if (
+      productTree(repo, commit, admission, productCache) !== receipt.product_tree
+    ) fail('CHANGED_CANDIDATE', `consumed PASS ${pass.oid} changed product identity`);
+  }
+  return frozen({
+    slice: sliceID,
+    pass_receipt: pass.oid,
+    candidate_receipt: candidate.oid,
+    candidate: candidate.receipt.candidate,
+    product_tree: receipt.product_tree,
+  });
+}
+
+function consumedInputsAtBase(
+  repo,
+  plan,
+  base,
+  consumes,
+  histories,
+  planByOID,
+  admission,
+  productCache,
+) {
+  const result = [];
+  for (const dependency of consumes) {
+    const lineage = slicePlanLineage(planByOID, plan, dependency);
+    const contract = plan.parsed.metadata.contracts[dependency];
+    let selected = null;
+    for (const entry of histories.get(dependency).entries) {
+      const receipt = entry.receipt;
+      if (
+        receipt.role !== 'verifier'
+        || receipt.result !== 'pass'
+        || receipt.contract !== contract
+        || !lineage.has(receipt.plan)
+        || !isAncestor(repo, entry.oid, base)
+      ) continue;
+      if (selected && !isAncestor(repo, selected.oid, entry.oid)) {
+        fail(
+          'AMBIGUOUS_AUTHORITY',
+          `consumed slice ${dependency} has incomparable PASS authority`,
+        );
+      }
+      selected = entry;
+    }
+    if (!selected) return null;
+    result.push(consumedInputForPass(
+      repo,
+      dependency,
+      histories.get(dependency),
+      selected,
+      admission,
+      productCache,
+    ));
+  }
+  return result;
+}
+
+function reviewedConsumedInputs(
+  repo,
+  design,
+  consumes,
+  histories,
+  planByOID,
+  admission,
+  productCache,
+) {
+  const plan = planByOID.get(design.receipt.plan);
+  if (!plan || !design.parent) {
+    fail('STALE_BINDING', `design ${design.oid} has no reviewed base`);
+  }
+  return consumedInputsAtBase(
+    repo,
+    plan,
+    design.parent,
+    consumes,
+    histories,
+    planByOID,
+    admission,
+    productCache,
+  );
+}
+
+function pinsForConsumedInputs(inputs) {
+  return Object.fromEntries(inputs.map((input) => [input.slice, input.product_tree]));
+}
+
+function prepareConsumedBase(repo, ref, seed, inputs, admission) {
+  let candidate = seed;
+  for (const input of inputs) {
+    if (
+      input.pass_receipt === candidate
+      || isAncestor(repo, input.pass_receipt, candidate)
+    ) continue;
+    candidate = unsafePrepareExactComposition(repo, {
+      targetRef: ref,
+      expectedHead: candidate,
+      candidate: input.pass_receipt,
+      productExclusionAdmission: admission,
+    }).result;
+  }
+  return candidate;
+}
+
+function linearOneParentAncestry(repo, base, candidate) {
+  let cursor = candidate;
+  for (let steps = 0; steps < MAX_CANDIDATE_LINEAGE; steps += 1) {
+    if (cursor === base) return true;
+    const parents = commitParents(repo, cursor);
+    if (parents.length !== 1) return false;
+    [cursor] = parents;
+  }
+  fail('RESOURCE_LIMIT', 'candidate lineage exceeds the bounded history limit');
+}
+
+function exactPreparedDesignInputs(
+  repo,
+  release,
+  design,
+  histories,
+  trackHistories,
+  planByOID,
+  approvals,
+  releaseReceipts,
+  admission,
+  productCache,
+) {
+  if (!Object.hasOwn(design.receipt, 'base')) return null;
+  const plan = planByOID.get(design.receipt.plan);
+  const location = plan && locations(plan.parsed).get(design.receipt.slice);
+  if (!location || location.slice.consumes.length === 0) {
+    fail('STALE_BINDING', `design ${design.oid} has invalid reviewed-input evidence`);
+  }
+  const owned = trackHistories.get(location.track.id)?.owned;
+  const designIndex = owned?.findIndex((entry) => entry.oid === design.oid) ?? -1;
+  if (designIndex < 0) {
+    fail('AMBIGUOUS_AUTHORITY', `design ${design.oid} has no owning track authority`);
+  }
+  const approval = approvals.get(plan.oid);
+  if (!approval) fail('APPROVAL_MISSING', `design ${design.oid} has no plan approval`);
+  const seed = designIndex === 0
+    ? planInstallResult(plan.oid, approval, releaseReceipts)
+    : owned[designIndex - 1].oid;
+  if (design.receipt.base !== seed) {
+    fail('STALE_BINDING', `design ${design.oid} has the wrong prior track authority`);
+  }
+  const inputs = consumedInputsAtBase(
+    repo,
+    plan,
+    design.parent,
+    location.slice.consumes,
+    histories,
+    planByOID,
+    admission,
+    productCache,
+  );
+  if (
+    !inputs
+    || !sameInputs(design.receipt.inputs, pinsForConsumedInputs(inputs))
+  ) fail('STALE_BINDING', `design ${design.oid} has stale reviewed-input pins`);
+  const expected = prepareConsumedBase(
+    repo,
+    `refs/heads/track/${release}/${location.track.id}`,
+    seed,
+    inputs,
+    admission,
+  );
+  if (expected !== design.parent) {
+    fail('STALE_BINDING', `design ${design.oid} has an inexact reviewed base`);
+  }
+  return inputs;
+}
+
+function validateConsumedHistories(
+  repo,
+  release,
+  histories,
+  trackHistories,
+  planByOID,
+  approvals,
+  releaseReceipts,
+  admission,
+  productCache,
+) {
+  for (const [sliceID, history] of histories) {
+    const byOID = new Map([...approvals.values()].map((entry) => [entry.oid, entry]));
+    for (const entry of history.entries) byOID.set(entry.oid, entry);
+    for (const entry of history.entries) {
+      const receipt = entry.receipt;
+      const plan = planByOID.get(receipt.plan);
+      const location = plan && locations(plan.parsed).get(sliceID);
+      if (!location || location.slice.consumes.length === 0) continue;
+      if (receipt.role === 'implementer' && receipt.result === 'designed') {
+        const bound = byOID.get(receipt.binds);
+        if (!bound) continue;
+        const currentInputs = exactPreparedDesignInputs(
+          repo,
+          release,
+          entry,
+          histories,
+          trackHistories,
+          planByOID,
+          approvals,
+          releaseReceipts,
+          admission,
+          productCache,
+        );
+        if (!currentInputs) continue;
+        const staleRetry = (
+          (bound.receipt.role === 'implementer' && bound.receipt.result === 'designed')
+          || (
+            bound.receipt.role === 'implementer'
+            && bound.receipt.result === 'candidate'
+          )
+          || (
+            bound.receipt.role === 'captain'
+            && bound.receipt.result !== 'revise'
+          )
+          || (
+            bound.receipt.role === 'verifier'
+            && bound.receipt.result === 'pass'
+          )
+        );
+        if (staleRetry) {
+          const priorDesign = governingDesign(history, bound);
+          if (!priorDesign) {
+            fail('STALE_BINDING', `design ${entry.oid} has no stale review chain`);
+          }
+          const priorInputs = reviewedConsumedInputs(
+            repo,
+            priorDesign,
+            location.slice.consumes,
+            histories,
+            planByOID,
+            admission,
+            productCache,
+          );
+          if (
+            priorInputs
+            && sameInputs(
+              pinsForConsumedInputs(priorInputs),
+              pinsForConsumedInputs(currentInputs),
+            )
+          ) {
+            fail('STALE_BINDING', `design ${entry.oid} retries an unchanged review`);
+          }
+        }
+      }
+      if (receipt.role !== 'implementer' || receipt.result !== 'candidate') continue;
+      const design = governingDesign(history, entry);
+      const strictDesign = Boolean(
+        design && Object.hasOwn(design.receipt, 'base'),
+      );
+      let reviewed = null;
+      if (strictDesign) {
+        reviewed = exactPreparedDesignInputs(
+          repo,
+          release,
+          design,
+          histories,
+          trackHistories,
+          planByOID,
+          approvals,
+          releaseReceipts,
+          admission,
+          productCache,
+        );
+      } else if (design) {
+        reviewed = reviewedConsumedInputs(
+          repo,
+          design,
+          location.slice.consumes,
+          histories,
+          planByOID,
+          admission,
+          productCache,
+        );
+      }
+      if (!Object.hasOwn(receipt, 'base')) {
+        if (strictDesign) {
+          fail('STALE_BINDING', `candidate ${entry.oid} has no consumed-input base`);
+        }
+        continue;
+      }
+      if (
+        reviewed
+        && !sameInputs(receipt.inputs, pinsForConsumedInputs(reviewed))
+      ) fail('STALE_BINDING', `candidate ${entry.oid} differs from its reviewed inputs`);
+      if (!linearOneParentAncestry(repo, receipt.base, receipt.candidate)) {
+        fail(
+          'CHANGED_CANDIDATE',
+          `candidate ${entry.oid} is not linear one-parent work from its base`,
+        );
+      }
+      const inputs = consumedInputsAtBase(
+        repo,
+        plan,
+        receipt.base,
+        location.slice.consumes,
+        histories,
+        planByOID,
+        admission,
+        productCache,
+      );
+      if (
+        !inputs
+        || !sameInputs(receipt.inputs, pinsForConsumedInputs(inputs))
+      ) fail('STALE_BINDING', `candidate ${entry.oid} has stale consumed pins`);
+      const expected = prepareConsumedBase(
+        repo,
+        `refs/heads/track/${release}/${location.track.id}`,
+        receipt.binds,
+        inputs,
+        admission,
+      );
+      if (expected !== receipt.base) {
+        fail('CHANGED_CANDIDATE', `candidate ${entry.oid} has an inexact prepared base`);
+      }
+      for (const input of inputs) {
+        for (const ancestor of [
+          input.candidate,
+          input.candidate_receipt,
+          input.pass_receipt,
+        ]) {
+          if (!isAncestor(repo, ancestor, receipt.candidate)) {
+            fail('CHANGED_CANDIDATE', `candidate ${entry.oid} omits consumed authority`);
+          }
+        }
+      }
+    }
+  }
 }
 
 function deriveSlice(location, history, current, approval, planByOID) {
@@ -428,7 +861,11 @@ function deriveSlice(location, history, current, approval, planByOID) {
   }
   const next = history.maximum_attempt + 1;
   const common = {
-    history, input_pins: null,
+    history,
+    input_pins: null,
+    reviewed_pins: null,
+    reviewed_base: null,
+    consumed_inputs: [],
     next_attempts: { design: next, candidate: next },
     stale_reason: null,
   };
@@ -473,7 +910,15 @@ function deriveSlice(location, history, current, approval, planByOID) {
   return state;
 }
 
-function deriveSlices(current, histories, approvals, planByOID) {
+function deriveSlices(
+  repo,
+  current,
+  histories,
+  approvals,
+  planByOID,
+  admission,
+  productCache,
+) {
   const states = new Map();
   for (const [id, location] of locations(current.parsed)) {
     states.set(id, {
@@ -497,16 +942,72 @@ function deriveSlices(current, histories, approvals, planByOID) {
     const slice = state.location.slice;
     const required = [...new Set([...slice.depends_on, ...slice.consumes])];
     for (const dependency of required) resolve(dependency);
-    const ready = required.every((dependency) => states.get(dependency).pass);
-    const pins = Object.fromEntries(slice.consumes.map((dependency) => [
-      dependency,
-      states.get(dependency).pass?.receipt.product_tree ?? null,
-    ]));
-    state.input_pins = ready ? pins : null;
+    let consumesReady = true;
+    const pins = {};
+    const inputs = [];
+    for (const dependency of slice.consumes) {
+      const dependencyState = states.get(dependency);
+      if (dependencyState.pass) {
+        pins[dependency] = dependencyState.pass.receipt.product_tree;
+        inputs.push(consumedInputForPass(
+          repo,
+          dependency,
+          histories.get(dependency),
+          dependencyState.pass,
+          admission,
+          productCache,
+        ));
+      } else {
+        consumesReady = false;
+      }
+    }
+    state.input_pins = consumesReady ? pins : null;
+    state.consumed_inputs = consumesReady ? inputs : [];
+
+    let requiresFreshDesign = false;
+    const design = governingDesign(state.history, state.current_receipt);
+    if (design && slice.consumes.length > 0) {
+      state.reviewed_base = design.parent;
+      const reviewed = reviewedConsumedInputs(
+        repo,
+        design,
+        slice.consumes,
+        histories,
+        planByOID,
+        admission,
+        productCache,
+      );
+      if (reviewed) state.reviewed_pins = pinsForConsumedInputs(reviewed);
+      const reviewStale = (
+        !reviewed
+        || !consumesReady
+        || !sameInputs(state.reviewed_pins, pins)
+      );
+      const receipt = state.current_receipt?.receipt;
+      const beforeCandidate = (
+        receipt?.role === 'captain'
+        || (receipt?.role === 'implementer' && receipt.result === 'designed')
+      );
+      const reviewEstablished = reviewed !== null;
+      if (reviewStale && (beforeCandidate || reviewEstablished)) {
+        requiresFreshDesign = true;
+        state.stage = 'design';
+        state.status = 'ready';
+        state.next_role = 'implementer';
+        state.outcome = 'stale';
+        state.attempt = state.history.maximum_attempt + 1;
+        state.pass = null;
+        state.candidate = null;
+        state.retained = false;
+        state.stale_reason = 'reviewed consumed input product changed or is absent';
+      }
+    }
+
     const evidence = state.candidate?.receipt;
     if (
-      evidence
-      && (!ready || JSON.stringify(evidence.inputs) !== JSON.stringify(pins))
+      !requiresFreshDesign && evidence
+      && consumesReady
+      && !sameInputs(evidence.inputs, pins)
     ) {
       state.stage = 'implement';
       state.status = 'ready';
@@ -515,7 +1016,16 @@ function deriveSlices(current, histories, approvals, planByOID) {
       state.attempt = state.history.maximum_attempt + 1;
       state.pass = null;
       state.retained = false;
-      state.stale_reason = 'dependency eligibility or consumed inputs changed';
+      state.stale_reason = 'consumed input lineage or product changed';
+    } else if (!requiresFreshDesign && evidence && !consumesReady) {
+      state.stage = 'implement';
+      state.status = 'ready';
+      state.next_role = 'implementer';
+      state.outcome = 'stale';
+      state.attempt = state.history.maximum_attempt + 1;
+      state.pass = null;
+      state.retained = false;
+      state.stale_reason = 'consumed input product is absent';
     }
     pending.delete(id);
     done.add(id);
@@ -796,12 +1306,56 @@ export function readBatonState(
       productCache,
     ));
   }
-  const states = deriveSlices(current, histories, plans.approvals, planByOID);
+  validateConsumedHistories(
+    repo,
+    release,
+    histories,
+    trackHistories,
+    planByOID,
+    plans.approvals,
+    releaseHistory.receipts,
+    productExclusionAdmission,
+    productCache,
+  );
+  const states = deriveSlices(
+    repo,
+    current,
+    histories,
+    plans.approvals,
+    planByOID,
+    productExclusionAdmission,
+    productCache,
+  );
+  for (const state of states.values()) {
+    state.consumed_inputs = state.consumed_inputs.map((input) => {
+      const producer = states.get(input.slice);
+      const source = trackHistories.get(producer.location.track.id)?.ref;
+      if (!source?.head) {
+        fail(
+          'AMBIGUOUS_AUTHORITY',
+          `consumed slice ${input.slice} has no direct producer authority`,
+        );
+      }
+      if (!isAncestor(repo, input.pass_receipt, source.head)) {
+        fail(
+          'AMBIGUOUS_AUTHORITY',
+          `consumed PASS ${input.pass_receipt} is absent from producer authority`,
+        );
+      }
+      return frozen({
+        ...input,
+        source_ref: source.ref,
+        source_head: source.head,
+      });
+    });
+  }
   const tracks = current.parsed.metadata.tracks.map((track, index) => frozen({
     id: track.id,
     depends_on: [...track.depends_on],
     ref: names.tracks[index],
     head: captured[index + 2].head,
+    authority_head: trackHistories.get(track.id).owned.at(-1)?.oid
+      ?? captured[0].head,
     slices: track.slices.map((slice) => frozen(states.get(slice.id))),
   }));
   for (const track of tracks) {

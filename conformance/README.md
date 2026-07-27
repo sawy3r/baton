@@ -34,7 +34,8 @@ The Python check validates:
 - schema-valid receipts with an invalid role/result pair or stale detail hash.
 
 The Node suites add the real-Git boundaries: forward plan revisions, stable
-slice attempts, selective dependency invalidation, exact candidate and product
+slice attempts, reviewed consumed-product pins, exact producer-authority
+preparation, selective dependency invalidation, exact candidate and product
 tree binding, metadata-only receipt history, deterministic composition,
 procedural reconciliation, compare-and-set, generated adapters, installer
 isolation, and terminal-safe Git-derived board output.
