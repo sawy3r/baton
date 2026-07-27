@@ -1,15 +1,15 @@
 {
   "schema_version": "baton.generated-adapters/v1",
   "package_version": "1.0.0-rc.5",
-  "package_digest": "sha256:9fe0e9f69e06fd2249a1e464d385e0fcc76f85e58b1daf4a1e3a56ec2e71769f",
+  "package_digest": "sha256:cd7db90c183ca4dc443673c370d64a3287d4e31323ea3f7972c5fec83d193bbf",
   "generator_version": "baton.adapter-generator/v1",
   "operation_version": "baton.operation/v2",
   "packages": {
     "claude": {
-      "digest": "sha256:9fe0e9f69e06fd2249a1e464d385e0fcc76f85e58b1daf4a1e3a56ec2e71769f"
+      "digest": "sha256:cd7db90c183ca4dc443673c370d64a3287d4e31323ea3f7972c5fec83d193bbf"
     },
     "codex": {
-      "digest": "sha256:9fe0e9f69e06fd2249a1e464d385e0fcc76f85e58b1daf4a1e3a56ec2e71769f"
+      "digest": "sha256:cd7db90c183ca4dc443673c370d64a3287d4e31323ea3f7972c5fec83d193bbf"
     }
   },
   "operations": [
@@ -23,13 +23,13 @@
       "name": "baton-implement",
       "version": "baton.operation/v2",
       "source": "operations/baton-implement.md",
-      "digest": "sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1"
+      "digest": "sha256:f8558c042acc653c3093fc2efb9bac7599a4e479139174e93df9c33e64743a6d"
     },
     {
       "name": "baton-design-review",
       "version": "baton.operation/v2",
       "source": "operations/baton-design-review.md",
-      "digest": "sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381"
+      "digest": "sha256:c12847c8b91f71e96a5996cb064588ff1612df37878065577d3f00ee1073a541"
     },
     {
       "name": "baton-verify",
@@ -63,29 +63,29 @@
       "host": "claude",
       "operation": "baton-implement",
       "path": "claude/skills/baton-implement/SKILL.md",
-      "digest": "sha256:c30042d2e252bc3138eb25996737809e1b1ee5926093f1896c7cf0f46a66d856",
-      "canonical_digest": "sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1"
+      "digest": "sha256:27c8d551606ea6c08c5f8965d771b6a6f185290172697f62c142e44111fa84f8",
+      "canonical_digest": "sha256:f8558c042acc653c3093fc2efb9bac7599a4e479139174e93df9c33e64743a6d"
     },
     {
       "host": "codex",
       "operation": "baton-implement",
       "path": "codex/skills/baton-implement/SKILL.md",
-      "digest": "sha256:62a26a319d4f9ef00fc9add67d0258e59b337f724e9779efa759f9a8ac8a9da9",
-      "canonical_digest": "sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1"
+      "digest": "sha256:64ca0ff93ac8ed1d41d14fb74943ba4c21ac6882646523e9b9b7b42972946336",
+      "canonical_digest": "sha256:f8558c042acc653c3093fc2efb9bac7599a4e479139174e93df9c33e64743a6d"
     },
     {
       "host": "claude",
       "operation": "baton-design-review",
       "path": "claude/skills/baton-design-review/SKILL.md",
-      "digest": "sha256:febd4480574bcc46405d59802f070c66af790c39a3552747cdb4ffe58c01ee40",
-      "canonical_digest": "sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381"
+      "digest": "sha256:c8111de6118cd3acf3bd9de42733e6c1cd8f64a2606acb4d13831187171305fb",
+      "canonical_digest": "sha256:c12847c8b91f71e96a5996cb064588ff1612df37878065577d3f00ee1073a541"
     },
     {
       "host": "codex",
       "operation": "baton-design-review",
       "path": "codex/skills/baton-design-review/SKILL.md",
-      "digest": "sha256:114297a19d32c80c693b3d82394e72ef15212f08cac63c9a71862c950bb41ec2",
-      "canonical_digest": "sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381"
+      "digest": "sha256:546ec93f9a040664739c1d4f6b68b401625dbb9b016b00442a621fab58998329",
+      "canonical_digest": "sha256:c12847c8b91f71e96a5996cb064588ff1612df37878065577d3f00ee1073a541"
     },
     {
       "host": "claude",

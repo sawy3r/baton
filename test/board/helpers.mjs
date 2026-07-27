@@ -7,6 +7,8 @@ import {
 import {
   productTreeIdentity,
 } from '../../reference/records/git.mjs';
+import { createBatonActions } from '../../reference/records/actions.mjs';
+import { readBatonState } from '../../reference/records/state.mjs';
 import {
   commitAll,
   git,
@@ -126,9 +128,35 @@ export function passSlice(fixture, sliceID, {
   implementerChecks = 'implementer checks',
   verifierChecks = 'verifier checks',
   verifierResult = 'pass',
+  legacyConsumed = false,
+  legacyBase = null,
+  productValue = null,
 } = {}) {
   const { track, item } = plannedSlice(fixture, sliceID);
-  switchTrack(fixture, track.id);
+  const engine = createBatonActions({
+    repo: fixture.repo,
+    resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
+  });
+  let reviewed = null;
+  if (!legacyConsumed) {
+    const state = readBatonState(fixture.repo, fixture.metadata.release, {
+      productExclusionAdmission: fixture.admission,
+    });
+    const authority = state.tracks.find(({ id }) => id === track.id).authority_head;
+    const prepared = engine.prepareTrackBase({
+      release: fixture.metadata.release,
+      slice: sliceID,
+    });
+    reviewed = { authority, prepared };
+  }
+  if (legacyBase) {
+    const branch = `track/${fixture.metadata.release}/${track.id}`;
+    git(fixture.repo, 'branch', branch, legacyBase);
+    git(fixture.repo, 'switch', '-q', branch);
+    git(fixture.repo, 'commit', '--allow-empty', '-q', '-m', 'legacy inexact consumed base');
+  } else {
+    switchTrack(fixture, track.id);
+  }
   const common = {
     version: 1,
     release: fixture.metadata.release,
@@ -142,6 +170,10 @@ export function passSlice(fixture, sliceID, {
     role: 'implementer',
     result: 'designed',
     binds: fixture.approval.oid,
+    ...(item.consumes.length > 0 && reviewed ? {
+      base: reviewed.authority,
+      inputs: reviewed.prepared.pins,
+    } : {}),
     summary: `Design ${sliceID}.`,
   });
   const captain = appendReceipt(fixture.repo, {
@@ -151,7 +183,17 @@ export function passSlice(fixture, sliceID, {
     binds: design.oid,
     summary: `Proceed with ${sliceID}.`,
   });
-  write(fixture.repo, item.scope.include[0], `${sliceID} product\n`);
+  const prepared = legacyConsumed
+    ? null
+    : engine.prepareTrackBase({
+      release: fixture.metadata.release,
+      slice: sliceID,
+    });
+  write(
+    fixture.repo,
+    item.scope.include[0],
+    productValue ?? `${sliceID} product\n`,
+  );
   const candidate = commitAll(fixture.repo, `implement ${sliceID}`);
   const identity = productTreeIdentity(fixture.repo, candidate, fixture.admission);
   const implemented = appendReceipt(fixture.repo, {
@@ -159,7 +201,7 @@ export function passSlice(fixture, sliceID, {
     role: 'implementer',
     result: 'candidate',
     binds: captain.oid,
-    base: fixture.target,
+    ...(item.consumes.length > 0 && prepared ? { base: prepared.base } : {}),
     candidate,
     product_tree: identity.productTree,
     inputs,

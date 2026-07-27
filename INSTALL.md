@@ -118,10 +118,12 @@ user packages. Invoking `baton-plan` can propose a plan but cannot approve it.
 The ordinary guided sequence is:
 
 1. `baton-plan` proposes the applicable plan revision for external approval.
-2. `baton-implement` returns one eligible slice’s design TL;DR and stops.
+2. The engine prepares the exact current consumed `PASS` authorities, then
+   `baton-implement` returns one eligible slice’s design TL;DR and stops.
 3. `baton-design-review` returns the distinct Captain decision.
-4. After `PROCEED`, `baton-implement` builds the candidate, runs required
-   checks, and returns observable evidence.
+4. After `PROCEED`, the engine prepares those current authorities again, then
+   `baton-implement` builds the candidate, runs required checks, and returns
+   observable evidence.
 5. A fresh, read-only `baton-verify` returns `PASS`, `FAIL`, or `BLOCKED`.
 6. `baton-merge` composes passed tracks, obtains fresh whole-product
    verification, and integrates only the exact candidate covered by `PASS`.

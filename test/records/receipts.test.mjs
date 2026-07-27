@@ -226,6 +226,24 @@ test('receipt JSON is strict, canonical, bounded, and role-aware', () => {
     parseReceiptBytes(Buffer.from(canonicalJSON(candidateReceipt()))).candidate,
     OID_C,
   );
+  const reviewedDesign = receipt({
+    role: 'implementer',
+    result: 'designed',
+    base: OID_C,
+    inputs: { S2: DIGEST_A },
+  });
+  assert.deepEqual(
+    parseReceiptBytes(Buffer.from(canonicalJSON(reviewedDesign))).inputs,
+    { S2: DIGEST_A },
+  );
+  throwsCode(
+    () => parseReceiptBytes(Buffer.from(canonicalJSON(receipt({
+      role: 'implementer',
+      result: 'designed',
+      base: OID_C,
+    })))),
+    'MISSING_FIELD',
+  );
   const assembly = candidateReceipt({
     slice: undefined,
     attempt: undefined,

@@ -6,7 +6,7 @@ description: "Design or implement one eligible Baton slice attempt without cross
 <!-- baton-adapter
 package-version: 1.0.0-rc.5
 operation-version: baton.operation/v2
-operation-sha256: sha256:8e3a056fe6b0a0db5f30679b4f6cc2a2ba44d53c33538a0ec3d2db04cba7f5f1
+operation-sha256: sha256:f8558c042acc653c3093fc2efb9bac7599a4e479139174e93df9c33e64743a6d
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve the Baton package root from the current Git project .codex/baton install when present and valid; otherwise use the configured Codex user directory baton install. Read package-relative files from that root.
@@ -38,10 +38,12 @@ attempt. Neither replaces the slice.
 
 ## Actions
 
-1. If Captain review is needed, inspect the work and return a concise design
+1. Before design, require the engine-prepared exact current consumed `PASS`
+   base. Then inspect the work and return a concise design
    TL;DR covering approach, touched surfaces, consequential decisions, risks,
    and evidence. Stop.
-2. After applicable `PROCEED`, build only the approved product scope.
+2. After applicable `PROCEED`, require the exact current consumed `PASS` base
+   again, then build only the approved product scope.
 3. Run required checks and inspect the real diff and candidate.
 4. Return acceptance-linked evidence over the exact candidate and stop.
 

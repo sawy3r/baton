@@ -6,7 +6,7 @@ description: "Return the Captain decision over one exact Baton plan revision, sl
 <!-- baton-adapter
 package-version: 1.0.0-rc.5
 operation-version: baton.operation/v2
-operation-sha256: sha256:cef3db42acdeca0696e939e5cc58b2628469992dbefaa3b0e2429987903b9381
+operation-sha256: sha256:c12847c8b91f71e96a5996cb064588ff1612df37878065577d3f00ee1073a541
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve the Baton package root from the current Git project .claude/baton install when present and valid; otherwise use the configured Claude user directory baton install. Read package-relative files from that root.
@@ -26,6 +26,7 @@ design attempt before implementation.
 
 - The applicable approved plan revision and stable slice contract.
 - The exact design TL;DR and immutable object it binds.
+- The exact consumed product base and its product-tree pins.
 - Relevant repository facts and the Captain invocation identity.
 
 ## Authority
@@ -37,7 +38,8 @@ a delivery verdict.
 ## Actions
 
 1. Confirm the plan, slice, design attempt, and immutable binding agree.
-2. Check acceptance coverage, scope, dependencies, consumed inputs,
+2. Check acceptance coverage, scope, dependencies, the exact consumed product
+   base,
    consequential decisions, risks, and proposed evidence.
 3. Return exactly one decision:
    - `PROCEED` when implementation may begin;
