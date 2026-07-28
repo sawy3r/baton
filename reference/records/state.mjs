@@ -1,6 +1,8 @@
 import {
-  GitRecordError, captureHeadRefs, commitParents, isAncestor, productTreeIdentity,
-  readFilesAtOID, readFirstParentHistory, verifyReleaseIntegration,
+  GitRecordError, captureHeadRefs, commitParents, firstParentPathChange,
+  isAncestor, productTreeIdentity, readFilesAtOID, readFirstParentHistory,
+  verifyReleaseIntegration,
+  unsafePrepareApprovedTargetBase,
   unsafePrepareExactComposition,
 } from './git.mjs';
 import { ReceiptError, parsePlanBytes, parseReceiptHistoryEntry } from './receipts.mjs';
@@ -93,33 +95,257 @@ function planAt(repo, release, commit) {
   }
 }
 
-function historyAt(repo, head) {
+function historyLimitFailure(rows, label) {
+  if (rows.length === 4096) {
+    fail('RESOURCE_LIMIT', `${label} exceeds the bounded first-parent history limit`);
+  }
+  fail('HISTORY_BOUNDARY_MISSING', `${label} is absent from the exact first-parent history`);
+}
+
+function historyEntry(rows, index) {
+  const row = rows[index];
+  const parent = rows[index + 1];
+  if (
+    !parent
+    || row.parents.length !== 1
+    || row.parents[0] !== parent.oid
+  ) {
+    fail('HISTORY_LIMIT', `cannot establish the parent tree for receipt ${row.oid}`);
+  }
+  try {
+    return parseReceiptHistoryEntry({
+      oid: row.oid,
+      parents: row.parents,
+      tree: row.tree,
+      parent_tree: parent.tree,
+      message: row.message,
+    });
+  } catch (error) {
+    if (error instanceof ReceiptError) {
+      fail(error.code, `invalid receipt ${row.oid}: ${error.message}`, error);
+    }
+    throw error;
+  }
+}
+
+function historyAt(repo, head, exclusiveBoundary = null) {
   if (head === null) return frozen({ rows: [], receipts: [] });
   const rows = readFirstParentHistory(repo, head);
   const receipts = [];
+  let boundaryIndex = rows.length;
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
-    if (!row.message.includes(Buffer.from('\nBaton-Receipt: '))) continue;
-    const parent = rows[index + 1];
-    if (!parent || row.parents.length !== 1 || row.parents[0] !== parent.oid) {
-      fail('HISTORY_LIMIT', `cannot establish the parent tree for receipt ${row.oid}`);
+    if (row.oid === exclusiveBoundary) {
+      boundaryIndex = index;
+      break;
     }
-    try {
-      receipts.push(parseReceiptHistoryEntry({
-        oid: row.oid,
-        parents: row.parents,
-        tree: row.tree,
-        parent_tree: parent.tree,
-        message: row.message,
-      }));
-    } catch (error) {
-      if (error instanceof ReceiptError) {
-        fail(error.code, `invalid receipt ${row.oid}: ${error.message}`, error);
+    const parent = rows[index + 1];
+    if (!parent || row.parents[0] !== parent.oid) {
+      if (exclusiveBoundary !== null) {
+        historyLimitFailure(rows, `history boundary ${exclusiveBoundary}`);
       }
+    }
+    if (!row.message.includes(Buffer.from('\nBaton-Receipt: '))) continue;
+    receipts.push(historyEntry(rows, index));
+  }
+  if (exclusiveBoundary !== null && boundaryIndex === rows.length) {
+    historyLimitFailure(rows, `history boundary ${exclusiveBoundary}`);
+  }
+  return frozen({
+    rows: rows.slice(0, boundaryIndex).reverse(),
+    receipts: receipts.reverse(),
+  });
+}
+
+function assertPlanPredecessor(current, prior) {
+  const next = current.parsed.metadata;
+  const previous = prior.parsed.metadata;
+  if (
+    previous.revision !== next.revision - 1
+    || previous.release !== next.release
+    || previous.repository !== next.repository
+    || previous.target_ref !== next.target_ref
+    || previous.approval_ref === next.approval_ref
+  ) {
+    fail('INVALID_PLAN_HISTORY', `plan revision ${next.revision} has a broken predecessor`);
+  }
+}
+
+/**
+ * Read only receipts belonging to the current release epoch.
+ *
+ * Revision 1 is installed as target -> plan commit -> approval receipt. Its
+ * approved target is therefore a deterministic exclusive floor: inherited
+ * receipts below it belong to older releases, while every receipt above it is
+ * parsed before any authority or ownership filtering.
+ */
+export function readReleaseReceiptHistory(repo, release, head) {
+  if (head === null) return frozen({
+    boundary: null,
+    rows: [],
+    receipts: [],
+  });
+  const current = planAt(repo, release, head);
+  const rows = readFirstParentHistory(repo, head);
+  const receipts = [];
+  const lineage = [];
+  let expected = current;
+  let boundary = null;
+  let boundaryIndex = rows.length;
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (row.oid === boundary) {
+      boundaryIndex = index;
+      break;
+    }
+    const parent = rows[index + 1];
+    if (!parent || row.parents[0] !== parent.oid) {
+      historyLimitFailure(rows, boundary === null
+        ? `revision-1 approval for ${release}`
+        : `release epoch boundary ${boundary}`);
+    }
+    if (!row.message.includes(Buffer.from('\nBaton-Receipt: '))) continue;
+
+    const entry = historyEntry(rows, index);
+    receipts.push(entry);
+    const receipt = entry.receipt;
+    if (
+      boundary !== null
+      || receipt.role !== 'planner'
+      || receipt.result !== 'approved'
+      || Object.hasOwn(receipt, 'slice')
+      || receipt.plan !== expected.oid
+      || receipt.release !== release
+    ) continue;
+
+    const [file] = readFilesAtOID(repo, entry.oid, [planPath(release)]);
+    if (
+      receipt.binds !== entry.parent
+      || !file?.bytes
+      || file.object !== expected.oid
+    ) {
+      fail('STALE_BINDING', `approval ${entry.oid} does not bind its plan commit`);
+    }
+    let parsed;
+    try {
+      parsed = parsePlanBytes(file.bytes);
+    } catch (error) {
+      if (error instanceof ReceiptError) fail(error.code, error.message, error);
       throw error;
     }
+    const approved = frozen({ oid: file.object, parsed });
+    if (
+      approved.parsed.metadata.release !== release
+      || approved.parsed.metadata.revision !== expected.parsed.metadata.revision
+    ) {
+      fail('INVALID_PLAN_HISTORY', `approval ${entry.oid} has stale plan topology`);
+    }
+    lineage.push({ plan: approved, approval: entry });
+
+    const priorOID = approved.parsed.metadata.previous_plan;
+    if (priorOID !== null) {
+      const priorApproval = receipts.find(({ receipt: candidate }) => (
+        candidate.role === 'planner'
+        && candidate.result === 'approved'
+        && !Object.hasOwn(candidate, 'slice')
+        && candidate.plan === priorOID
+        && candidate.release === release
+      ));
+      if (priorApproval) {
+        fail('INVALID_PLAN_HISTORY', `approval for previous plan ${priorOID} is out of order`);
+      }
+      expected = frozen({
+        oid: priorOID,
+        parsed: {
+          metadata: {
+            ...approved.parsed.metadata,
+            revision: approved.parsed.metadata.revision - 1,
+          },
+        },
+      });
+      continue;
+    }
+
+    if (approved.parsed.metadata.revision !== 1) {
+      fail('INVALID_PLAN_HISTORY', 'plan history does not terminate at revision 1');
+    }
+    const planParents = commitParents(repo, entry.parent);
+    if (
+      planParents.length !== 1
+      || planParents[0] !== receipt.target
+    ) {
+      fail(
+        'INVALID_PLAN_HISTORY',
+        `revision-1 approval ${entry.oid} does not install directly above its target`,
+      );
+    }
+    const [atFloor] = readFilesAtOID(repo, receipt.target, [planPath(release)]);
+    if (atFloor?.object !== null) {
+      fail(
+        'INVALID_PLAN_HISTORY',
+        `revision-1 target ${receipt.target} already contains release ${release}`,
+      );
+    }
+    const priorPlanPathChange = firstParentPathChange(
+      repo,
+      receipt.target,
+      planPath(release),
+    );
+    if (priorPlanPathChange !== null) {
+      fail(
+        'INVALID_PLAN_HISTORY',
+        `revision-1 plan path was already introduced at ${priorPlanPathChange}`,
+      );
+    }
+    boundary = receipt.target;
   }
-  return frozen({ rows: [...rows].reverse(), receipts: receipts.reverse() });
+
+  if (boundary === null || boundaryIndex === rows.length) {
+    historyLimitFailure(
+      rows,
+      boundary === null
+        ? `revision-1 approval for ${release}`
+        : `release epoch boundary ${boundary}`,
+    );
+  }
+
+  const lineageOIDs = new Set(lineage.map(({ plan }) => plan.oid));
+  for (let index = 0; index < lineage.length - 1; index += 1) {
+    assertPlanPredecessor(lineage[index].plan, lineage[index + 1].plan);
+  }
+  for (const planOID of lineageOIDs) {
+    const matches = receipts.filter(({ receipt }) => (
+      receipt.role === 'planner'
+      && receipt.result === 'approved'
+      && !Object.hasOwn(receipt, 'slice')
+      && receipt.plan === planOID
+    ));
+    if (matches.length !== 1) {
+      fail(
+        matches.length === 0 ? 'APPROVAL_MISSING' : 'AMBIGUOUS_APPROVAL',
+        `plan ${planOID} has ${matches.length} approvals inside its release epoch`,
+      );
+    }
+  }
+  for (const entry of receipts) {
+    if (entry.receipt.release !== release) {
+      fail('RELEASE_RECEIPT_MISMATCH', `receipt ${entry.oid} names another release`);
+    }
+    if (
+      entry.receipt.role === 'planner'
+      && entry.receipt.result === 'approved'
+      && !lineageOIDs.has(entry.receipt.plan)
+    ) {
+      fail('AMBIGUOUS_APPROVAL', `approval ${entry.oid} is outside the current plan lineage`);
+    }
+  }
+
+  return frozen({
+    boundary,
+    rows: rows.slice(0, boundaryIndex).reverse(),
+    receipts: receipts.reverse(),
+  });
 }
 
 function matchingApproval(repo, release, entry, receipts) {
@@ -445,8 +671,32 @@ function validateSlice(
       if (planned.slice.consumes.length === 0 && Object.hasOwn(receipt, 'base')) {
         fail('STALE_BINDING', `candidate ${entry.oid} records a base for a non-consuming slice`);
       }
+      const approval = approvals.get(plan.oid);
+      const preparedBase = approval && planned.slice.consumes.length === 0
+        ? preparePlanBoundBase(
+          repo,
+          receipt.release,
+          plan,
+          planned,
+          receipt.binds,
+          [],
+          approvals,
+          admission,
+        )
+        : null;
+      if (preparedBase && !isAncestor(repo, preparedBase, receipt.candidate)) {
+        fail(
+          'CHANGED_CANDIDATE',
+          `candidate ${entry.oid} omits its exact prepared base`,
+        );
+      }
       if (
-        entry.parent !== receipt.candidate
+        !approval
+        || (
+          preparedBase === null
+          && !isAncestor(repo, approval.receipt.target, receipt.candidate)
+        )
+        || entry.parent !== receipt.candidate
         || receipt.candidate === receipt.binds
         || !isAncestor(repo, receipt.binds, receipt.candidate)
         || (receipt.base && !isAncestor(repo, receipt.base, receipt.candidate))
@@ -609,6 +859,28 @@ function prepareConsumedBase(repo, ref, seed, inputs, admission) {
   return candidate;
 }
 
+function preparePlanBoundBase(
+  repo,
+  release,
+  plan,
+  location,
+  authority,
+  inputs,
+  approvals,
+  admission,
+) {
+  const approval = approvals.get(plan.oid);
+  if (!approval) fail('APPROVAL_MISSING', `plan ${plan.oid} has no approval`);
+  const ref = `refs/heads/track/${release}/${location.track.id}`;
+  const targetBase = unsafePrepareApprovedTargetBase(repo, {
+    targetRef: ref,
+    expectedHead: authority,
+    approvedTarget: approval.receipt.target,
+    productExclusionAdmission: admission,
+  });
+  return prepareConsumedBase(repo, ref, targetBase, inputs, admission);
+}
+
 function linearOneParentAncestry(repo, base, candidate) {
   let cursor = candidate;
   for (let steps = 0; steps < MAX_CANDIDATE_LINEAGE; steps += 1) {
@@ -632,10 +904,9 @@ function exactPreparedDesignInputs(
   admission,
   productCache,
 ) {
-  if (!Object.hasOwn(design.receipt, 'base')) return null;
   const plan = planByOID.get(design.receipt.plan);
   const location = plan && locations(plan.parsed).get(design.receipt.slice);
-  if (!location || location.slice.consumes.length === 0) {
+  if (!location) {
     fail('STALE_BINDING', `design ${design.oid} has invalid reviewed-input evidence`);
   }
   const owned = trackHistories.get(location.track.id)?.owned;
@@ -648,6 +919,28 @@ function exactPreparedDesignInputs(
   const seed = designIndex === 0
     ? planInstallResult(plan.oid, approval, releaseReceipts)
     : owned[designIndex - 1].oid;
+  const targetBase = preparePlanBoundBase(
+    repo,
+    release,
+    plan,
+    location,
+    seed,
+    [],
+    approvals,
+    admission,
+  );
+  if (location.slice.consumes.length === 0) {
+    if (targetBase !== design.parent) {
+      fail('STALE_BINDING', `design ${design.oid} has an inexact approved-target base`);
+    }
+    return [];
+  }
+  if (!Object.hasOwn(design.receipt, 'base')) {
+    if (!isAncestor(repo, approval.receipt.target, design.parent)) {
+      fail('STALE_BINDING', `design ${design.oid} omits its approved target`);
+    }
+    return null;
+  }
   if (design.receipt.base !== seed) {
     fail('STALE_BINDING', `design ${design.oid} has the wrong prior track authority`);
   }
@@ -665,11 +958,14 @@ function exactPreparedDesignInputs(
     !inputs
     || !sameInputs(design.receipt.inputs, pinsForConsumedInputs(inputs))
   ) fail('STALE_BINDING', `design ${design.oid} has stale reviewed-input pins`);
-  const expected = prepareConsumedBase(
+  const expected = preparePlanBoundBase(
     repo,
-    `refs/heads/track/${release}/${location.track.id}`,
+    release,
+    plan,
+    location,
     seed,
     inputs,
+    approvals,
     admission,
   );
   if (expected !== design.parent) {
@@ -696,7 +992,7 @@ function validateConsumedHistories(
       const receipt = entry.receipt;
       const plan = planByOID.get(receipt.plan);
       const location = plan && locations(plan.parsed).get(sliceID);
-      if (!location || location.slice.consumes.length === 0) continue;
+      if (!location) continue;
       if (receipt.role === 'implementer' && receipt.result === 'designed') {
         const bound = byOID.get(receipt.binds);
         if (!bound) continue;
@@ -712,6 +1008,7 @@ function validateConsumedHistories(
           admission,
           productCache,
         );
+        if (location.slice.consumes.length === 0) continue;
         if (!currentInputs) continue;
         const staleRetry = (
           (bound.receipt.role === 'implementer' && bound.receipt.result === 'designed')
@@ -753,6 +1050,7 @@ function validateConsumedHistories(
           }
         }
       }
+      if (location.slice.consumes.length === 0) continue;
       if (receipt.role !== 'implementer' || receipt.result !== 'candidate') continue;
       const design = governingDesign(history, entry);
       const strictDesign = Boolean(
@@ -813,11 +1111,14 @@ function validateConsumedHistories(
         !inputs
         || !sameInputs(receipt.inputs, pinsForConsumedInputs(inputs))
       ) fail('STALE_BINDING', `candidate ${entry.oid} has stale consumed pins`);
-      const expected = prepareConsumedBase(
+      const expected = preparePlanBoundBase(
         repo,
-        `refs/heads/track/${release}/${location.track.id}`,
+        release,
+        plan,
+        location,
         receipt.binds,
         inputs,
+        approvals,
         admission,
       );
       if (expected !== receipt.base) {
@@ -1261,12 +1562,7 @@ export function readBatonState(
   }
   if (!captured[1].head) fail('REF_NOT_FOUND', `target ref ${names.target} does not exist`);
 
-  const releaseHistory = historyAt(repo, captured[0].head);
-  for (const entry of releaseHistory.receipts) {
-    if (entry.receipt.release !== release) {
-      fail('RELEASE_RECEIPT_MISMATCH', `receipt ${entry.oid} names another release`);
-    }
-  }
+  const releaseHistory = readReleaseReceiptHistory(repo, release, captured[0].head);
   const plans = planChain(repo, release, current, releaseHistory.receipts);
   const planByOID = new Map(plans.chain.map((entry) => [entry.oid, entry]));
   validateRetirements(plans.chain, plans.approvals, releaseHistory.receipts);
@@ -1285,7 +1581,13 @@ export function readBatonState(
   for (let index = 0; index < current.parsed.metadata.tracks.length; index += 1) {
     const track = current.parsed.metadata.tracks[index];
     const ref = captured[index + 2];
-    const owned = historyAt(repo, ref.head).receipts.filter((entry) => (
+    const scanned = historyAt(repo, ref.head, releaseHistory.boundary).receipts;
+    for (const entry of scanned) {
+      if (entry.receipt.release !== release) {
+        fail('AMBIGUOUS_AUTHORITY', `track ${track.id} contains a foreign receipt`);
+      }
+    }
+    const owned = scanned.filter((entry) => (
       Object.hasOwn(entry.receipt, 'slice')
       && !releasePlannerOIDs.has(entry.oid)
       && priorOwners.get(entry.receipt.slice) === track.id

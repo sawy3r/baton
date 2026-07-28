@@ -1568,6 +1568,41 @@ export function changedPathsBetween(repo, base, candidate) {
   ));
 }
 
+/**
+ * Return the newest first-parent commit at or below `head` that changed one
+ * exact repository path. The query is output-bounded and never reads commit
+ * messages, so callers can prove path-introduction history without
+ * interpreting inherited receipt text.
+ */
+export function firstParentPathChange(repo, head, relativePath) {
+  const exactHead = resolveRef(repo, head);
+  const exactPath = assertRepositoryPath(relativePath);
+  const result = runGit(
+    repo,
+    [
+      'rev-list',
+      '--first-parent',
+      '--full-history',
+      '--max-count=1',
+      exactHead,
+      '--',
+      exactPath,
+    ],
+    {
+      maxBuffer: 1024,
+      label: `read first-parent path history for ${exactPath}`,
+    },
+  ).trim();
+  if (result === '') return null;
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(result)) {
+    throw new GitRecordError(
+      'MALFORMED_GIT_OUTPUT',
+      `first-parent path history for ${exactPath} is malformed`,
+    );
+  }
+  return result;
+}
+
 function repositoryObjectDirectory(repo) {
   const common = runGit(
     repo,
@@ -1970,19 +2005,74 @@ function deterministicCompositionCommit(context, repo, targetRef, expected, cand
   ).trim();
 }
 
+function validateCompositionTargetRef(repo, targetRef) {
+  runGit(repo, ['check-ref-format', targetRef], {
+    code: 'INVALID_TARGET_REF',
+    label: `validate target ref ${targetRef}`,
+  });
+  if (!targetRef.startsWith('refs/heads/')) {
+    throw new GitRecordError(
+      'INVALID_TARGET_REF',
+      'composition target must be a full refs/heads ref',
+    );
+  }
+}
+
+function prepareTwoParentComposition(repo, targetRef, expected, candidate) {
+  return withEngineGitContext(repo, (context) => {
+    const tree = deterministicMergeTreeInContext(
+      context,
+      expected,
+      candidate,
+      'composition',
+    );
+    return deterministicCompositionCommit(
+      context,
+      repo,
+      targetRef,
+      expected,
+      candidate,
+      tree,
+    );
+  });
+}
+
+function boundedFirstParentContains(repo, head, expected) {
+  const rendered = runGit(
+    repo,
+    ['rev-list', '--first-parent', '--max-count=4096', head],
+    {
+      maxBuffer: 512 * 1024,
+      label: 'read bounded first-parent identities',
+    },
+  );
+  if (!rendered.endsWith('\n')) {
+    throw new GitRecordError(
+      'MALFORMED_GIT_OUTPUT',
+      'bounded first-parent identities were not terminated',
+    );
+  }
+  const identities = rendered.slice(0, -1).split('\n');
+  if (
+    identities.length < 1
+    || identities.length > 4096
+    || !identities.every((oid) => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(oid))
+  ) {
+    throw new GitRecordError(
+      'MALFORMED_GIT_OUTPUT',
+      'bounded first-parent identities were malformed',
+    );
+  }
+  return identities.includes(expected);
+}
+
 export function unsafePrepareExactComposition(repo, {
   targetRef,
   expectedHead,
   candidate,
   productExclusionAdmission,
 }) {
-  runGit(repo, ['check-ref-format', targetRef], {
-    code: 'INVALID_TARGET_REF',
-    label: `validate target ref ${targetRef}`,
-  });
-  if (!targetRef.startsWith('refs/heads/')) {
-    throw new GitRecordError('INVALID_TARGET_REF', 'composition target must be a full refs/heads ref');
-  }
+  validateCompositionTargetRef(repo, targetRef);
   const expected = resolveRef(repo, expectedHead);
   const passed = resolveRef(repo, candidate);
   productTreeIdentity(repo, expected, productExclusionAdmission);
@@ -1999,22 +2089,7 @@ export function unsafePrepareExactComposition(repo, {
     );
   } else {
     mode = 'two-parent';
-    result = withEngineGitContext(repo, (context) => {
-      const tree = deterministicMergeTreeInContext(
-        context,
-        expected,
-        passed,
-        'composition',
-      );
-      return deterministicCompositionCommit(
-        context,
-        repo,
-        targetRef,
-        expected,
-        passed,
-        tree,
-      );
-    });
+    result = prepareTwoParentComposition(repo, targetRef, expected, passed);
   }
   productTreeIdentity(repo, result, productExclusionAdmission);
   verifyExactComposition(repo, expected, passed, result, 'composition');
@@ -2024,6 +2099,42 @@ export function unsafePrepareExactComposition(repo, {
     candidate: passed,
     result,
   });
+}
+
+// Keep current authority as the first parent. Add the approved target only
+// when that authority does not already contain it.
+export function unsafePrepareApprovedTargetBase(repo, {
+  targetRef,
+  expectedHead,
+  approvedTarget,
+  productExclusionAdmission,
+}) {
+  const expected = resolveRef(repo, expectedHead);
+  const target = resolveRef(repo, approvedTarget);
+  if (target === expected || isAncestor(repo, target, expected)) return expected;
+  if (isAncestor(repo, expected, target)) {
+    if (boundedFirstParentContains(repo, target, expected)) {
+      return unsafePrepareExactComposition(repo, {
+        targetRef,
+        expectedHead: expected,
+        candidate: target,
+        productExclusionAdmission,
+      }).result;
+    }
+    validateCompositionTargetRef(repo, targetRef);
+    productTreeIdentity(repo, expected, productExclusionAdmission);
+    productTreeIdentity(repo, target, productExclusionAdmission);
+    const result = prepareTwoParentComposition(repo, targetRef, expected, target);
+    productTreeIdentity(repo, result, productExclusionAdmission);
+    verifyExactComposition(repo, expected, target, result, 'composition');
+    return result;
+  }
+  return unsafePrepareExactComposition(repo, {
+    targetRef,
+    expectedHead: expected,
+    candidate: target,
+    productExclusionAdmission,
+  }).result;
 }
 
 export function unsafeApplyExactComposition(repo, options) {
