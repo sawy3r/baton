@@ -6,12 +6,18 @@ import {
   referenceNames,
 } from '../../reference/records/actions.mjs';
 import {
+  productTreeIdentity,
   readFileAtOID,
   resolveRef,
+  unsafeAtomicUpdateRefs,
+  unsafePrepareApprovedTargetBase,
+  unsafePrepareMetadataCommit,
 } from '../../reference/records/git.mjs';
 import {
+  digestBytes,
   parsePlanBytes,
   parseReceiptCommitMessage,
+  renderReceiptCommit,
 } from '../../reference/records/receipts.mjs';
 import { readBatonState } from '../../reference/records/state.mjs';
 import {
@@ -260,6 +266,319 @@ test('plan revisions keep release identity, bind the prior blob, and may repin m
       resolveRef(fixture.repo, referenceNames.releaseRef('actions-v2')),
       revised.receipt_commit,
     );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a repinned target is composed into a zero-input track before design', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product before maintenance bridge\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const first = engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'Initial plan approved.',
+    });
+
+    write(fixture.repo, 'README.md', 'product after maintenance bridge\n');
+    const movedTarget = commitAll(fixture.repo, 'merge maintenance bridge');
+    const nextBytes = planBytes(metadata(2, first.plan));
+    const revised = engine.recordPlanRevision({
+      planBytes: nextBytes,
+      summary: 'Revision approved against the maintenance-bridge target.',
+    });
+    const track = referenceNames.trackRef('actions-v2', 'T1');
+
+    assert.throws(
+      () => appendDesign(engine),
+      (error) => error?.code === 'TRACK_BASE_NOT_PREPARED',
+    );
+    assert.throws(
+      () => resolveRef(fixture.repo, track),
+      /resolve refs\/heads\/track\/actions-v2\/T1 failed/,
+    );
+
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S1',
+    });
+    assert.equal(prepared.changed, true);
+    assert.equal(resolveRef(fixture.repo, track), prepared.base);
+    assert.equal(isDescendant(fixture.repo, revised.head, prepared.base), true);
+    assert.equal(isDescendant(fixture.repo, movedTarget, prepared.base), true);
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', prepared.base).split(' '),
+      [prepared.base, revised.head, movedTarget],
+    );
+    assert.equal(
+      readFileAtOID(fixture.repo, prepared.base, 'README.md').toString(),
+      'product after maintenance bridge\n',
+    );
+    assert.deepEqual(
+      readFileAtOID(
+        fixture.repo,
+        prepared.base,
+        referenceNames.planPath('actions-v2'),
+      ),
+      nextBytes,
+    );
+
+    const designed = appendDesign(engine);
+    assert.equal(designed.receipt.binds, revised.receipt_commit);
+    assert.equal(
+      git(fixture.repo, 'rev-parse', `${designed.receipt_commit}^`),
+      prepared.base,
+    );
+    assert.equal(Object.hasOwn(designed.receipt, 'base'), false);
+    assert.equal(Object.hasOwn(designed.receipt, 'inputs'), false);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('state rejects a forged zero-input design that omits its repinned target', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product before maintenance bridge\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const first = engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'Initial plan approved.',
+    });
+    write(fixture.repo, 'README.md', 'product after maintenance bridge\n');
+    commitAll(fixture.repo, 'merge maintenance bridge');
+    const nextBytes = planBytes(metadata(2, first.plan));
+    const revised = engine.recordPlanRevision({
+      planBytes: nextBytes,
+      summary: 'Revision approved against the maintenance-bridge target.',
+    });
+    const parsed = parsePlanBytes(nextBytes);
+    const message = renderReceiptCommit({
+      subject: 'forge design without approved target',
+      detail: Buffer.alloc(0),
+      receipt: {
+        version: 1,
+        release: 'actions-v2',
+        slice: 'S1',
+        role: 'implementer',
+        result: 'designed',
+        attempt: 1,
+        plan: revised.plan,
+        contract: parsed.metadata.contracts.S1,
+        binds: revised.receipt_commit,
+        detail: digestBytes(Buffer.alloc(0)),
+        summary: 'Forged design omits the approved target.',
+      },
+    });
+    const forged = unsafePrepareMetadataCommit(fixture.repo, {
+      expectedHead: revised.head,
+      message,
+    });
+    const track = referenceNames.trackRef('actions-v2', 'T1');
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'create',
+      ref: track,
+      newHead: forged.commit,
+    }]);
+
+    assert.throws(
+      () => readBatonState(fixture.repo, 'actions-v2', {
+        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+      }),
+      (error) => (
+        error?.code === 'STALE_BINDING'
+        && /inexact approved-target base/.test(error.message)
+      ),
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a non-consuming candidate cannot bypass a repinned target after PROCEED', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product before target repin\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const first = engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'Initial plan approved.',
+    });
+    engine.prepareTrackBase({ release: 'actions-v2', slice: 'S1' });
+    appendDesign(engine);
+    const captain = appendCaptain(engine);
+
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'README.md', 'product after target repin\n');
+    const movedTarget = commitAll(fixture.repo, 'move approved target');
+    const nextBytes = planBytes(metadata(2, first.plan));
+    const revised = engine.recordPlanRevision({
+      planBytes: nextBytes,
+      summary: 'Reapprove the unchanged slice against the moved target.',
+    });
+
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+    write(fixture.repo, 'src/product.txt', 'candidate from stale pre-repin base\n');
+    const bypass = commitAll(fixture.repo, 'test: candidate omits repinned target');
+    assert.equal(isDescendant(fixture.repo, movedTarget, bypass), false);
+    assert.throws(
+      () => engine.appendReceipt({
+        release: 'actions-v2',
+        slice: 'S1',
+        role: 'implementer',
+        result: 'candidate',
+        summary: 'Unsafe candidate from the pre-repin Captain receipt.',
+        candidate: bypass,
+        checkResults: 'focused checks PASS\n',
+      }),
+      (error) => error?.code === 'CHANGED_CANDIDATE',
+    );
+    assert.equal(
+      resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T1')),
+      bypass,
+    );
+    assert.equal(captain.receipt.result, 'proceed');
+
+    const admission = testProductExclusionAdmission(fixture.repo);
+    const track = referenceNames.trackRef('actions-v2', 'T1');
+    const exactBase = unsafePrepareApprovedTargetBase(fixture.repo, {
+      targetRef: track,
+      expectedHead: captain.receipt_commit,
+      approvedTarget: movedTarget,
+      productExclusionAdmission: admission,
+    });
+    const arbitraryBase = git(
+      fixture.repo,
+      'commit-tree',
+      git(fixture.repo, 'rev-parse', `${exactBase}^{tree}`),
+      '-p',
+      captain.receipt_commit,
+      '-p',
+      movedTarget,
+      '-m',
+      'arbitrary non-Baton merge',
+    );
+    assert.notEqual(arbitraryBase, exactBase);
+    git(fixture.repo, 'switch', '-q', '--detach', arbitraryBase);
+    write(fixture.repo, 'src/product.txt', 'candidate from arbitrary merge\n');
+    const arbitraryCandidate = commitAll(fixture.repo, 'test: candidate from arbitrary merge');
+    assert.equal(isDescendant(fixture.repo, captain.receipt_commit, arbitraryCandidate), true);
+    assert.equal(isDescendant(fixture.repo, movedTarget, arbitraryCandidate), true);
+    assert.equal(isDescendant(fixture.repo, exactBase, arbitraryCandidate), false);
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'update',
+      ref: track,
+      expectedHead: bypass,
+      newHead: arbitraryCandidate,
+    }]);
+
+    const product = productTreeIdentity(fixture.repo, arbitraryCandidate, admission);
+    const forgedMessage = renderReceiptCommit({
+      subject: 'forge candidate from arbitrary merge',
+      detail: Buffer.alloc(0),
+      receipt: {
+        version: 1,
+        release: 'actions-v2',
+        slice: 'S1',
+        role: 'implementer',
+        result: 'candidate',
+        attempt: 1,
+        plan: revised.plan,
+        contract: parsePlanBytes(nextBytes).metadata.contracts.S1,
+        binds: captain.receipt_commit,
+        candidate: arbitraryCandidate,
+        product_tree: product.productTree,
+        inputs: {},
+        checks: digestBytes(Buffer.from('focused checks PASS\n')),
+        detail: digestBytes(Buffer.alloc(0)),
+        summary: 'Forged candidate bypasses the exact prepared base.',
+      },
+    });
+    const forged = unsafePrepareMetadataCommit(fixture.repo, {
+      expectedHead: arbitraryCandidate,
+      message: forgedMessage,
+    });
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'update',
+      ref: track,
+      expectedHead: arbitraryCandidate,
+      newHead: forged.commit,
+    }]);
+    assert.throws(
+      () => readBatonState(fixture.repo, 'actions-v2', {
+        productExclusionAdmission: admission,
+      }),
+      (error) => (
+        error?.code === 'CHANGED_CANDIDATE'
+        && /omits its exact prepared base/.test(error.message)
+      ),
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a consuming candidate remains valid after retained PROCEED and target repin', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product before target repin\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const initial = consumedPlan();
+    const first = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Approve one producer and consumer.',
+    });
+    const producer = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'producer v1\n',
+    });
+    const review = designConsumer(engine, 'proceed');
+
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'README.md', 'product after target repin\n');
+    const movedTarget = commitAll(fixture.repo, 'move approved target');
+    const revised = engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, first.plan, { tracks: initial.tracks })),
+      summary: 'Retain the reviewed consumer against the moved target.',
+    });
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S2',
+    });
+    assert.equal(prepared.changed, true);
+    assert.equal(isDescendant(fixture.repo, movedTarget, prepared.base), true);
+    assert.equal(
+      isDescendant(fixture.repo, producer.passed.receipt_commit, prepared.base),
+      true,
+    );
+
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T2');
+    write(fixture.repo, 'src/consumer.txt', 'consumer after target repin\n');
+    const candidate = commitAll(fixture.repo, 'feat: consume after target repin');
+    const implemented = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'Consumer includes its exact repinned target and input base.',
+      base: prepared.base,
+      candidate,
+      checkResults: 'consumer checks PASS\n',
+    });
+    const state = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    const consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(consumer.current_receipt.oid, implemented.receipt_commit);
+    assert.equal(implemented.receipt.plan, revised.plan);
+    assert.equal(implemented.receipt.binds, review.captain.receipt_commit);
   } finally {
     fixture.cleanup();
   }
@@ -1522,6 +1841,10 @@ test('track-base preparation is zero-input inert and serial same-ref ancestral',
     const zero = engine.prepareTrackBase({ release: 'actions-v2', slice: 'S1' });
     assert.equal(zero.changed, false);
     assert.deepEqual(zero.pins, {});
+    assert.throws(
+      () => resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T1')),
+      /resolve refs\/heads\/track\/actions-v2\/T1 failed/,
+    );
     const producer = deliverSlice(engine, fixture.repo, {
       slice: 'S1',
       track: 'T1',
