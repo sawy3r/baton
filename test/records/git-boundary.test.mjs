@@ -8,8 +8,10 @@ import {
   assertRecordRootAtRef,
   productTreeIdentity,
   readFileAtOID,
+  readFirstParentHistory,
   resolveRef,
   unsafeApplyExactComposition,
+  unsafePrepareApprovedTargetBase,
   unsafeCommitRecordTransition,
   verifyReleaseIntegration,
   verifyTrackComposition,
@@ -282,6 +284,52 @@ test('composition admits only exact fast-forward or ordered two-parent topology'
       }),
       'STALE_TARGET',
     );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('approved-target preparation preserves second-parent authority on first-parent replay', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'base.txt', 'base\n');
+    const base = commitAll(fixture.repo, 'base');
+    git(fixture.repo, 'switch', '-q', '-c', 'authority', base);
+    write(fixture.repo, 'authority.txt', 'authority\n');
+    const expected = commitAll(fixture.repo, 'current track authority');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'approved-target', base);
+    write(fixture.repo, 'target.txt', 'target\n');
+    commitAll(fixture.repo, 'approved target first-parent work');
+    git(fixture.repo, 'merge', '-q', '--no-ff', '-m', 'carry authority as second parent', expected);
+    const target = git(fixture.repo, 'rev-parse', 'HEAD');
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', target).split(' '),
+      [target, git(fixture.repo, 'rev-parse', `${target}^1`), expected],
+    );
+
+    const options = {
+      targetRef: 'refs/heads/track/replay/T1',
+      expectedHead: expected,
+      approvedTarget: target,
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    };
+    const prepared = unsafePrepareApprovedTargetBase(fixture.repo, options);
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', prepared).split(' '),
+      [prepared, expected, target],
+    );
+    assert.deepEqual(
+      readFirstParentHistory(fixture.repo, prepared)
+        .slice(0, 2)
+        .map(({ oid }) => oid),
+      [prepared, expected],
+    );
+    assert.equal(
+      readFirstParentHistory(fixture.repo, prepared).some(({ oid }) => oid === target),
+      false,
+    );
+    assert.equal(unsafePrepareApprovedTargetBase(fixture.repo, options), prepared);
   } finally {
     fixture.cleanup();
   }

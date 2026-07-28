@@ -2,6 +2,7 @@ import {
   GitRecordError, captureHeadRefs, commitParents, firstParentPathChange,
   isAncestor, productTreeIdentity, readFilesAtOID, readFirstParentHistory,
   verifyReleaseIntegration,
+  unsafePrepareApprovedTargetBase,
   unsafePrepareExactComposition,
 } from './git.mjs';
 import { ReceiptError, parsePlanBytes, parseReceiptHistoryEntry } from './receipts.mjs';
@@ -670,8 +671,32 @@ function validateSlice(
       if (planned.slice.consumes.length === 0 && Object.hasOwn(receipt, 'base')) {
         fail('STALE_BINDING', `candidate ${entry.oid} records a base for a non-consuming slice`);
       }
+      const approval = approvals.get(plan.oid);
+      const preparedBase = approval && planned.slice.consumes.length === 0
+        ? preparePlanBoundBase(
+          repo,
+          receipt.release,
+          plan,
+          planned,
+          receipt.binds,
+          [],
+          approvals,
+          admission,
+        )
+        : null;
+      if (preparedBase && !isAncestor(repo, preparedBase, receipt.candidate)) {
+        fail(
+          'CHANGED_CANDIDATE',
+          `candidate ${entry.oid} omits its exact prepared base`,
+        );
+      }
       if (
-        entry.parent !== receipt.candidate
+        !approval
+        || (
+          preparedBase === null
+          && !isAncestor(repo, approval.receipt.target, receipt.candidate)
+        )
+        || entry.parent !== receipt.candidate
         || receipt.candidate === receipt.binds
         || !isAncestor(repo, receipt.binds, receipt.candidate)
         || (receipt.base && !isAncestor(repo, receipt.base, receipt.candidate))
@@ -834,6 +859,28 @@ function prepareConsumedBase(repo, ref, seed, inputs, admission) {
   return candidate;
 }
 
+function preparePlanBoundBase(
+  repo,
+  release,
+  plan,
+  location,
+  authority,
+  inputs,
+  approvals,
+  admission,
+) {
+  const approval = approvals.get(plan.oid);
+  if (!approval) fail('APPROVAL_MISSING', `plan ${plan.oid} has no approval`);
+  const ref = `refs/heads/track/${release}/${location.track.id}`;
+  const targetBase = unsafePrepareApprovedTargetBase(repo, {
+    targetRef: ref,
+    expectedHead: authority,
+    approvedTarget: approval.receipt.target,
+    productExclusionAdmission: admission,
+  });
+  return prepareConsumedBase(repo, ref, targetBase, inputs, admission);
+}
+
 function linearOneParentAncestry(repo, base, candidate) {
   let cursor = candidate;
   for (let steps = 0; steps < MAX_CANDIDATE_LINEAGE; steps += 1) {
@@ -857,10 +904,9 @@ function exactPreparedDesignInputs(
   admission,
   productCache,
 ) {
-  if (!Object.hasOwn(design.receipt, 'base')) return null;
   const plan = planByOID.get(design.receipt.plan);
   const location = plan && locations(plan.parsed).get(design.receipt.slice);
-  if (!location || location.slice.consumes.length === 0) {
+  if (!location) {
     fail('STALE_BINDING', `design ${design.oid} has invalid reviewed-input evidence`);
   }
   const owned = trackHistories.get(location.track.id)?.owned;
@@ -873,6 +919,28 @@ function exactPreparedDesignInputs(
   const seed = designIndex === 0
     ? planInstallResult(plan.oid, approval, releaseReceipts)
     : owned[designIndex - 1].oid;
+  const targetBase = preparePlanBoundBase(
+    repo,
+    release,
+    plan,
+    location,
+    seed,
+    [],
+    approvals,
+    admission,
+  );
+  if (location.slice.consumes.length === 0) {
+    if (targetBase !== design.parent) {
+      fail('STALE_BINDING', `design ${design.oid} has an inexact approved-target base`);
+    }
+    return [];
+  }
+  if (!Object.hasOwn(design.receipt, 'base')) {
+    if (!isAncestor(repo, approval.receipt.target, design.parent)) {
+      fail('STALE_BINDING', `design ${design.oid} omits its approved target`);
+    }
+    return null;
+  }
   if (design.receipt.base !== seed) {
     fail('STALE_BINDING', `design ${design.oid} has the wrong prior track authority`);
   }
@@ -890,11 +958,14 @@ function exactPreparedDesignInputs(
     !inputs
     || !sameInputs(design.receipt.inputs, pinsForConsumedInputs(inputs))
   ) fail('STALE_BINDING', `design ${design.oid} has stale reviewed-input pins`);
-  const expected = prepareConsumedBase(
+  const expected = preparePlanBoundBase(
     repo,
-    `refs/heads/track/${release}/${location.track.id}`,
+    release,
+    plan,
+    location,
     seed,
     inputs,
+    approvals,
     admission,
   );
   if (expected !== design.parent) {
@@ -921,7 +992,7 @@ function validateConsumedHistories(
       const receipt = entry.receipt;
       const plan = planByOID.get(receipt.plan);
       const location = plan && locations(plan.parsed).get(sliceID);
-      if (!location || location.slice.consumes.length === 0) continue;
+      if (!location) continue;
       if (receipt.role === 'implementer' && receipt.result === 'designed') {
         const bound = byOID.get(receipt.binds);
         if (!bound) continue;
@@ -937,6 +1008,7 @@ function validateConsumedHistories(
           admission,
           productCache,
         );
+        if (location.slice.consumes.length === 0) continue;
         if (!currentInputs) continue;
         const staleRetry = (
           (bound.receipt.role === 'implementer' && bound.receipt.result === 'designed')
@@ -978,6 +1050,7 @@ function validateConsumedHistories(
           }
         }
       }
+      if (location.slice.consumes.length === 0) continue;
       if (receipt.role !== 'implementer' || receipt.result !== 'candidate') continue;
       const design = governingDesign(history, entry);
       const strictDesign = Boolean(
@@ -1038,11 +1111,14 @@ function validateConsumedHistories(
         !inputs
         || !sameInputs(receipt.inputs, pinsForConsumedInputs(inputs))
       ) fail('STALE_BINDING', `candidate ${entry.oid} has stale consumed pins`);
-      const expected = prepareConsumedBase(
+      const expected = preparePlanBoundBase(
         repo,
-        `refs/heads/track/${release}/${location.track.id}`,
+        release,
+        plan,
+        location,
         receipt.binds,
         inputs,
+        approvals,
         admission,
       );
       if (expected !== receipt.base) {

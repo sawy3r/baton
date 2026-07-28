@@ -10,6 +10,7 @@ import {
   resolveProductExclusionAdmission,
   resolveRecordPathAdmission,
   unsafeAtomicUpdateRefs,
+  unsafePrepareApprovedTargetBase,
   unsafePrepareExactComposition,
   unsafePrepareMetadataCommit,
   unsafePrepareRecordTransition,
@@ -348,6 +349,12 @@ function preparedTrackBase(repo, state, slice, admission) {
   const track = currentTrack(state, slice.location.track.id);
   const inputs = currentConsumedInputs(state, slice);
   const seed = track.authority_head;
+  const targetBase = unsafePrepareApprovedTargetBase(repo, {
+    targetRef: track.ref,
+    expectedHead: seed,
+    approvedTarget: state.plan.approval.receipt.target,
+    productExclusionAdmission: admission,
+  });
   return Object.freeze({
     track,
     inputs,
@@ -355,7 +362,7 @@ function preparedTrackBase(repo, state, slice, admission) {
     base: prepareConsumedTrackBase(
       repo,
       track.ref,
-      seed,
+      targetBase,
       inputs,
       admission,
     ),
@@ -739,26 +746,24 @@ export function createBatonActions(options) {
         attempt = slice.attempt;
         binds = current.oid;
         parent = ownerHead ?? state.refs.release.head;
-        let exactPreparedBase = false;
+        const prepared = preparedTrackBase(
+          repo,
+          state,
+          slice,
+          admissions.productExclusionAdmission,
+        );
+        if (parent !== prepared.base) {
+          fail(
+            'TRACK_BASE_NOT_PREPARED',
+            `${ownerRef} does not equal the exact current approved-target and consumed-input base`,
+          );
+        }
         let reviewedEvidence = {};
         if (location.slice.consumes.length > 0) {
-          const prepared = preparedTrackBase(
-            repo,
-            state,
-            slice,
-            admissions.productExclusionAdmission,
-          );
-          if (parent !== prepared.base) {
-            fail(
-              'TRACK_BASE_NOT_PREPARED',
-              `${ownerRef} does not equal the exact current consumed-input base`,
-            );
-          }
           reviewedEvidence = {
             base: prepared.seed,
             inputs: slice.input_pins,
           };
-          exactPreparedBase = true;
         }
         receipt = {
           ...common,
@@ -768,14 +773,6 @@ export function createBatonActions(options) {
           binds,
           ...reviewedEvidence,
         };
-        if (
-          ownerHead !== null
-          && ownerHead !== current.oid
-          && current.receipt.role !== 'planner'
-          && !exactPreparedBase
-        ) {
-          fail('CHANGED_OWNER_HEAD', `${ownerRef} changed after its authoritative receipt`);
-        }
       } else if (role === 'captain' && ['proceed', 'revise', 'escalate'].includes(result)) {
         if (slice.next_role !== 'captain') {
           fail('ROLE_NOT_ELIGIBLE', `${sliceID} does not currently need Captain review`);
@@ -815,6 +812,15 @@ export function createBatonActions(options) {
         }
         if (location.slice.consumes.length === 0 && base !== null) {
           fail('INVALID_ACTION_INPUT', 'non-consuming candidate does not accept base');
+        }
+        if (
+          location.slice.consumes.length === 0
+          && !isAncestor(repo, prepared.base, candidate)
+        ) {
+          fail(
+            'CHANGED_CANDIDATE',
+            'non-consuming candidate omits the exact prepared base',
+          );
         }
         if (
           base !== null
@@ -1023,7 +1029,11 @@ export function createBatonActions(options) {
       },
       ...consumedRefVerifications(slice, prepared.track.ref),
     ];
-    if (prepared.inputs.length === 0) {
+    if (
+      prepared.inputs.length === 0
+      && prepared.track.head === null
+      && prepared.base === prepared.seed
+    ) {
       unsafeAtomicUpdateRefs(repo, [
         ...snapshotOperations,
         {
