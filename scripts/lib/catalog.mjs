@@ -56,6 +56,16 @@ export const PRIOR_INSTALL_PACKAGES = Object.freeze([
       codex: 'sha256:d5309960b517dd220568d4fe813a6bd8f9936fdb2fc9200a7f5460efc77bedc9',
     }),
   }),
+  Object.freeze({
+    package_version: '1.0.0-rc.7',
+    package_digest: 'sha256:a8d5ea690fe1ce3e6e94ef80174cfbb0e2dcdc707d8def5c89ca19230516d023',
+    generator_version: 'baton.adapter-generator/v1',
+    operation_version: 'baton.operation/v2',
+    ownership_fingerprints: Object.freeze({
+      claude: 'sha256:f9aeafdb8104f7775df7d479715a38445202eb2ba68e713ef5dfe50156eba607',
+      codex: 'sha256:dcca087423bed88873be711b2dbfabed13f23ac0ae633cec796f2d2da0d6b9e6',
+    }),
+  }),
 ]);
 
 export const OPERATIONS = Object.freeze([

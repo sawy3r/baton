@@ -12,6 +12,7 @@ import {
   unsafeAtomicUpdateRefs,
   unsafePrepareApprovedTargetBase,
   unsafePrepareExactComposition,
+  unsafePrepareProductComposition,
   unsafePrepareMetadataCommit,
   unsafePrepareRecordTransition,
 } from './git.mjs';
@@ -25,6 +26,7 @@ import {
 import {
   readBatonState,
   readReleaseReceiptHistory,
+  unsafeProductBaseEvidence,
 } from './state.mjs';
 
 const RECORD_ROOT = '.baton/releases';
@@ -324,7 +326,11 @@ function currentConsumedInputs(state, slice) {
       `${slice.location.slice.id} has no complete consumed PASS authority`,
     );
   }
-  return slice.consumed_inputs;
+  const evidence = unsafeProductBaseEvidence(state);
+  return slice.consumed_inputs.map((input) => Object.freeze({
+    ...input,
+    product_base: () => evidence.pass(input.slice, input.pass_receipt),
+  }));
 }
 
 function prepareConsumedTrackBase(repo, consumerRef, seed, inputs, admission) {
@@ -334,10 +340,11 @@ function prepareConsumedTrackBase(repo, consumerRef, seed, inputs, admission) {
       input.pass_receipt === candidate
       || isAncestor(repo, input.pass_receipt, candidate)
     ) continue;
-    const prepared = unsafePrepareExactComposition(repo, {
+    const prepared = unsafePrepareProductComposition(repo, {
       targetRef: consumerRef,
       expectedHead: candidate,
       candidate: input.pass_receipt,
+      productBase: input.product_base,
       productExclusionAdmission: admission,
     });
     candidate = prepared.result;
@@ -1130,6 +1137,7 @@ export function createBatonActions(options) {
     }
 
     const trackCandidates = [];
+    const productBases = unsafeProductBaseEvidence(state);
     for (const track of state.tracks) {
       const finalPass = track.slices.at(-1)?.pass;
       if (!finalPass) fail('SLICE_PASS_REQUIRED', `track ${track.id} has no final PASS`);
@@ -1141,6 +1149,8 @@ export function createBatonActions(options) {
       trackCandidates.push({
         id: track.id,
         candidate: finalPass.receipt.candidate,
+        authority: finalPass.oid,
+        product_base: () => productBases.track(track.id),
         product_tree: finalPass.receipt.product_tree,
       });
     }
@@ -1177,12 +1187,24 @@ export function createBatonActions(options) {
     }
 
     let candidate = target;
-    for (const component of [state.refs.release.head, ...trackCandidates.map((item) => item.candidate)]) {
-      if (component === candidate || isAncestor(repo, component, candidate)) continue;
-      const prepared = unsafePrepareExactComposition(repo, {
+    for (const component of [
+      { authority: state.refs.release.head, product_base: null },
+      ...trackCandidates,
+    ]) {
+      if (
+        component.authority === candidate
+        || isAncestor(repo, component.authority, candidate)
+      ) continue;
+      const prepare = component.product_base === null
+        ? unsafePrepareExactComposition
+        : unsafePrepareProductComposition;
+      const prepared = prepare(repo, {
         targetRef: state.refs.target.ref,
         expectedHead: candidate,
-        candidate: component,
+        candidate: component.authority,
+        ...(component.product_base === null
+          ? {}
+          : { productBase: component.product_base }),
         productExclusionAdmission: admissions.productExclusionAdmission,
       });
       candidate = prepared.result;

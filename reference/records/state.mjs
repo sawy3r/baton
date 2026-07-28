@@ -4,12 +4,28 @@ import {
   verifyReleaseIntegration,
   unsafePrepareApprovedTargetBase,
   unsafePrepareExactComposition,
+  unsafePrepareProductComposition,
 } from './git.mjs';
 import { ReceiptError, parsePlanBytes, parseReceiptHistoryEntry } from './receipts.mjs';
 
 const RECORD_ROOT = '.baton/releases';
 const MAX_PLAN_REVISIONS = 256;
 const MAX_CANDIDATE_LINEAGE = 4096;
+const productBaseEvidence = new WeakMap();
+
+/**
+ * Return engine-only product-base evidence for one exact state snapshot.
+ *
+ * The public state projection intentionally omits raw Git bases. Actions use
+ * this opaque snapshot binding so callers cannot supply or alter a base.
+ */
+export function unsafeProductBaseEvidence(state) {
+  const evidence = productBaseEvidence.get(state);
+  if (!evidence) {
+    throw new TypeError('product-base evidence requires an exact Baton state snapshot');
+  }
+  return evidence;
+}
 
 export class BatonStateError extends Error {
   constructor(code, message, cause) {
@@ -813,6 +829,161 @@ function consumedInputsAtBase(
   return result;
 }
 
+function createPassProductBaseResolver(
+  repo,
+  release,
+  histories,
+  planByOID,
+  approvals,
+  admission,
+  productCache,
+) {
+  const memo = new Map();
+  const pending = new Set();
+
+  function passEntry(sliceID, oid) {
+    const entry = histories.get(sliceID)?.entries.find((item) => item.oid === oid);
+    if (!entry) fail('AMBIGUOUS_AUTHORITY', `${sliceID} PASS ${oid} is absent`);
+    return entry;
+  }
+
+  function legacyConsumedInputs(plan, candidate, consumes) {
+    const result = [];
+    for (const dependency of consumes) {
+      const lineage = slicePlanLineage(planByOID, plan, dependency);
+      const contract = plan.parsed.metadata.contracts[dependency];
+      const product = candidate.receipt.inputs[dependency];
+      const matches = histories.get(dependency).entries.filter(({ receipt }) => (
+        receipt.role === 'verifier'
+        && receipt.result === 'pass'
+        && receipt.contract === contract
+        && lineage.has(receipt.plan)
+        && receipt.product_tree === product
+      ));
+      if (matches.length === 0) {
+        fail(
+          'AMBIGUOUS_AUTHORITY',
+          `legacy candidate ${candidate.oid} has no exact ${dependency} PASS authority`,
+        );
+      }
+      const protectedMatches = matches.filter((match) => (
+        isAncestor(repo, match.oid, candidate.receipt.candidate)
+      ));
+      let selected = protectedMatches[0] ?? null;
+      for (const match of protectedMatches.slice(1)) {
+        if (isAncestor(repo, selected.oid, match.oid)) {
+          selected = match;
+        } else if (!isAncestor(repo, match.oid, selected.oid)) {
+          selected = null;
+          break;
+        }
+      }
+      if (selected === null && matches.length === 1) {
+        [selected] = matches;
+      }
+      if (selected === null) {
+        fail(
+          'AMBIGUOUS_AUTHORITY',
+          `legacy candidate ${candidate.oid} has ambiguous ${dependency} PASS authorities`,
+        );
+      }
+      result.push(consumedInputForPass(
+        repo,
+        dependency,
+        histories.get(dependency),
+        selected,
+        admission,
+        productCache,
+      ));
+    }
+    return result;
+  }
+
+  function baselineFor(sliceID, pass) {
+    const key = `${sliceID}:${pass.oid}`;
+    if (memo.has(key)) return memo.get(key);
+    if (pending.has(key)) {
+      fail('DEPENDENCY_CYCLE', `product-base dependency cycle reaches ${sliceID}`);
+    }
+    pending.add(key);
+    try {
+      const plan = planByOID.get(pass.receipt.plan);
+      const location = plan && locations(plan.parsed).get(sliceID);
+      const approval = plan && approvals.get(plan.oid);
+      if (!location || !approval) {
+        fail('AMBIGUOUS_AUTHORITY', `${sliceID} PASS ${pass.oid} has no approved plan`);
+      }
+      const candidate = histories.get(sliceID).entries.find(
+        (entry) => entry.oid === pass.receipt.binds,
+      );
+      if (
+        !candidate
+        || candidate.receipt.role !== 'implementer'
+        || candidate.receipt.result !== 'candidate'
+      ) {
+        fail('AMBIGUOUS_AUTHORITY', `${sliceID} PASS ${pass.oid} has no exact candidate`);
+      }
+      const priorIDs = predecessorIDs(location);
+      const priorInputs = consumedInputsAtBase(
+        repo,
+        plan,
+        pass.oid,
+        priorIDs,
+        histories,
+        planByOID,
+        admission,
+        productCache,
+      );
+      if (priorInputs === null) {
+        fail('AMBIGUOUS_AUTHORITY', `${sliceID} PASS ${pass.oid} omits prior slice authority`);
+      }
+      let consumedInputs = [];
+      if (location.slice.consumes.length > 0) {
+        consumedInputs = Object.hasOwn(candidate.receipt, 'base')
+          ? consumedInputsAtBase(
+            repo,
+            plan,
+            candidate.receipt.base,
+            location.slice.consumes,
+            histories,
+            planByOID,
+            admission,
+            productCache,
+          )
+          : legacyConsumedInputs(plan, candidate, location.slice.consumes);
+        if (
+          consumedInputs === null
+          || !sameInputs(candidate.receipt.inputs, pinsForConsumedInputs(consumedInputs))
+        ) {
+          fail(
+            'AMBIGUOUS_AUTHORITY',
+            `${sliceID} candidate ${candidate.oid} has no exact consumed PASS bindings`,
+          );
+        }
+      }
+
+      let baseline = approval.receipt.target;
+      for (const input of [...priorInputs, ...consumedInputs]) {
+        const dependencyPass = passEntry(input.slice, input.pass_receipt);
+        if (input.candidate === baseline || isAncestor(repo, input.candidate, baseline)) continue;
+        baseline = unsafePrepareProductComposition(repo, {
+          targetRef: `refs/heads/track/${release}/${location.track.id}`,
+          expectedHead: baseline,
+          candidate: input.candidate,
+          productBase: () => baselineFor(input.slice, dependencyPass),
+          productExclusionAdmission: admission,
+        }).result;
+      }
+      memo.set(key, baseline);
+      return baseline;
+    } finally {
+      pending.delete(key);
+    }
+  }
+
+  return baselineFor;
+}
+
 function reviewedConsumedInputs(
   repo,
   design,
@@ -849,14 +1020,36 @@ function prepareConsumedBase(repo, ref, seed, inputs, admission) {
       input.pass_receipt === candidate
       || isAncestor(repo, input.pass_receipt, candidate)
     ) continue;
-    candidate = unsafePrepareExactComposition(repo, {
+    const prepare = input.product_base
+      ? unsafePrepareProductComposition
+      : unsafePrepareExactComposition;
+    candidate = prepare(repo, {
       targetRef: ref,
       expectedHead: candidate,
       candidate: input.pass_receipt,
+      ...(input.product_base ? { productBase: input.product_base } : {}),
       productExclusionAdmission: admission,
     }).result;
   }
   return candidate;
+}
+
+function withPassProductBases(inputs, productBaseForPass, histories) {
+  return inputs.map((input) => {
+    const pass = histories.get(input.slice)?.entries.find(
+      (entry) => entry.oid === input.pass_receipt,
+    );
+    if (!pass) {
+      fail(
+        'AMBIGUOUS_AUTHORITY',
+        `${input.slice} PASS ${input.pass_receipt} is absent`,
+      );
+    }
+    return {
+      ...input,
+      product_base: () => productBaseForPass(input.slice, pass),
+    };
+  });
 }
 
 function preparePlanBoundBase(
@@ -901,9 +1094,17 @@ function exactPreparedDesignInputs(
   planByOID,
   approvals,
   releaseReceipts,
+  productBaseForPass,
   admission,
   productCache,
+  preparedDesignCache,
 ) {
+  const cacheKey = `${design.oid}:${design.parent}`;
+  if (preparedDesignCache.has(cacheKey)) return preparedDesignCache.get(cacheKey);
+  const remember = (value) => {
+    preparedDesignCache.set(cacheKey, value);
+    return value;
+  };
   const plan = planByOID.get(design.receipt.plan);
   const location = plan && locations(plan.parsed).get(design.receipt.slice);
   if (!location) {
@@ -933,18 +1134,18 @@ function exactPreparedDesignInputs(
     if (targetBase !== design.parent) {
       fail('STALE_BINDING', `design ${design.oid} has an inexact approved-target base`);
     }
-    return [];
+    return remember([]);
   }
   if (!Object.hasOwn(design.receipt, 'base')) {
     if (!isAncestor(repo, approval.receipt.target, design.parent)) {
       fail('STALE_BINDING', `design ${design.oid} omits its approved target`);
     }
-    return null;
+    return remember(null);
   }
   if (design.receipt.base !== seed) {
     fail('STALE_BINDING', `design ${design.oid} has the wrong prior track authority`);
   }
-  const inputs = consumedInputsAtBase(
+  const selectedInputs = consumedInputsAtBase(
     repo,
     plan,
     design.parent,
@@ -954,6 +1155,9 @@ function exactPreparedDesignInputs(
     admission,
     productCache,
   );
+  const inputs = selectedInputs === null
+    ? null
+    : withPassProductBases(selectedInputs, productBaseForPass, histories);
   if (
     !inputs
     || !sameInputs(design.receipt.inputs, pinsForConsumedInputs(inputs))
@@ -971,7 +1175,7 @@ function exactPreparedDesignInputs(
   if (expected !== design.parent) {
     fail('STALE_BINDING', `design ${design.oid} has an inexact reviewed base`);
   }
-  return inputs;
+  return remember(inputs);
 }
 
 function validateConsumedHistories(
@@ -982,9 +1186,11 @@ function validateConsumedHistories(
   planByOID,
   approvals,
   releaseReceipts,
+  productBaseForPass,
   admission,
   productCache,
 ) {
+  const preparedDesignCache = new Map();
   for (const [sliceID, history] of histories) {
     const byOID = new Map([...approvals.values()].map((entry) => [entry.oid, entry]));
     for (const entry of history.entries) byOID.set(entry.oid, entry);
@@ -1005,8 +1211,10 @@ function validateConsumedHistories(
           planByOID,
           approvals,
           releaseReceipts,
+          productBaseForPass,
           admission,
           productCache,
+          preparedDesignCache,
         );
         if (location.slice.consumes.length === 0) continue;
         if (!currentInputs) continue;
@@ -1067,8 +1275,10 @@ function validateConsumedHistories(
           planByOID,
           approvals,
           releaseReceipts,
+          productBaseForPass,
           admission,
           productCache,
+          preparedDesignCache,
         );
       } else if (design) {
         reviewed = reviewedConsumedInputs(
@@ -1097,7 +1307,7 @@ function validateConsumedHistories(
           `candidate ${entry.oid} is not linear one-parent work from its base`,
         );
       }
-      const inputs = consumedInputsAtBase(
+      const selectedInputs = consumedInputsAtBase(
         repo,
         plan,
         receipt.base,
@@ -1107,6 +1317,9 @@ function validateConsumedHistories(
         admission,
         productCache,
       );
+      const inputs = selectedInputs === null
+        ? null
+        : withPassProductBases(selectedInputs, productBaseForPass, histories);
       if (
         !inputs
         || !sameInputs(receipt.inputs, pinsForConsumedInputs(inputs))
@@ -1386,6 +1599,9 @@ function validateAssembly(
   planByOID,
   approvals,
   sliceEntries,
+  currentPlanOID,
+  tracks,
+  trackProductBaseFor,
   admission,
   productCache,
 ) {
@@ -1411,6 +1627,49 @@ function validateAssembly(
         || receipt.target !== approval.receipt.target
         || productTree(repo, receipt.candidate, admission, productCache) !== receipt.product_tree
       ) fail('STALE_BINDING', `assembly candidate ${entry.oid} has invalid evidence`);
+      const currentPins = Object.fromEntries(tracks.map((track) => [
+        track.id,
+        track.slices.at(-1)?.pass?.receipt.product_tree ?? null,
+      ]));
+      if (
+        receipt.plan === currentPlanOID
+        && sameInputs(receipt.inputs, currentPins)
+      ) {
+        let expectedCandidate = receipt.target;
+        for (const component of [
+          { authority: receipt.binds, product_base: null },
+          ...tracks.map((track) => ({
+            authority: track.slices.at(-1).pass.oid,
+            product_base: () => trackProductBaseFor(track.id),
+          })),
+        ]) {
+          if (
+            component.authority === expectedCandidate
+            || isAncestor(repo, component.authority, expectedCandidate)
+          ) continue;
+          const prepared = component.product_base === null
+            ? unsafePrepareExactComposition(repo, {
+              targetRef: plan.parsed.metadata.target_ref,
+              expectedHead: expectedCandidate,
+              candidate: component.authority,
+              productExclusionAdmission: admission,
+            })
+            : unsafePrepareProductComposition(repo, {
+              targetRef: plan.parsed.metadata.target_ref,
+              expectedHead: expectedCandidate,
+              candidate: component.authority,
+              productBase: component.product_base,
+              productExclusionAdmission: admission,
+            });
+          expectedCandidate = prepared.result;
+        }
+        if (receipt.candidate !== expectedCandidate) {
+          fail(
+            'STALE_BINDING',
+            `assembly candidate ${entry.oid} is not the exact product-base composition`,
+          );
+        }
+      }
     } else if (receipt.role === 'verifier') {
       const bound = byOID.get(receipt.binds);
       if (
@@ -1618,6 +1877,15 @@ export function readBatonState(
       productCache,
     ));
   }
+  const productBaseForPass = createPassProductBaseResolver(
+    repo,
+    release,
+    histories,
+    planByOID,
+    plans.approvals,
+    productExclusionAdmission,
+    productCache,
+  );
   validateConsumedHistories(
     repo,
     release,
@@ -1626,6 +1894,7 @@ export function readBatonState(
     planByOID,
     plans.approvals,
     releaseHistory.receipts,
+    productBaseForPass,
     productExclusionAdmission,
     productCache,
   );
@@ -1638,6 +1907,7 @@ export function readBatonState(
     productExclusionAdmission,
     productCache,
   );
+  const approval = plans.approvals.get(current.oid);
   for (const state of states.values()) {
     state.consumed_inputs = state.consumed_inputs.map((input) => {
       const producer = states.get(input.slice);
@@ -1661,6 +1931,20 @@ export function readBatonState(
       });
     });
   }
+  const passProductBaseFor = (sliceID, passOID) => {
+    const pass = histories.get(sliceID)?.entries.find((entry) => entry.oid === passOID);
+    if (!pass) fail('AMBIGUOUS_AUTHORITY', `${sliceID} PASS ${passOID} is absent`);
+    return productBaseForPass(sliceID, pass);
+  };
+  const trackProductBaseFor = (trackID) => {
+    const track = current.parsed.metadata.tracks.find((entry) => entry.id === trackID);
+    if (!track) fail('AMBIGUOUS_AUTHORITY', `track ${trackID} is absent`);
+    const first = states.get(track.slices[0].id);
+    if (!first?.pass) {
+      fail('AMBIGUOUS_AUTHORITY', `track ${trackID} has no first-slice PASS`);
+    }
+    return productBaseForPass(track.slices[0].id, first.pass);
+  };
   const tracks = current.parsed.metadata.tracks.map((track, index) => frozen({
     id: track.id,
     depends_on: [...track.depends_on],
@@ -1704,10 +1988,12 @@ export function readBatonState(
     planByOID,
     plans.approvals,
     allSliceEntries,
+    current.oid,
+    tracks,
+    trackProductBaseFor,
     productExclusionAdmission,
     productCache,
   );
-  const approval = plans.approvals.get(current.oid);
   const assembly = deriveAssembly(
     repo,
     current,
@@ -1751,7 +2037,7 @@ export function readBatonState(
     diagnostics.push(diagnostic('STALE_ASSEMBLY', assembly.stale_reason, { release }));
   }
 
-  return frozen({
+  const result = frozen({
     release,
     repository: current.parsed.metadata.repository,
     plan: {
@@ -1781,6 +2067,11 @@ export function readBatonState(
     assembly,
     diagnostics,
   });
+  productBaseEvidence.set(result, frozen({
+    pass: passProductBaseFor,
+    track: trackProductBaseFor,
+  }));
+  return result;
 }
 
 export function isBatonStateError(error) {

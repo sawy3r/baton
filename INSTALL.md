@@ -17,16 +17,16 @@ below.
 
 ## Ask your agent to install it
 
-RC7 is the public release successor to the immutable RC6 tag. It preserves
-RC6's lean protocol and uses a fresh release identity because the removed RC6
-GitHub release cannot be republished under its old name.
+RC8 is a bounded reference-engine correction over the immutable RC7 tag. It
+preserves the lean protocol while preventing misleading repository ancestry
+from rejecting clean passed work.
 
 The easiest route is to paste this into Claude Code or Codex:
 
 ```text
-Install Baton v1.0.0-rc.7 for me.
+Install Baton v1.0.0-rc.8 for me.
 
-Clone the exact v1.0.0-rc.7 tag from https://github.com/sawy3r/baton.git,
+Clone the exact v1.0.0-rc.8 tag from https://github.com/sawy3r/baton.git,
 read its INSTALL.md, and use the installer that matches this tool. Show me the
 user-scope dry-run first and wait for my approval before applying it. Do not
 edit my instruction files or install Sworn.
@@ -157,10 +157,11 @@ GET only.
 ## Repeat, upgrade, rollback, and uninstall
 
 Every install owns an exact manifest. Repeating the same install is a no-op.
-RC7 directly upgrades exact, unmodified RC2, RC3, RC4, RC5, or immutable
-tagged-RC6 installs. An upgrade replaces only bytes owned by the previous Baton
-manifest and stops on a collision, modified managed file, symlink, unsupported
-layout, or changed instruction block.
+RC8 directly upgrades exact, unmodified RC2 through RC7 installs. RC6 and RC7
+are admitted only by their immutable tagged package identity and host-specific
+ownership fingerprint. An upgrade replaces only bytes owned by the previous
+Baton manifest and stops on a collision, modified managed file, symlink,
+unsupported layout, or changed instruction block.
 
 Preview rollback or uninstall before applying it:
 
