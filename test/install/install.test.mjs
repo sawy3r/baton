@@ -17,6 +17,7 @@ import { parseArguments, runInstaller } from '../../scripts/install.mjs';
 import {
   OPERATIONS,
   PORTABLE_RUNTIME_FILES,
+  PRIOR_INSTALL_PACKAGES,
   SUPPORT_FILES,
 } from '../../scripts/lib/catalog.mjs';
 import { sha256, stableJSON } from '../../scripts/lib/digest.mjs';
@@ -208,13 +209,14 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
   }
 });
 
-test('pinned RC2 through RC5 packages upgrade, roll back exactly, and re-upgrade', async (t) => {
+test('pinned RC2 through RC6 packages upgrade, roll back exactly, and re-upgrade', async (t) => {
   const currentVersion = (await readFile(join(ROOT, 'VERSION'), 'utf8')).trim();
   for (const version of [
     '1.0.0-rc.2',
     '1.0.0-rc.3',
     '1.0.0-rc.4',
     '1.0.0-rc.5',
+    '1.0.0-rc.6',
   ]) {
     for (const host of ['claude', 'codex']) {
       for (const scope of ['user', 'project']) {
@@ -295,6 +297,28 @@ test('pinned RC2 through RC5 packages upgrade, roll back exactly, and re-upgrade
       }
     }
   }
+});
+
+test('RC6 admission names only the immutable tagged package', () => {
+  const rc6 = PRIOR_INSTALL_PACKAGES.filter(({ package_version: version }) => (
+    version === '1.0.0-rc.6'
+  ));
+  assert.deepEqual(rc6, [{
+    package_version: '1.0.0-rc.6',
+    package_digest: 'sha256:0a3839d2a124eb51d6a04781b5ff64cc6b70736df08c92c9afc20bd0235bb9dd',
+    generator_version: 'baton.adapter-generator/v1',
+    operation_version: 'baton.operation/v2',
+    ownership_fingerprints: {
+      claude: 'sha256:8999fbf46c2c6bbd9e652aa22245d33cbe5f0f6f196c49fd0715fbe3c1987e8b',
+      codex: 'sha256:d5309960b517dd220568d4fe813a6bd8f9936fdb2fc9200a7f5460efc77bedc9',
+    },
+  }]);
+  assert.equal(
+    PRIOR_INSTALL_PACKAGES.some(({ package_digest: digest }) => (
+      digest === 'sha256:9d188eac5b7bc379916a7264da2196e8e90e1db890ebbcc5e2f13d7abb83bebd'
+    )),
+    false,
+  );
 });
 
 test('unsupported or altered predecessor claims fail with zero installer mutation', async (t) => {
