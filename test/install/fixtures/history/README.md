@@ -1,8 +1,8 @@
 # Installer history fixtures
 
 These fixtures preserve the exact files owned by the immutable Baton
-`v1.0.0-rc.2`, `v1.0.0-rc.3`, `v1.0.0-rc.4`, `v1.0.0-rc.5`, and
-`v1.0.0-rc.6` installers.
+`v1.0.0-rc.2`, `v1.0.0-rc.3`, `v1.0.0-rc.4`, `v1.0.0-rc.5`,
+`v1.0.0-rc.6`, and `v1.0.0-rc.7` installers.
 
 `index.json` records each tag, peeled commit, package identity, host-specific
 install-manifest entries, and ownership fingerprint. `blobs/` stores each

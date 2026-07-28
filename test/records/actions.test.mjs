@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -19,7 +20,10 @@ import {
   parseReceiptCommitMessage,
   renderReceiptCommit,
 } from '../../reference/records/receipts.mjs';
-import { readBatonState } from '../../reference/records/state.mjs';
+import {
+  readBatonState,
+  unsafeProductBaseEvidence,
+} from '../../reference/records/state.mjs';
 import {
   commitAll,
   git,
@@ -92,6 +96,20 @@ function actions(repo) {
   });
 }
 
+function appendMetadataReceipt(repo, expectedHead, subject, receipt) {
+  return unsafePrepareMetadataCommit(repo, {
+    expectedHead,
+    message: renderReceiptCommit({
+      subject,
+      detail: Buffer.alloc(0),
+      receipt: {
+        ...receipt,
+        detail: digestBytes(Buffer.alloc(0)),
+      },
+    }),
+  }).commit;
+}
+
 function appendDesign(engine, detail = 'Approach: make the smallest product change.') {
   return engine.appendReceipt({
     release: 'actions-v2',
@@ -123,6 +141,7 @@ function deliverSlice(engine, repo, {
   value,
   allowEmpty = false,
   extraWrites = {},
+  deletePaths = [],
 }) {
   engine.prepareTrackBase({
     release: 'actions-v2',
@@ -152,6 +171,9 @@ function deliverSlice(engine, repo, {
   write(repo, file, value);
   for (const [relativePath, contents] of Object.entries(extraWrites)) {
     write(repo, relativePath, contents);
+  }
+  for (const relativePath of deletePaths) {
+    rmSync(`${repo}/${relativePath}`, { force: true });
   }
   const candidate = allowEmpty
     ? (
@@ -1223,13 +1245,13 @@ test('a multi-slice track requires a fresh assembly PASS before Merge', () => {
       planBytes: planBytes(serialPlan),
       summary: 'Serial plan approved.',
     });
-    deliverSlice(engine, fixture.repo, {
+    const firstSlice = deliverSlice(engine, fixture.repo, {
       slice: 'S1',
       track: 'T1',
       file: 'src/product.txt',
       value: 'first\n',
     });
-    deliverSlice(engine, fixture.repo, {
+    const finalSlice = deliverSlice(engine, fixture.repo, {
       slice: 'S2',
       track: 'T1',
       file: 'src/second.txt',
@@ -1256,6 +1278,11 @@ test('a multi-slice track requires a fresh assembly PASS before Merge', () => {
     });
     assert.equal(assembled.changed, true);
     assert.equal(assembled.direct, false);
+    assert.equal(assembled.candidate, finalSlice.passed.receipt_commit);
+    assert.equal(
+      isDescendant(fixture.repo, firstSlice.passed.receipt_commit, assembled.candidate),
+      true,
+    );
     assert.throws(
       () => engine.mergePassedCandidate({
         release: 'actions-v2',
@@ -1316,13 +1343,13 @@ test('two passed tracks produce one exact assembly, one fresh verdict, and one m
       planBytes: planBytes(twoTracks),
       summary: 'Two-track plan approved.',
     });
-    deliverSlice(engine, fixture.repo, {
+    const firstTrack = deliverSlice(engine, fixture.repo, {
       slice: 'S1',
       track: 'T1',
       file: 'src/product.txt',
       value: 'first\n',
     });
-    deliverSlice(engine, fixture.repo, {
+    const secondTrack = deliverSlice(engine, fixture.repo, {
       slice: 'S2',
       track: 'T2',
       file: 'src/second.txt',
@@ -1336,6 +1363,14 @@ test('two passed tracks produce one exact assembly, one fresh verdict, and one m
     assert.equal(assembled.changed, true);
     assert.equal(assembled.direct, false);
     assert.deepEqual(Object.keys(assembled.inputs), ['T1', 'T2']);
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', assembled.candidate).split(' '),
+      [
+        assembled.candidate,
+        firstTrack.passed.receipt_commit,
+        secondTrack.passed.receipt_commit,
+      ],
+    );
     const assemblyPass = engine.appendReceipt({
       release: 'actions-v2',
       role: 'verifier',
@@ -1369,6 +1404,251 @@ test('two passed tracks produce one exact assembly, one fresh verdict, and one m
   }
 });
 
+test('assembly replays false history across serial multi-attempt tracks at one exact OID', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'shared.txt', 'obsolete history\n');
+    commitAll(fixture.repo, 'obsolete assembly history');
+    const engine = actions(fixture.repo);
+    const slice = (id, file, consumes = []) => ({
+      id,
+      outcome: `Deliver ${id}.`,
+      scope: { include: [file], exclude: [] },
+      acceptance: [{ id: `${id}-A1`, text: `${id} is observable.` }],
+      checks: ['node --test'],
+      constraints: [],
+      depends_on: [...consumes],
+      consumes: [...consumes],
+    });
+    const assemblyPlan = metadata(1, null, {
+      tracks: [
+        { id: 'T2', depends_on: [], slices: [slice('S2', 'src/producer.txt', ['S0'])] },
+        {
+          id: 'T1',
+          depends_on: [],
+          slices: [
+            slice('S1', 'src/consumer.txt', ['S0']),
+            slice('S1B', 'src/serial.txt'),
+          ],
+        },
+        { id: 'T0', depends_on: [], slices: [slice('S0', 'shared.txt')] },
+      ],
+    });
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(assemblyPlan),
+      summary: 'Approve false-history assembly coverage.',
+    });
+    const foundation = deliverSlice(engine, fixture.repo, {
+      slice: 'S0',
+      track: 'T0',
+      file: 'shared.txt',
+      value: 'reviewed foundation\n',
+    });
+    const producer = deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T2',
+      file: 'src/producer.txt',
+      value: 'exact producer delta\n',
+      extraWrites: { 'shared.txt': 'current consumer foundation\n' },
+    });
+
+    const parsed = parsePlanBytes(planBytes(assemblyPlan));
+    const common = {
+      version: 1,
+      release: 'actions-v2',
+      slice: 'S1',
+      plan: approved.plan,
+      contract: parsed.metadata.contracts.S1,
+      attempt: 1,
+    };
+    const design = appendMetadataReceipt(
+      fixture.repo,
+      approved.receipt_commit,
+      'legacy assembly consumer design',
+      {
+        ...common,
+        role: 'implementer',
+        result: 'designed',
+        binds: approved.receipt_commit,
+        summary: 'Legacy consumer design predates exact base evidence.',
+      },
+    );
+    const captain = appendMetadataReceipt(
+      fixture.repo,
+      design,
+      'legacy assembly consumer PROCEED',
+      {
+        ...common,
+        role: 'captain',
+        result: 'proceed',
+        binds: design,
+        summary: 'Proceed with the retained legacy consumer.',
+      },
+    );
+    git(fixture.repo, 'switch', '-q', '--detach', captain);
+    write(fixture.repo, 'shared.txt', 'reviewed foundation\n');
+    write(fixture.repo, 'src/consumer.txt', 'retained consumer delta\n');
+    const legacyCandidate = commitAll(fixture.repo, 'legacy consumer false history');
+    const legacyIdentity = productTreeIdentity(
+      fixture.repo,
+      legacyCandidate,
+      testProductExclusionAdmission(fixture.repo),
+    );
+    const pins = { S0: foundation.passed.receipt.product_tree };
+    const candidateReceipt = appendMetadataReceipt(
+      fixture.repo,
+      legacyCandidate,
+      'legacy assembly consumer candidate',
+      {
+        ...common,
+        role: 'implementer',
+        result: 'candidate',
+        binds: captain,
+        candidate: legacyCandidate,
+        product_tree: legacyIdentity.productTree,
+        inputs: pins,
+        checks: digestBytes(Buffer.from('legacy assembly candidate PASS\n')),
+        summary: 'Legacy consumer binds the reviewed foundation digest.',
+      },
+    );
+    const legacyPass = appendMetadataReceipt(
+      fixture.repo,
+      candidateReceipt,
+      'legacy assembly consumer PASS',
+      {
+        ...common,
+        role: 'verifier',
+        result: 'pass',
+        binds: candidateReceipt,
+        candidate: legacyCandidate,
+        product_tree: legacyIdentity.productTree,
+        inputs: pins,
+        checks: digestBytes(Buffer.from('legacy assembly verifier PASS\n')),
+        summary: 'Legacy consumer passed fresh verification.',
+      },
+    );
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'create',
+      ref: referenceNames.trackRef('actions-v2', 'T1'),
+      newHead: legacyPass,
+    }]);
+
+    engine.prepareTrackBase({ release: 'actions-v2', slice: 'S1B' });
+    engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1B',
+      role: 'implementer',
+      result: 'designed',
+      summary: 'Serial follow-up has one bounded design.',
+    });
+    engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1B',
+      role: 'captain',
+      result: 'proceed',
+      summary: 'Proceed with the serial follow-up.',
+    });
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+    write(fixture.repo, 'src/serial.txt', 'first attempt\n');
+    const firstSerialCandidate = commitAll(fixture.repo, 'serial first attempt');
+    engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1B',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'First serial candidate passed focused checks.',
+      candidate: firstSerialCandidate,
+      checkResults: 'serial attempt one implementer PASS\n',
+    });
+    const failed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1B',
+      role: 'verifier',
+      result: 'fail',
+      summary: 'First serial candidate needs one correction.',
+      candidate: firstSerialCandidate,
+      checkResults: 'serial attempt one verifier FAIL\n',
+    });
+    write(fixture.repo, 'src/serial.txt', 'second attempt\n');
+    const finalSerialCandidate = commitAll(fixture.repo, 'serial second attempt');
+    const repaired = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1B',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'Second serial candidate repairs the finding.',
+      candidate: finalSerialCandidate,
+      checkResults: 'serial attempt two implementer PASS\n',
+    });
+    assert.equal(repaired.receipt.attempt, 2);
+    assert.equal(repaired.receipt.binds, failed.receipt_commit);
+    const serialPass = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1B',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'Second serial candidate passed fresh verification.',
+      candidate: finalSerialCandidate,
+      checkResults: 'serial attempt two verifier PASS\n',
+    });
+    assert.equal(
+      isDescendant(fixture.repo, legacyPass, serialPass.receipt_commit),
+      true,
+    );
+    assert.throws(
+      () => git(
+        fixture.repo,
+        'merge-tree',
+        '--write-tree',
+        '--no-messages',
+        producer.passed.receipt_commit,
+        serialPass.receipt_commit,
+      ),
+    );
+    const assembled = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Compose ordered tracks from their exact product authorities.',
+    });
+    assert.deepEqual(Object.keys(assembled.inputs), ['T2', 'T1', 'T0']);
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', assembled.candidate).split(' '),
+      [assembled.candidate, producer.passed.receipt_commit, serialPass.receipt_commit],
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, assembled.candidate, 'shared.txt'),
+      Buffer.from('current consumer foundation\n'),
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, assembled.candidate, 'src/producer.txt'),
+      Buffer.from('exact producer delta\n'),
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, assembled.candidate, 'src/consumer.txt'),
+      Buffer.from('retained consumer delta\n'),
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, assembled.candidate, 'src/serial.txt'),
+      Buffer.from('second attempt\n'),
+    );
+    const retry = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Compose ordered tracks from their exact product authorities.',
+    });
+    assert.equal(retry.changed, false);
+    assert.equal(retry.candidate, assembled.candidate);
+    const replayed = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    const replayedEvidence = unsafeProductBaseEvidence(replayed);
+    assert.equal(replayedEvidence.track('T1'), foundation.candidate);
+    assert.notEqual(replayedEvidence.track('T1'), finalSerialCandidate);
+    assert.equal(replayed.assembly.candidate.receipt.candidate, assembled.candidate);
+    assert.equal(replayed.assembly.current_receipt.oid, assembled.receipt_commit);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('changed contract invalidates only its consumer, and equal product restores its PASS', () => {
   const fixture = temporaryRepository();
   try {
@@ -1390,6 +1670,20 @@ test('changed contract invalidates only its consumer, and equal product restores
             constraints: [],
             depends_on: ['S1'],
             consumes: ['S1'],
+          }],
+        },
+        {
+          id: 'T3',
+          depends_on: ['T2'],
+          slices: [{
+            id: 'S3',
+            outcome: 'Consume the exact retained S2 product.',
+            scope: { include: ['src/downstream.txt'], exclude: [] },
+            acceptance: [{ id: 'A3', text: 'The downstream observes S2.' }],
+            checks: ['node --test'],
+            constraints: [],
+            depends_on: ['S2'],
+            consumes: ['S2'],
           }],
         },
       ],
@@ -1470,6 +1764,22 @@ test('changed contract invalidates only its consumer, and equal product restores
     assert.ok(restored.slices[0].pass);
     assert.equal(restored.slices[1].pass.oid, consumer.passed.receipt_commit);
     assert.equal(restored.slices[1].retained, true);
+    assert.equal(restored.slices[2].consumed_inputs[0].pass_receipt, consumer.passed.receipt_commit);
+    const evidence = unsafeProductBaseEvidence(restored);
+    assert.equal(evidence.pass('S2', consumer.passed.receipt_commit), first.candidate);
+    assert.notEqual(evidence.pass('S2', consumer.passed.receipt_commit), sameProduct);
+    const downstream = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S3',
+    });
+    assert.equal(
+      isDescendant(fixture.repo, consumer.passed.receipt_commit, downstream.base),
+      true,
+    );
+    assert.equal(
+      engine.prepareTrackBase({ release: 'actions-v2', slice: 'S3' }).changed,
+      false,
+    );
   } finally {
     fixture.cleanup();
   }
@@ -1496,6 +1806,399 @@ function consumedPlan() {
     ],
   });
 }
+
+test('consumed-track preparation replays a retained PASS from its whole-slice product base', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'src/shared.txt', 'obsolete history\n');
+    commitAll(fixture.repo, 'obsolete target history');
+    const engine = actions(fixture.repo);
+    const slice = (id, file, consumes = []) => ({
+      id,
+      outcome: `Deliver ${id}.`,
+      scope: { include: [file], exclude: [] },
+      acceptance: [{ id: `${id}-A1`, text: `${id} is observable.` }],
+      checks: ['node --test'],
+      constraints: [],
+      depends_on: [...consumes],
+      consumes: [...consumes],
+    });
+    const legacyPlan = metadata(1, null, {
+      tracks: [
+        { id: 'T1', depends_on: [], slices: [slice('S1', 'src/shared.txt')] },
+        { id: 'T2', depends_on: [], slices: [slice('S2', 'src/producer.txt', ['S1'])] },
+        {
+          id: 'T3',
+          depends_on: [],
+          slices: [
+            slice('S3', 'src/consumer.txt'),
+            slice('S4', 'src/result.txt', ['S2']),
+          ],
+        },
+      ],
+    });
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(legacyPlan),
+      summary: 'Approve a retained false-history topology.',
+    });
+    const foundation = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/shared.txt',
+      value: 'reviewed foundation\n',
+    });
+
+    const parsed = parsePlanBytes(planBytes(legacyPlan));
+    const appendMetadata = (expectedHead, subject, receipt) => appendMetadataReceipt(
+      fixture.repo,
+      expectedHead,
+      subject,
+      receipt,
+    );
+    const common = {
+      version: 1,
+      release: 'actions-v2',
+      slice: 'S2',
+      plan: approved.plan,
+      contract: parsed.metadata.contracts.S2,
+      attempt: 1,
+    };
+    const design = appendMetadata(
+      approved.receipt_commit,
+      'legacy consuming design',
+      {
+        ...common,
+        role: 'implementer',
+        result: 'designed',
+        binds: approved.receipt_commit,
+        summary: 'Legacy design predates explicit prepared-base evidence.',
+      },
+    );
+    const captain = appendMetadata(design, 'legacy Captain PROCEED', {
+      ...common,
+      role: 'captain',
+      result: 'proceed',
+      binds: design,
+      summary: 'The retained legacy design may proceed.',
+    });
+    git(fixture.repo, 'switch', '-q', '--detach', captain);
+    write(fixture.repo, 'src/shared.txt', 'reviewed foundation\n');
+    write(fixture.repo, 'src/producer.txt', 'exact retained producer delta\n');
+    const candidate = commitAll(fixture.repo, 'legacy producer candidate');
+    const product = productTreeIdentity(
+      fixture.repo,
+      candidate,
+      testProductExclusionAdmission(fixture.repo),
+    );
+    const pins = { S1: foundation.passed.receipt.product_tree };
+    const candidateReceipt = appendMetadata(candidate, 'legacy producer candidate receipt', {
+      ...common,
+      role: 'implementer',
+      result: 'candidate',
+      binds: captain,
+      candidate,
+      product_tree: product.productTree,
+      inputs: pins,
+      checks: digestBytes(Buffer.from('legacy candidate checks PASS\n')),
+      summary: 'Legacy producer candidate passed its checks.',
+    });
+    const pass = appendMetadata(candidateReceipt, 'legacy producer PASS', {
+      ...common,
+      role: 'verifier',
+      result: 'pass',
+      binds: candidateReceipt,
+      candidate,
+      product_tree: product.productTree,
+      inputs: pins,
+      checks: digestBytes(Buffer.from('legacy verifier checks PASS\n')),
+      summary: 'Legacy producer passed fresh verification.',
+    });
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'create',
+      ref: referenceNames.trackRef('actions-v2', 'T2'),
+      newHead: pass,
+    }]);
+
+    const consumer = deliverSlice(engine, fixture.repo, {
+      slice: 'S3',
+      track: 'T3',
+      file: 'src/shared.txt',
+      value: 'current consumer foundation\n',
+      extraWrites: { 'src/consumer.txt': 'current consumer authority\n' },
+    });
+    assert.throws(
+      () => git(
+        fixture.repo,
+        'merge-tree',
+        '--write-tree',
+        '--no-messages',
+        consumer.passed.receipt_commit,
+        pass,
+      ),
+    );
+
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S4',
+    });
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', prepared.base).split(' '),
+      [prepared.base, consumer.passed.receipt_commit, pass],
+    );
+    assert.equal(
+      readFileAtOID(fixture.repo, prepared.base, 'src/shared.txt').toString(),
+      'current consumer foundation\n',
+    );
+    assert.equal(
+      readFileAtOID(fixture.repo, prepared.base, 'src/producer.txt').toString(),
+      'exact retained producer delta\n',
+    );
+    const designed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S4',
+      role: 'implementer',
+      result: 'designed',
+      summary: 'Replay derives the same retained product base.',
+    });
+    assert.equal(git(fixture.repo, 'rev-parse', `${designed.receipt_commit}^`), prepared.base);
+    assert.throws(
+      () => engine.prepareTrackBase({
+        release: 'actions-v2',
+        slice: 'S4',
+        productBase: foundation.candidate,
+      }),
+      (error) => error?.code === 'INVALID_ACTION_INPUT',
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('retained legacy composition stops when multiple PASS authorities share one product', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'stable target\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const plannedSlice = (id, file, consumes = []) => ({
+      id,
+      outcome: `Deliver ${id}.`,
+      scope: { include: [file], exclude: [] },
+      acceptance: [{ id: `${id}-A1`, text: `${id} is observable.` }],
+      checks: ['node --test'],
+      constraints: [],
+      depends_on: [...consumes],
+      consumes: [...consumes],
+    });
+    const initial = metadata(1, null, {
+      tracks: [
+        { id: 'T1', depends_on: [], slices: [plannedSlice('S1', 'src/stable.txt')] },
+        { id: 'T2', depends_on: [], slices: [plannedSlice('S2', 'src/consumer.txt', ['S1'])] },
+        {
+          id: 'T3',
+          depends_on: [],
+          slices: [
+            plannedSlice('S3', 'src/t3.txt'),
+            plannedSlice('S4', 'src/downstream.txt', ['S2']),
+          ],
+        },
+      ],
+    });
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Approve legacy ambiguity proof.',
+    });
+    const firstProducer = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/stable.txt',
+      value: 'stable producer output\n',
+    });
+
+    const parsed = parsePlanBytes(planBytes(initial));
+    const producerCommon = {
+      version: 1,
+      release: 'actions-v2',
+      slice: 'S1',
+      plan: approved.plan,
+      contract: parsed.metadata.contracts.S1,
+      attempt: 2,
+    };
+    const repeatedDesign = appendMetadataReceipt(
+      fixture.repo,
+      firstProducer.passed.receipt_commit,
+      'same-baseline repeated design',
+      {
+        ...producerCommon,
+        role: 'implementer',
+        result: 'designed',
+        binds: firstProducer.passed.receipt_commit,
+        summary: 'Historical retry over the same exact baseline.',
+      },
+    );
+    const repeatedCaptain = appendMetadataReceipt(
+      fixture.repo,
+      repeatedDesign,
+      'same-baseline repeated PROCEED',
+      {
+        ...producerCommon,
+        role: 'captain',
+        result: 'proceed',
+        binds: repeatedDesign,
+        summary: 'Proceed with the historical same-baseline retry.',
+      },
+    );
+    git(fixture.repo, 'switch', '-q', '--detach', repeatedCaptain);
+    git(fixture.repo, 'commit', '--allow-empty', '-q', '-m', 'same product candidate');
+    const repeatedCandidate = resolveRef(fixture.repo, 'HEAD');
+    const repeatedIdentity = productTreeIdentity(
+      fixture.repo,
+      repeatedCandidate,
+      testProductExclusionAdmission(fixture.repo),
+    );
+    const repeatedCandidateReceipt = appendMetadataReceipt(
+      fixture.repo,
+      repeatedCandidate,
+      'same-baseline repeated candidate',
+      {
+        ...producerCommon,
+        role: 'implementer',
+        result: 'candidate',
+        binds: repeatedCaptain,
+        candidate: repeatedCandidate,
+        product_tree: repeatedIdentity.productTree,
+        inputs: {},
+        checks: digestBytes(Buffer.from('repeated candidate checks PASS\n')),
+        summary: 'Historical retry retained the exact producer product.',
+      },
+    );
+    const repeatedPass = appendMetadataReceipt(
+      fixture.repo,
+      repeatedCandidateReceipt,
+      'same-baseline repeated PASS',
+      {
+        ...producerCommon,
+        role: 'verifier',
+        result: 'pass',
+        binds: repeatedCandidateReceipt,
+        candidate: repeatedCandidate,
+        product_tree: repeatedIdentity.productTree,
+        inputs: {},
+        checks: digestBytes(Buffer.from('repeated verifier checks PASS\n')),
+        summary: 'Historical retry passed over the same product and baseline.',
+      },
+    );
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'update',
+      ref: referenceNames.trackRef('actions-v2', 'T1'),
+      expectedHead: firstProducer.passed.receipt_commit,
+      newHead: repeatedPass,
+    }]);
+    assert.equal(
+      repeatedIdentity.productTree,
+      firstProducer.passed.receipt.product_tree,
+    );
+    const repeatedState = readBatonState(fixture.repo, 'actions-v2', {
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    const repeatedEvidence = unsafeProductBaseEvidence(repeatedState);
+    assert.equal(
+      repeatedEvidence.pass('S1', firstProducer.passed.receipt_commit),
+      repeatedEvidence.pass('S1', repeatedPass),
+    );
+
+    const common = {
+      version: 1,
+      release: 'actions-v2',
+      slice: 'S2',
+      plan: approved.plan,
+      contract: parsed.metadata.contracts.S2,
+      attempt: 1,
+    };
+    const design = appendMetadataReceipt(
+      fixture.repo,
+      approved.receipt_commit,
+      'ambiguous legacy design',
+      {
+        ...common,
+        role: 'implementer',
+        result: 'designed',
+        binds: approved.receipt_commit,
+        summary: 'Legacy design records no prepared authority.',
+      },
+    );
+    const captain = appendMetadataReceipt(fixture.repo, design, 'ambiguous legacy PROCEED', {
+      ...common,
+      role: 'captain',
+      result: 'proceed',
+      binds: design,
+      summary: 'Proceed with the legacy fixture.',
+    });
+    git(fixture.repo, 'switch', '-q', '--detach', captain);
+    write(fixture.repo, 'src/stable.txt', 'stable producer output\n');
+    write(fixture.repo, 'src/consumer.txt', 'legacy consumer\n');
+    const candidate = commitAll(fixture.repo, 'ambiguous legacy candidate');
+    const identity = productTreeIdentity(
+      fixture.repo,
+      candidate,
+      testProductExclusionAdmission(fixture.repo),
+    );
+    const pins = { S1: firstProducer.passed.receipt.product_tree };
+    const candidateReceipt = appendMetadataReceipt(
+      fixture.repo,
+      candidate,
+      'ambiguous legacy candidate receipt',
+      {
+        ...common,
+        role: 'implementer',
+        result: 'candidate',
+        binds: captain,
+        candidate,
+        product_tree: identity.productTree,
+        inputs: pins,
+        checks: digestBytes(Buffer.from('legacy candidate checks PASS\n')),
+        summary: 'Legacy candidate binds only the shared product digest.',
+      },
+    );
+    const pass = appendMetadataReceipt(fixture.repo, candidateReceipt, 'ambiguous legacy PASS', {
+      ...common,
+      role: 'verifier',
+      result: 'pass',
+      binds: candidateReceipt,
+      candidate,
+      product_tree: identity.productTree,
+      inputs: pins,
+      checks: digestBytes(Buffer.from('legacy verifier checks PASS\n')),
+      summary: 'Legacy candidate passed verification.',
+    });
+    const ref = referenceNames.trackRef('actions-v2', 'T2');
+    unsafeAtomicUpdateRefs(fixture.repo, [{ kind: 'create', ref, newHead: pass }]);
+
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S3',
+      track: 'T3',
+      file: 'src/t3.txt',
+      value: 'current downstream authority\n',
+      extraWrites: { 'src/stable.txt': 'current downstream foundation\n' },
+    });
+    const downstreamRef = referenceNames.trackRef('actions-v2', 'T3');
+    const downstreamHead = resolveRef(fixture.repo, downstreamRef);
+    assert.throws(
+      () => engine.prepareTrackBase({
+        release: 'actions-v2',
+        slice: 'S4',
+      }),
+      (error) => (
+        error?.code === 'AMBIGUOUS_AUTHORITY'
+        && /ambiguous S1 PASS authorities/.test(error.message)
+      ),
+    );
+    assert.equal(resolveRef(fixture.repo, ref), pass);
+    assert.equal(resolveRef(fixture.repo, downstreamRef), downstreamHead);
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 function designConsumer(engine, decision = null) {
   const prepared = engine.prepareTrackBase({

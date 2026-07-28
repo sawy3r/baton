@@ -48,6 +48,12 @@ current producer PASS receipts into only the consumer track ref. It is
 idempotent and compare-and-set verifies the release, target, producer, and
 consumer refs before any move.
 
+Consumed-track and assembly composition always try ordinary deterministic Git
+ancestry first. Only an ordinary conflict may retry the exact passed delta from
+an authority-derived product base built from the approved target, ordered prior
+slice PASS products, and exact consumed PASS bindings. An ambiguous base or a
+real product conflict stops without moving a ref.
+
 Every newly appended consuming design records `base` as the exact
 pre-composition track or release authority and `inputs` as the reviewed
 product-tree pins; its receipt parent is the deterministic composition of that

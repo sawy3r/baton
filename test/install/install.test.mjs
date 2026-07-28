@@ -209,7 +209,7 @@ test('clean user and project installs cover both hosts, dry-run, no-op, and unin
   }
 });
 
-test('pinned RC2 through RC6 packages upgrade, roll back exactly, and re-upgrade', async (t) => {
+test('pinned RC2 through RC7 packages upgrade, roll back exactly, and re-upgrade', async (t) => {
   const currentVersion = (await readFile(join(ROOT, 'VERSION'), 'utf8')).trim();
   for (const version of [
     '1.0.0-rc.2',
@@ -217,6 +217,7 @@ test('pinned RC2 through RC6 packages upgrade, roll back exactly, and re-upgrade
     '1.0.0-rc.4',
     '1.0.0-rc.5',
     '1.0.0-rc.6',
+    '1.0.0-rc.7',
   ]) {
     for (const host of ['claude', 'codex']) {
       for (const scope of ['user', 'project']) {
@@ -319,6 +320,22 @@ test('RC6 admission names only the immutable tagged package', () => {
     )),
     false,
   );
+});
+
+test('RC7 admission names only the immutable tagged package', () => {
+  const rc7 = PRIOR_INSTALL_PACKAGES.filter(({ package_version: version }) => (
+    version === '1.0.0-rc.7'
+  ));
+  assert.deepEqual(rc7, [{
+    package_version: '1.0.0-rc.7',
+    package_digest: 'sha256:a8d5ea690fe1ce3e6e94ef80174cfbb0e2dcdc707d8def5c89ca19230516d023',
+    generator_version: 'baton.adapter-generator/v1',
+    operation_version: 'baton.operation/v2',
+    ownership_fingerprints: {
+      claude: 'sha256:f9aeafdb8104f7775df7d479715a38445202eb2ba68e713ef5dfe50156eba607',
+      codex: 'sha256:dcca087423bed88873be711b2dbfabed13f23ac0ae633cec796f2d2da0d6b9e6',
+    },
+  }]);
 });
 
 test('unsupported or altered predecessor claims fail with zero installer mutation', async (t) => {

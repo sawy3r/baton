@@ -2674,6 +2674,512 @@
           ]
         }
       }
+    },
+    {
+      "tag": "v1.0.0-rc.7",
+      "commit": "02cb2dbee4d64cb4d5be71542cd0dd42ece6d0d9",
+      "package_version": "1.0.0-rc.7",
+      "package_digest": "sha256:a8d5ea690fe1ce3e6e94ef80174cfbb0e2dcdc707d8def5c89ca19230516d023",
+      "generator_version": "baton.adapter-generator/v1",
+      "operation_version": "baton.operation/v2",
+      "hosts": {
+        "claude": {
+          "ownership_fingerprint": "sha256:f9aeafdb8104f7775df7d479715a38445202eb2ba68e713ef5dfe50156eba607",
+          "owned_files": [
+            {
+              "root": "launcher",
+              "path": "baton-design-review/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:e71f737c8bf8ee5860bd62ebeba9f52129bd777c72f92c40a738c1520e9f645d",
+              "operation": "baton-design-review",
+              "operation_digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84",
+              "blob": "e71f737c8bf8ee5860bd62ebeba9f52129bd777c72f92c40a738c1520e9f645d"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-implement/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:f95fc7b3f38bdc60b54220feefd84b763fb816eeeb3488eef4b039ad795f5d45",
+              "operation": "baton-implement",
+              "operation_digest": "sha256:30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc",
+              "blob": "f95fc7b3f38bdc60b54220feefd84b763fb816eeeb3488eef4b039ad795f5d45"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-merge/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:346bde0c0c345e189ae03f4681862f0d39746c01402fc2470d5ed1ac5c7bfa43",
+              "operation": "baton-merge",
+              "operation_digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d",
+              "blob": "346bde0c0c345e189ae03f4681862f0d39746c01402fc2470d5ed1ac5c7bfa43"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-plan/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:b2b34ad858146ee5db2408da7c8f4a047df74bc38e6d8f1d155aa17263bf3d60",
+              "operation": "baton-plan",
+              "operation_digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413",
+              "blob": "b2b34ad858146ee5db2408da7c8f4a047df74bc38e6d8f1d155aa17263bf3d60"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-verify/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:48a66f388bc3ac79474144a62a38a5d4522ec578210d668d93f677afe31e0d6d",
+              "operation": "baton-verify",
+              "operation_digest": "sha256:2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4",
+              "blob": "48a66f388bc3ac79474144a62a38a5d4522ec578210d668d93f677afe31e0d6d"
+            },
+            {
+              "root": "support",
+              "path": "VERSION",
+              "mode": "0644",
+              "digest": "sha256:8b92dbc6d78206209c0630ba31531c05619c68c8fe70b051597d97134577df57",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "8b92dbc6d78206209c0630ba31531c05619c68c8fe70b051597d97134577df57"
+            },
+            {
+              "root": "support",
+              "path": "baton/ASSURANCE.md",
+              "mode": "0644",
+              "digest": "sha256:04dd708d806dc7deaa3372a43dfae29736b3d74c545a9ce9efebbf7ae000ca73",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "04dd708d806dc7deaa3372a43dfae29736b3d74c545a9ce9efebbf7ae000ca73"
+            },
+            {
+              "root": "support",
+              "path": "baton/CONFORMANCE.md",
+              "mode": "0644",
+              "digest": "sha256:aeda540486dc3b83a85f4f5aa6685747f7a8fba38329acd14f54d0a2f41882a4",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "aeda540486dc3b83a85f4f5aa6685747f7a8fba38329acd14f54d0a2f41882a4"
+            },
+            {
+              "root": "support",
+              "path": "baton/CORE.md",
+              "mode": "0644",
+              "digest": "sha256:4c0a9e85bb281496fe340efd6a46fa5cbdb1268544eccfcbc87e96734ecc43b1",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "4c0a9e85bb281496fe340efd6a46fa5cbdb1268544eccfcbc87e96734ecc43b1"
+            },
+            {
+              "root": "support",
+              "path": "baton/PROTOCOL.md",
+              "mode": "0644",
+              "digest": "sha256:f878144f3d3aa702b66ecc47bee2293907487414ce3ca40f92797f8b623d5ae9",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "f878144f3d3aa702b66ecc47bee2293907487414ce3ca40f92797f8b623d5ae9"
+            },
+            {
+              "root": "support",
+              "path": "baton/RATIONALE.md",
+              "mode": "0644",
+              "digest": "sha256:b0de7a750d54d502ffdbb236e537ad2810a2ce01ed751a2618b189863d050942",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "b0de7a750d54d502ffdbb236e537ad2810a2ce01ed751a2618b189863d050942"
+            },
+            {
+              "root": "support",
+              "path": "baton/README.md",
+              "mode": "0644",
+              "digest": "sha256:a1c6617b3a8183ad2373ef1dc367a50b3f90c78467c74bd71a8c5f10aa751b62",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "a1c6617b3a8183ad2373ef1dc367a50b3f90c78467c74bd71a8c5f10aa751b62"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-design-review.md",
+              "mode": "0644",
+              "digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84",
+              "operation": "baton-design-review",
+              "operation_digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84",
+              "blob": "71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-implement.md",
+              "mode": "0644",
+              "digest": "sha256:30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc",
+              "operation": "baton-implement",
+              "operation_digest": "sha256:30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc",
+              "blob": "30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-merge.md",
+              "mode": "0644",
+              "digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d",
+              "operation": "baton-merge",
+              "operation_digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d",
+              "blob": "d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-plan.md",
+              "mode": "0644",
+              "digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413",
+              "operation": "baton-plan",
+              "operation_digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413",
+              "blob": "3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-verify.md",
+              "mode": "0644",
+              "digest": "sha256:2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4",
+              "operation": "baton-verify",
+              "operation_digest": "sha256:2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4",
+              "blob": "2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4"
+            },
+            {
+              "root": "support",
+              "path": "reference/board/oracle.mjs",
+              "mode": "0644",
+              "digest": "sha256:7150c32dd0c2075d4506a28176f12949702c89ae7a7b3e35561401fde6ad601e",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "7150c32dd0c2075d4506a28176f12949702c89ae7a7b3e35561401fde6ad601e"
+            },
+            {
+              "root": "support",
+              "path": "reference/board/terminal.mjs",
+              "mode": "0644",
+              "digest": "sha256:c4251201cfa6c31b91a8391cb9361389d35cada1cf6fd025be47177e1978f0bf",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "c4251201cfa6c31b91a8391cb9361389d35cada1cf6fd025be47177e1978f0bf"
+            },
+            {
+              "root": "support",
+              "path": "reference/board/web.mjs",
+              "mode": "0644",
+              "digest": "sha256:1752c4b71f411e36b553f4a143a4ce11da2b3947452d48a79c674f778a361b3c",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "1752c4b71f411e36b553f4a143a4ce11da2b3947452d48a79c674f778a361b3c"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/README.md",
+              "mode": "0644",
+              "digest": "sha256:1cdf2b0ae82b21a7cdbe8741467748ad1a326f3de195c600c2e0ed12ee404e10",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "1cdf2b0ae82b21a7cdbe8741467748ad1a326f3de195c600c2e0ed12ee404e10"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/actions.mjs",
+              "mode": "0644",
+              "digest": "sha256:f5e23e71c79f20fdd0f32cf14006f405b07bde52e27a8e7d22012471e2f568ee",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "f5e23e71c79f20fdd0f32cf14006f405b07bde52e27a8e7d22012471e2f568ee"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/git.mjs",
+              "mode": "0644",
+              "digest": "sha256:996b0bac9f680d8687c38eb11887d160bec55101845eca16250ce84cec01761e",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "996b0bac9f680d8687c38eb11887d160bec55101845eca16250ce84cec01761e"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/receipts.mjs",
+              "mode": "0644",
+              "digest": "sha256:205489602318f100ddd8bb536c8d25640bdff1df81c2e4c54d31ca1ca0bc2943",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "205489602318f100ddd8bb536c8d25640bdff1df81c2e4c54d31ca1ca0bc2943"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/state.mjs",
+              "mode": "0644",
+              "digest": "sha256:b5d7dba701a56219917f9173234ade308934756cf6defaf19771f03cd3e2d1e4",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "b5d7dba701a56219917f9173234ade308934756cf6defaf19771f03cd3e2d1e4"
+            },
+            {
+              "root": "support",
+              "path": "schemas/receipt-v1.json",
+              "mode": "0644",
+              "digest": "sha256:9c297f6435714ebe05261663ffbbad31998de41cb091db1cc7e8a94d77aa0035",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "9c297f6435714ebe05261663ffbbad31998de41cb091db1cc7e8a94d77aa0035"
+            },
+            {
+              "root": "support",
+              "path": "templates/plan.md",
+              "mode": "0644",
+              "digest": "sha256:ec9571a105445875c3b94f6303035c2dfc9985f39972790ea6473d39e96c9ba5",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "ec9571a105445875c3b94f6303035c2dfc9985f39972790ea6473d39e96c9ba5"
+            }
+          ]
+        },
+        "codex": {
+          "ownership_fingerprint": "sha256:dcca087423bed88873be711b2dbfabed13f23ac0ae633cec796f2d2da0d6b9e6",
+          "owned_files": [
+            {
+              "root": "launcher",
+              "path": "baton-design-review/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:a4a3884bd8413668b15cacce1d7f47295f1ef0706dbffd713a64ea4f4753a08f",
+              "operation": "baton-design-review",
+              "operation_digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84",
+              "blob": "a4a3884bd8413668b15cacce1d7f47295f1ef0706dbffd713a64ea4f4753a08f"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-implement/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:403a8c6ac94d42e50c845fa7da0f68ac7bef9522a340d50b8f33a99ce40d0af7",
+              "operation": "baton-implement",
+              "operation_digest": "sha256:30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc",
+              "blob": "403a8c6ac94d42e50c845fa7da0f68ac7bef9522a340d50b8f33a99ce40d0af7"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-merge/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:df309f63a389bd7417538bb983e1eee5f2c9ea0717aefb160398bf3b31d513c1",
+              "operation": "baton-merge",
+              "operation_digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d",
+              "blob": "df309f63a389bd7417538bb983e1eee5f2c9ea0717aefb160398bf3b31d513c1"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-plan/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:302738b89be49714b1a38172dbe84a6d9e5e4364d0444b464a8cb1f7c6f4d029",
+              "operation": "baton-plan",
+              "operation_digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413",
+              "blob": "302738b89be49714b1a38172dbe84a6d9e5e4364d0444b464a8cb1f7c6f4d029"
+            },
+            {
+              "root": "launcher",
+              "path": "baton-verify/SKILL.md",
+              "mode": "0644",
+              "digest": "sha256:0c8c691397d972df0025ec7be74a28999af761419c6de77d702b6b1638f5c22e",
+              "operation": "baton-verify",
+              "operation_digest": "sha256:2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4",
+              "blob": "0c8c691397d972df0025ec7be74a28999af761419c6de77d702b6b1638f5c22e"
+            },
+            {
+              "root": "support",
+              "path": "VERSION",
+              "mode": "0644",
+              "digest": "sha256:8b92dbc6d78206209c0630ba31531c05619c68c8fe70b051597d97134577df57",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "8b92dbc6d78206209c0630ba31531c05619c68c8fe70b051597d97134577df57"
+            },
+            {
+              "root": "support",
+              "path": "baton/ASSURANCE.md",
+              "mode": "0644",
+              "digest": "sha256:04dd708d806dc7deaa3372a43dfae29736b3d74c545a9ce9efebbf7ae000ca73",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "04dd708d806dc7deaa3372a43dfae29736b3d74c545a9ce9efebbf7ae000ca73"
+            },
+            {
+              "root": "support",
+              "path": "baton/CONFORMANCE.md",
+              "mode": "0644",
+              "digest": "sha256:aeda540486dc3b83a85f4f5aa6685747f7a8fba38329acd14f54d0a2f41882a4",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "aeda540486dc3b83a85f4f5aa6685747f7a8fba38329acd14f54d0a2f41882a4"
+            },
+            {
+              "root": "support",
+              "path": "baton/CORE.md",
+              "mode": "0644",
+              "digest": "sha256:4c0a9e85bb281496fe340efd6a46fa5cbdb1268544eccfcbc87e96734ecc43b1",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "4c0a9e85bb281496fe340efd6a46fa5cbdb1268544eccfcbc87e96734ecc43b1"
+            },
+            {
+              "root": "support",
+              "path": "baton/PROTOCOL.md",
+              "mode": "0644",
+              "digest": "sha256:f878144f3d3aa702b66ecc47bee2293907487414ce3ca40f92797f8b623d5ae9",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "f878144f3d3aa702b66ecc47bee2293907487414ce3ca40f92797f8b623d5ae9"
+            },
+            {
+              "root": "support",
+              "path": "baton/RATIONALE.md",
+              "mode": "0644",
+              "digest": "sha256:b0de7a750d54d502ffdbb236e537ad2810a2ce01ed751a2618b189863d050942",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "b0de7a750d54d502ffdbb236e537ad2810a2ce01ed751a2618b189863d050942"
+            },
+            {
+              "root": "support",
+              "path": "baton/README.md",
+              "mode": "0644",
+              "digest": "sha256:a1c6617b3a8183ad2373ef1dc367a50b3f90c78467c74bd71a8c5f10aa751b62",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "a1c6617b3a8183ad2373ef1dc367a50b3f90c78467c74bd71a8c5f10aa751b62"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-design-review.md",
+              "mode": "0644",
+              "digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84",
+              "operation": "baton-design-review",
+              "operation_digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84",
+              "blob": "71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-implement.md",
+              "mode": "0644",
+              "digest": "sha256:30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc",
+              "operation": "baton-implement",
+              "operation_digest": "sha256:30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc",
+              "blob": "30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-merge.md",
+              "mode": "0644",
+              "digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d",
+              "operation": "baton-merge",
+              "operation_digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d",
+              "blob": "d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-plan.md",
+              "mode": "0644",
+              "digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413",
+              "operation": "baton-plan",
+              "operation_digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413",
+              "blob": "3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413"
+            },
+            {
+              "root": "support",
+              "path": "operations/baton-verify.md",
+              "mode": "0644",
+              "digest": "sha256:2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4",
+              "operation": "baton-verify",
+              "operation_digest": "sha256:2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4",
+              "blob": "2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4"
+            },
+            {
+              "root": "support",
+              "path": "reference/board/oracle.mjs",
+              "mode": "0644",
+              "digest": "sha256:7150c32dd0c2075d4506a28176f12949702c89ae7a7b3e35561401fde6ad601e",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "7150c32dd0c2075d4506a28176f12949702c89ae7a7b3e35561401fde6ad601e"
+            },
+            {
+              "root": "support",
+              "path": "reference/board/terminal.mjs",
+              "mode": "0644",
+              "digest": "sha256:c4251201cfa6c31b91a8391cb9361389d35cada1cf6fd025be47177e1978f0bf",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "c4251201cfa6c31b91a8391cb9361389d35cada1cf6fd025be47177e1978f0bf"
+            },
+            {
+              "root": "support",
+              "path": "reference/board/web.mjs",
+              "mode": "0644",
+              "digest": "sha256:1752c4b71f411e36b553f4a143a4ce11da2b3947452d48a79c674f778a361b3c",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "1752c4b71f411e36b553f4a143a4ce11da2b3947452d48a79c674f778a361b3c"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/README.md",
+              "mode": "0644",
+              "digest": "sha256:1cdf2b0ae82b21a7cdbe8741467748ad1a326f3de195c600c2e0ed12ee404e10",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "1cdf2b0ae82b21a7cdbe8741467748ad1a326f3de195c600c2e0ed12ee404e10"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/actions.mjs",
+              "mode": "0644",
+              "digest": "sha256:f5e23e71c79f20fdd0f32cf14006f405b07bde52e27a8e7d22012471e2f568ee",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "f5e23e71c79f20fdd0f32cf14006f405b07bde52e27a8e7d22012471e2f568ee"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/git.mjs",
+              "mode": "0644",
+              "digest": "sha256:996b0bac9f680d8687c38eb11887d160bec55101845eca16250ce84cec01761e",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "996b0bac9f680d8687c38eb11887d160bec55101845eca16250ce84cec01761e"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/receipts.mjs",
+              "mode": "0644",
+              "digest": "sha256:205489602318f100ddd8bb536c8d25640bdff1df81c2e4c54d31ca1ca0bc2943",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "205489602318f100ddd8bb536c8d25640bdff1df81c2e4c54d31ca1ca0bc2943"
+            },
+            {
+              "root": "support",
+              "path": "reference/records/state.mjs",
+              "mode": "0644",
+              "digest": "sha256:b5d7dba701a56219917f9173234ade308934756cf6defaf19771f03cd3e2d1e4",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "b5d7dba701a56219917f9173234ade308934756cf6defaf19771f03cd3e2d1e4"
+            },
+            {
+              "root": "support",
+              "path": "schemas/receipt-v1.json",
+              "mode": "0644",
+              "digest": "sha256:9c297f6435714ebe05261663ffbbad31998de41cb091db1cc7e8a94d77aa0035",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "9c297f6435714ebe05261663ffbbad31998de41cb091db1cc7e8a94d77aa0035"
+            },
+            {
+              "root": "support",
+              "path": "templates/plan.md",
+              "mode": "0644",
+              "digest": "sha256:ec9571a105445875c3b94f6303035c2dfc9985f39972790ea6473d39e96c9ba5",
+              "operation": null,
+              "operation_digest": null,
+              "blob": "ec9571a105445875c3b94f6303035c2dfc9985f39972790ea6473d39e96c9ba5"
+            }
+          ]
+        }
+      }
     }
   ]
 }

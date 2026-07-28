@@ -12,6 +12,8 @@ import {
   resolveRef,
   unsafeApplyExactComposition,
   unsafePrepareApprovedTargetBase,
+  unsafePrepareExactComposition,
+  unsafePrepareProductComposition,
   unsafeCommitRecordTransition,
   verifyReleaseIntegration,
   verifyTrackComposition,
@@ -358,6 +360,291 @@ test('an ordinary composition conflict leaves the target ref untouched', () => {
       'COMPOSITION_CONFLICT',
     );
     assert.equal(resolveRef(fixture.repo, 'refs/heads/conflict-release'), expected);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('product composition replays the exact producer delta when ancestry gives Git a false base', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'shared.txt', 'obsolete history\n');
+    write(fixture.repo, PLAN_PATH, 'obsolete record\n');
+    const historical = commitAll(fixture.repo, 'obsolete historical base');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'producer-product-base', historical);
+    write(fixture.repo, 'shared.txt', 'reviewed foundation\n');
+    write(fixture.repo, PLAN_PATH, 'first-parent record\n');
+    const productBase = commitAll(fixture.repo, 'authority-derived producer product base');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'producer-pass', historical);
+    write(fixture.repo, 'shared.txt', 'reviewed foundation\n');
+    write(fixture.repo, 'producer.txt', 'exact passed producer delta\n');
+    write(fixture.repo, PLAN_PATH, 'second-parent record\n');
+    const producerPass = commitAll(fixture.repo, 'passed producer on misleading history');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'consumer-authority', historical);
+    write(fixture.repo, 'shared.txt', 'current consumer foundation\n');
+    write(fixture.repo, 'consumer.txt', 'current consumer authority\n');
+    write(fixture.repo, PLAN_PATH, 'first-parent record\n');
+    const consumer = commitAll(fixture.repo, 'consumer authority');
+
+    assert.throws(
+      () => git(
+        fixture.repo,
+        'merge-tree',
+        '--write-tree',
+        '--no-messages',
+        consumer,
+        producerPass,
+      ),
+    );
+
+    git(fixture.repo, 'switch', '-q', '-c', 'audited-product', consumer);
+    write(fixture.repo, 'producer.txt', 'exact passed producer delta\n');
+    const audited = commitAll(fixture.repo, 'independently audited product');
+    const auditedTree = git(fixture.repo, 'rev-parse', `${audited}^{tree}`);
+
+    const prepared = unsafePrepareProductComposition(fixture.repo, {
+      targetRef: 'refs/heads/consumer-authority',
+      expectedHead: consumer,
+      candidate: producerPass,
+      productBase: () => productBase,
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+
+    assert.equal(prepared.mode, 'two-parent');
+    assert.equal(prepared.productBase, productBase);
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', prepared.result).split(' '),
+      [prepared.result, consumer, producerPass],
+    );
+    assert.equal(git(fixture.repo, 'rev-parse', `${prepared.result}^{tree}`), auditedTree);
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, prepared.result, PLAN_PATH),
+      Buffer.from('first-parent record\n'),
+    );
+    throwsCode(
+      () => unsafePrepareProductComposition(fixture.repo, {
+        targetRef: 'refs/heads/consumer-authority',
+        expectedHead: consumer,
+        candidate: producerPass,
+        productBase: () => 'refs/heads/producer-product-base',
+        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+      }),
+      'INVALID_REF_OID',
+    );
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/consumer-authority'), consumer);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('exact composition ignores record-only conflicts and preserves first-parent records', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'shared.txt', 'stable product\n');
+    write(fixture.repo, PLAN_PATH, 'historical record\n');
+    const historical = commitAll(fixture.repo, 'historical record base');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'record-first-parent', historical);
+    write(fixture.repo, 'consumer.txt', 'consumer product\n');
+    write(fixture.repo, PLAN_PATH, 'first-parent record\n');
+    const consumer = commitAll(fixture.repo, 'consumer record authority');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'record-second-parent', historical);
+    write(fixture.repo, 'producer.txt', 'producer product\n');
+    write(fixture.repo, PLAN_PATH, 'second-parent record\n');
+    const producer = commitAll(fixture.repo, 'producer record authority');
+
+    assert.throws(
+      () => git(
+        fixture.repo,
+        'merge-tree',
+        '--write-tree',
+        '--no-messages',
+        consumer,
+        producer,
+      ),
+    );
+
+    const prepared = unsafePrepareExactComposition(fixture.repo, {
+      targetRef: 'refs/heads/record-first-parent',
+      expectedHead: consumer,
+      candidate: producer,
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.deepEqual(
+      git(fixture.repo, 'rev-list', '--parents', '-n', '1', prepared.result).split(' '),
+      [prepared.result, consumer, producer],
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, prepared.result, PLAN_PATH),
+      Buffer.from('first-parent record\n'),
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, prepared.result, 'consumer.txt'),
+      Buffer.from('consumer product\n'),
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, prepared.result, 'producer.txt'),
+      Buffer.from('producer product\n'),
+    );
+    assert.equal(
+      verifyTrackComposition(
+        fixture.repo,
+        consumer,
+        producer,
+        prepared.result,
+      ).mode,
+      'two-parent',
+    );
+    git(fixture.repo, 'switch', '-q', '--detach', prepared.result);
+    write(fixture.repo, PLAN_PATH, 'second-parent record\n');
+    const wrongRecord = commitAll(fixture.repo, 'forge second-parent record bytes');
+    const forged = git(
+      fixture.repo,
+      'commit-tree',
+      git(fixture.repo, 'rev-parse', `${wrongRecord}^{tree}`),
+      '-p',
+      consumer,
+      '-p',
+      producer,
+      '-m',
+      'forged second-parent records',
+    );
+    throwsCode(
+      () => verifyTrackComposition(fixture.repo, consumer, producer, forged),
+      'FORGED_COMPOSITION_TREE',
+    );
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/record-first-parent'), consumer);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('exact verification preserves a missing first-parent record root across delete-modify', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'shared.txt', 'stable product\n');
+    write(fixture.repo, PLAN_PATH, 'historical record\n');
+    const historical = commitAll(fixture.repo, 'delete-modify record base');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'missing-record-first-parent', historical);
+    rmSync(`${fixture.repo}/${PLAN_PATH}`);
+    write(fixture.repo, 'consumer.txt', 'consumer product\n');
+    const consumer = commitAll(fixture.repo, 'delete first-parent records');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'modified-record-second-parent', historical);
+    write(fixture.repo, PLAN_PATH, 'modified second-parent record\n');
+    write(fixture.repo, 'producer.txt', 'producer product\n');
+    const producer = commitAll(fixture.repo, 'modify second-parent records');
+
+    assert.throws(
+      () => git(
+        fixture.repo,
+        'merge-tree',
+        '--write-tree',
+        '--no-messages',
+        consumer,
+        producer,
+      ),
+    );
+    const prepared = unsafePrepareExactComposition(fixture.repo, {
+      targetRef: 'refs/heads/missing-record-first-parent',
+      expectedHead: consumer,
+      candidate: producer,
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    throwsCode(
+      () => readFileAtOID(fixture.repo, prepared.result, PLAN_PATH),
+      'RECORD_NOT_FOUND',
+    );
+    assert.equal(
+      verifyReleaseIntegration(
+        fixture.repo,
+        consumer,
+        producer,
+        prepared.result,
+      ).mode,
+      'two-parent',
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('product composition leaves its lazy base unresolved on the ordinary clean path', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, PLAN_PATH, 'first-parent record\n');
+    const historical = commitAll(fixture.repo, 'clean historical base');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'clean-first-parent', historical);
+    write(fixture.repo, 'consumer.txt', 'consumer delta\n');
+    const consumer = commitAll(fixture.repo, 'clean consumer');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'clean-second-parent', historical);
+    write(fixture.repo, 'producer.txt', 'producer delta\n');
+    const producer = commitAll(fixture.repo, 'clean producer');
+
+    const prepared = unsafePrepareProductComposition(fixture.repo, {
+      targetRef: 'refs/heads/clean-first-parent',
+      expectedHead: consumer,
+      candidate: producer,
+      productBase: () => {
+        throw new Error('ordinary composition must not resolve a product base');
+      },
+      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+    });
+    assert.equal(prepared.mode, 'two-parent');
+    assert.equal(Object.hasOwn(prepared, 'productBase'), false);
+    throwsCode(
+      () => unsafePrepareProductComposition(fixture.repo, {
+        targetRef: 'refs/heads/clean-first-parent',
+        expectedHead: consumer,
+        candidate: producer,
+        productBase: historical,
+        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+      }),
+      'PRODUCT_BASE_RESOLVER_REQUIRED',
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('product-base fallback refuses a custom merge driver without moving a ref', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'shared.txt', 'obsolete history\n');
+    const historical = commitAll(fixture.repo, 'obsolete historical base');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'driver-product-base', historical);
+    write(fixture.repo, '.gitattributes', '*.txt merge=hostile\n');
+    write(fixture.repo, 'shared.txt', 'reviewed foundation\n');
+    const productBase = commitAll(fixture.repo, 'product base with untrusted merge policy');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'driver-producer', historical);
+    write(fixture.repo, 'shared.txt', 'reviewed foundation\n');
+    write(fixture.repo, 'producer.txt', 'producer delta\n');
+    const producer = commitAll(fixture.repo, 'producer on misleading history');
+
+    git(fixture.repo, 'switch', '-q', '-c', 'driver-consumer', historical);
+    write(fixture.repo, 'shared.txt', 'consumer foundation\n');
+    const consumer = commitAll(fixture.repo, 'consumer authority');
+
+    throwsCode(
+      () => unsafePrepareProductComposition(fixture.repo, {
+        targetRef: 'refs/heads/driver-consumer',
+        expectedHead: consumer,
+        candidate: producer,
+        productBase: () => productBase,
+        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
+      }),
+      'UNTRUSTED_MERGE_DRIVER',
+    );
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/driver-consumer'), consumer);
   } finally {
     fixture.cleanup();
   }
