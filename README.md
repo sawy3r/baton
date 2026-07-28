@@ -106,10 +106,15 @@ a fresh Verifier then checks the complete assembled product before final Merge.
 
 ## Get started
 
+RC7 is a bounded publication recovery over RC6. It keeps the same lean
+protocol while carrying two reference-engine trust-boundary corrections and
+making the complete package available under a fresh release identity. See the
+[RC7 release note](docs/releases/v1.0.0-rc.7.md).
+
 The easiest route is to ask Claude Code or Codex:
 
 ```text
-Install Baton v1.0.0-rc.6 for me.
+Install Baton v1.0.0-rc.7 for me.
 
 Clone the exact tag, read its INSTALL.md, show me the matching user-scope
 dry-run, and wait for my approval before applying it.
@@ -119,7 +124,7 @@ If you prefer the shell, clone the reviewed tag and preview the matching
 installer yourself:
 
 ```sh
-git clone --branch v1.0.0-rc.6 --depth 1 https://github.com/sawy3r/baton.git
+git clone --branch v1.0.0-rc.7 --depth 1 https://github.com/sawy3r/baton.git
 cd baton
 ./install-codex.sh --user --dry-run    # or ./install-claude.sh
 ```
