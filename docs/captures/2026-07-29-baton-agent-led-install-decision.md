@@ -44,13 +44,9 @@ Client names may appear as examples. They are never support boundaries.
   are engine and project tools, not hidden dependencies of an installed skill.
 - Document agent-led install, update, and removal in plain language.
 
-No generic installer is retained unless implementation proves a safety
-invariant that the six-step contract cannot cover more simply.
-
-The Captain allowed at most one destination-agnostic helper. It is justified
-only for exact payload comparison, all-target preflight, same-filesystem
-staging, and safe continuation after interruption. It may accept a skills
-directory; it may not know client names, selectors, or discovery paths.
+No generic installer is retained. Attempt 1 tested a bounded exception, but
+the Verifier failure recorded below showed that the contract is both smaller
+and safer.
 
 ## Compatibility
 
@@ -104,3 +100,23 @@ Every copied tree matched `skills/baton-*`, including
 `baton-plan/templates/plan.md`. The probes changed no user configuration or
 credentials. These are release-evidence clients, not a maintained product
 catalog or support boundary.
+
+## Attempt 2 correction
+
+Captain `codex:/root/rc9_discovery_evidence` returned `PROCEED` for design
+SHA-256 `2acca08920d265fa16af77ec11ed2ba8e0b0fd269a2e1533a797813358d6f0bf`.
+Verifier `codex:/root/rc9_fresh_verifier` failed candidate
+`7b725f86a7e0e9dea1887ac3245e01dc678bd9d4`: its helper adopted or removed
+partial state, did not fully bind preview approval, and overstated interrupted
+effect recovery. The lesson is that the running agent can enforce the required
+invariants more simply than a second installer state machine and simulation
+suite.
+
+The final smaller decision deletes that helper and suite. Approval binds the
+exact release commit, payload digest, canonical destination, complete
+relative-path change set, and observed state, all rechecked immediately before
+effects. Partial payloads require a new preview and user direction; only a
+complete byte-identical expected set is removable. Updates remove the approved
+old payload before a separate new preview. RC2-RC8 retain their immutable
+release uninstall. Interruption requires inspection and a new preview, with no
+journal, staging, or post-recheck concurrent-writer claim.

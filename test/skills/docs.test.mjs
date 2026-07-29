@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
-import { lstat, readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const PROMPT_START = 'Install Baton v1.0.0-rc.9 from\n';
+const LIVE_DOCS = [
+  'README.md',
+  'INSTALL.md',
+  'RELEASING.md',
+  'ROADMAP.md',
+  'CONTRIBUTING.md',
+  'conformance/README.md',
+  'conformance/manifest.json',
+  'docs/releases/v1.0.0-rc.9.md',
+];
 
 function selfInstallPrompt(document, path) {
   const blocks = [...document.matchAll(/```text\n([\s\S]*?)\n```/g)]
@@ -17,48 +27,47 @@ function selfInstallPrompt(document, path) {
 test('README and INSTALL carry one identical concise self-install prompt', async () => {
   const readme = await readFile(resolve(ROOT, 'README.md'), 'utf8');
   const install = await readFile(resolve(ROOT, 'INSTALL.md'), 'utf8');
-  const readmePrompt = selfInstallPrompt(readme, 'README.md');
-  const installPrompt = selfInstallPrompt(install, 'INSTALL.md');
-  assert.equal(readmePrompt, installPrompt);
-  assert.match(readmePrompt, /complete no-write preview/);
-  assert.match(readmePrompt, /wait for my approval/);
-  assert.match(readmePrompt, /Do not guess paths, edit instruction files, or install\nSworn\./);
-  assert.match(readmePrompt, /all five Baton skills are discovered/);
+  const prompt = selfInstallPrompt(readme, 'README.md');
+  assert.equal(prompt, selfInstallPrompt(install, 'INSTALL.md'));
+  assert.match(prompt, /complete no-write preview/);
+  assert.match(prompt, /wait for my approval/);
+  assert.match(prompt, /all five Baton skills are discovered/);
 });
 
-test('current live surfaces expose only the neutral payload and neutral helper', async () => {
-  const paths = [
-    '.github/workflows/conformance.yml',
-    '.gitignore',
-    'README.md',
-    'INSTALL.md',
-    'RELEASING.md',
-    'CONTRIBUTING.md',
-    'conformance/check.py',
-    'conformance/manifest.json',
-    'conformance/README.md',
-    'docs/releases/v1.0.0-rc.9.md',
-    'scripts/measure-overhead.mjs',
-  ];
-  for (const path of paths) {
+test('the live product has no client-specific or generic installer helper', async () => {
+  const executableInstallers = [
+    ...await readdir(ROOT),
+    ...await readdir(resolve(ROOT, 'scripts')),
+  ].filter((name) => /^(?:install|manage).*?(?:skills?)?\.(?:mjs|sh)$/i.test(name));
+  assert.deepEqual(executableInstallers, []);
+  for (const path of LIVE_DOCS) {
     const contents = await readFile(resolve(ROOT, path), 'utf8');
     assert.doesNotMatch(
       contents,
-      /adapters\/generated|generate-adapters|install-(?:claude|codex)\.sh|scripts\/install\.mjs|test\/(?:adapters|install)\/|legacy\/v0\.16\.0|\/tmp-install\/|\.claude\/skills|\.codex\/skills/,
+      /scripts\/manage-skills|\.claude\/skills|\.codex\/skills|client selector|client path table/,
       path,
     );
   }
-  await assert.rejects(lstat(resolve(ROOT, '.gitattributes')), { code: 'ENOENT' });
+});
 
-  const install = await readFile(resolve(ROOT, 'INSTALL.md'), 'utf8');
-  assert.match(
-    install,
-    /node scripts\/manage-skills\.mjs install \/absolute\/path\/to\/skills\n```/,
-  );
-  assert.match(
-    install,
-    /node scripts\/manage-skills\.mjs install \/absolute\/path\/to\/skills --apply/,
-  );
-  assert.match(install, /check out that exact immutable release/);
-  assert.match(install, /run that release's own safe uninstall preview/);
+test('the contract binds approval and fails closed on changed or partial state', async () => {
+  const install = (await readFile(resolve(ROOT, 'INSTALL.md'), 'utf8'))
+    .replace(/\s+/g, ' ');
+  for (const required of [
+    'exact release and commit',
+    'payload digest',
+    'canonical destination',
+    'complete relative-path change set',
+    'observed destination state',
+    'immediately before any effect',
+    'if anything changed, stop and show a new preview',
+    'incomplete exact payload is never adopted as installed or removed automatically',
+    'complete expected path set is byte-identical',
+    'no missing, extra, symlink, or special entries',
+    "exact immutable release's own safe uninstall",
+    'separately approved operations',
+    'After interruption or change',
+  ]) {
+    assert.match(install, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
 });

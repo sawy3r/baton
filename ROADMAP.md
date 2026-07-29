@@ -7,10 +7,10 @@ generated payload of five standalone skills. The running agent discovers its
 tool's real skills directory, presents the exact change, waits for approval,
 and proves native discovery.
 
-A small destination-agnostic helper supplies complete-tree comparison,
-same-filesystem staging, exact removal, modified-file refusal, and safe
-continuation after interruption. It knows no client names or paths. Older
-release state is removed only with that exact release's safe uninstall.
+The installation contract requires exact preview approval and a final
+pre-effect recheck. Partial payloads require a new preview and user direction;
+only a complete byte-identical payload is eligible for removal. Older release
+state is removed only with that exact immutable release's safe uninstall.
 
 ## RC6 — constrain commitment, not cognition
 

@@ -36,7 +36,8 @@ slice attempts, reviewed consumed-product pins, exact producer-authority
 preparation, selective dependency invalidation, exact candidate and product
 tree binding, metadata-only receipt history, deterministic composition,
 procedural reconciliation, compare-and-set, exact standalone skill generation,
-agent-led payload safety, and terminal-safe Git-derived board output.
+the agent-led installation contract, and terminal-safe Git-derived board
+output.
 
 The manifest deliberately contains no status fixture, proof bundle, transition
 cursor, fake driver, or scripted claim that a runtime event is a Baton verdict.

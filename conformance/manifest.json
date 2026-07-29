@@ -118,11 +118,11 @@
           ]
         },
         {
-          "id": "operations-standalone-skills-and-agent-led-install",
+          "id": "operations-standalone-skills-and-agent-led-install-contract",
           "suites": [
             "test/operations/operations.test.mjs",
             "test/skills/generated.test.mjs",
-            "test/skills/manage.test.mjs"
+            "test/skills/docs.test.mjs"
           ]
         },
         {

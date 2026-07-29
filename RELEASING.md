@@ -35,15 +35,13 @@ contracts. Release candidates use immutable annotated
 5. Review the diff from the prior tag. Current docs, examples, conformance
    manifest, `VERSION`, generated payload, and release note must agree.
    Historical notes and captures stay unchanged.
-6. Exercise the helper against temporary destination directories:
-
-   - default install and removal are no-write previews;
-   - approved clean install and repeated no-op;
-   - exact old-payload removal followed by new install;
-   - exact removal and repeated no-op;
-   - refusal of modified, added, symlinked, legacy, mixed, and unknown-stage
-     state; and
-   - recovery after every staged, installed, quarantined, and removed boundary.
+6. Review the agent-led contract against temporary destinations. Approval must
+   bind the exact release commit, payload digest, canonical destination,
+   complete relative-path change set, and observed state. Recheck all of them
+   immediately before effects and require a new preview if anything changed.
+   A partial payload requires user direction; removal requires the complete
+   byte-identical expected set with no missing, extra, symlink, or special
+   entries.
 
 7. In clean contexts, independently prove native discovery for OpenCode,
    Hermes Agent, Cline, and at least one materially different Agent Skills
@@ -67,8 +65,7 @@ Never move a published tag.
 
 Portable success proves the plan and receipt contracts, Git-derived state and
 action kit, operations, standalone generated skills, agent-led installation
-contract, destination-agnostic safety helper, and terminal/browser board. It
-does not prove an autonomous engine.
+contract, and terminal/browser board. It does not prove an autonomous engine.
 
 An engine conformance claim requires every autonomous case to run through the
 engine's actual binary, scheduler, persistence, workspace, driver, and Git
@@ -79,5 +76,5 @@ from Sworn or another real engine.
 
 Git tags preserve the retired host-specific installers and their exact
 ownership rules. They are release-specific removal tools, not live RC9 product
-code. Do not copy historical uninstall logic into the neutral payload helper
-or silently translate old state.
+code. Do not copy historical uninstall logic into the live product or silently
+translate old state.

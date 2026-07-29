@@ -87,10 +87,10 @@ that all five Baton skills are discovered.
 ```
 
 The running agent owns destination discovery and the approval conversation.
-Baton deliberately has no maintained client list or client-path table. After
-approval, the repository provides one destination-agnostic helper that stages
-and compares the exact payload; its default invocation is a no-write preview.
-See [INSTALL.md](INSTALL.md).
+Baton deliberately has no maintained client list, client-path table, or
+installer helper. Approval binds the exact release commit, payload digest,
+canonical destination, complete change set, and observed state. The agent
+rechecks those facts immediately before effects. See [INSTALL.md](INSTALL.md).
 
 ## Revision and recovery
 

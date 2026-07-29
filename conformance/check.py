@@ -98,11 +98,11 @@ PORTABLE_CASES = (
         REFERENCE_SUITES[2:],
     ),
     (
-        "operations-standalone-skills-and-agent-led-install",
+        "operations-standalone-skills-and-agent-led-install-contract",
         (
             "test/operations/operations.test.mjs",
             "test/skills/generated.test.mjs",
-            "test/skills/manage.test.mjs",
+            "test/skills/docs.test.mjs",
         ),
     ),
     (
