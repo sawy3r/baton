@@ -1,112 +1,167 @@
 # Install Baton
 
-Baton installs the same protocol, five operations, compact receipt/state/action
-kit, and read-only terminal and browser board for Claude Code or Codex. It does
-not install Sworn, a driver, a model, provider credentials, or a background
-service.
+Baton RC9 ships one client-neutral Agent Skills payload under [`skills/`](skills/).
+The five `baton-*` directories are the entire installed product. The repository
+board, record helpers, schemas, and protocol documents remain project tools;
+they are not hidden dependencies of an installed skill.
 
-## Before you install
+The agent already running in your tool performs installation because it can
+identify that tool's current skills directory without Baton maintaining a
+client allow-list or guessing paths.
 
-Use an exact reviewed Baton tag. Run the installer from that checkout and
-preview every action before approving it. The installers require Node.js 22 or
-24, Git, and a supported Linux or macOS user environment.
-
-Do not edit agent instruction files to install Baton. The only supported
-instruction-file mutation is the exact audited Claude v0.16 migration described
-below.
-
-## Ask your agent to install it
-
-RC8 is a bounded reference-engine correction over the immutable RC7 tag. It
-preserves the lean protocol while preventing misleading repository ancestry
-from rejecting clean passed work.
-
-The easiest route is to paste this into Claude Code or Codex:
+## Copyable self-install request
 
 ```text
-Install Baton v1.0.0-rc.8 for me.
+Install Baton v1.0.0-rc.9 from
+https://github.com/sawy3r/baton.git.
 
-Clone the exact v1.0.0-rc.8 tag from https://github.com/sawy3r/baton.git,
-read its INSTALL.md, and use the installer that matches this tool. Show me the
-user-scope dry-run first and wait for my approval before applying it. Do not
-edit my instruction files or install Sworn.
+Check out that exact tag and read INSTALL.md. Determine this tool's real user
+or project skills directory from current documentation or the live
+environment. Show me the complete no-write preview and wait for my approval
+before applying it. Do not guess paths, edit instruction files, or install
+Sworn. After approval, install the exact payload and prove in a clean context
+that all five Baton skills are discovered.
 ```
 
-The agent should stop after the dry-run. Approving that preview authorises the
-matching `--yes` install; it does not authorise unrelated changes.
+That request authorises inspection only. Approval of the shown preview
+authorises only the matching payload change.
 
-## Install it yourself
+## Agent installation contract
 
-### Claude Code
+The installing agent must:
 
-Preview and install at user scope:
+1. check out the exact requested tag and confirm its commit;
+2. discover the current tool's real user or project skills directory from
+   current documentation or the live environment;
+3. inspect all five source and destination trees, the payload manifest, and any
+   older Baton ownership or transaction state;
+4. show source, destination, existing files, payload digest, and intended
+   changes, then wait for approval;
+5. stop on a symlink, mixed state, unknown stage, added or modified managed
+   file, or an older installation that still owns its files; and
+6. after applying, verify exact installed bytes and prove native discovery of
+   all five skills in a clean context.
+
+Client names are examples at most, never support boundaries. Baton code knows
+no client selectors or discovery paths.
+
+## Payload
+
+The generated payload contains exactly:
+
+```text
+skills/
+  baton-plan/
+    SKILL.md
+    templates/plan.md
+  baton-implement/SKILL.md
+  baton-design-review/SKILL.md
+  baton-verify/SKILL.md
+  baton-merge/SKILL.md
+```
+
+`skills/.baton-payload.json` binds every payload file to the RC9 release,
+source path, source digest, and generated digest. Each `SKILL.md`
+contains one exact canonical operation region. The plan template is bundled at
+the exact relative path named by `baton-plan`, so every skill directory is
+standalone.
+
+Regeneration is deterministic:
 
 ```sh
-./install-claude.sh --user --dry-run
-./install-claude.sh --user --yes
+node scripts/generate-skills.mjs --check
 ```
 
-Or install into the current Git project:
+## Preview and install
+
+The helper accepts only an operation and the absolute skills directory chosen
+by the agent. It contains no client names or path discovery.
+
+The default command is a complete, no-write preview:
 
 ```sh
-./install-claude.sh --project --dry-run
-./install-claude.sh --project --yes
+node scripts/manage-skills.mjs install /absolute/path/to/skills
 ```
 
-The default user paths are:
-
-```text
-~/.claude/skills/baton-*/
-~/.claude/baton/
-~/.claude/.baton-install/
-```
-
-Project scope uses:
-
-```text
-.claude/skills/baton-*/
-.claude/baton/
-.claude/.baton-install/
-```
-
-### Codex
-
-Preview and install at user scope:
+After the user approves that exact source, destination, and change set:
 
 ```sh
-./install-codex.sh --user --dry-run
-./install-codex.sh --user --yes
+node scripts/manage-skills.mjs install /absolute/path/to/skills --apply
 ```
 
-Or install into the current Git project:
+The helper:
+
+- verifies the checked-out generated payload before trusting it;
+- inspects all five destination trees before any write;
+- refuses modified, added, missing-within-a-tree, symlinked, mixed, or unknown
+  staged state;
+- stages missing skills inside the destination filesystem and atomically
+  renames complete directories into place;
+- preserves unrelated skill directories; and
+- treats exact repetition as a no-op.
+
+The payload itself is platform-neutral Markdown. The optional helper requires
+hard links and atomic directory renames within its private destination-side
+stage. If that filesystem lacks either primitive, the helper fails closed
+instead of publishing a partial skill; the agent must follow the same preview
+and exact-tree contract without the helper.
+
+If execution stops after only part of the exact payload is installed, run the
+same preview again. After approval, repeat the same `--apply` command. Exact
+installed and staged directories are reconciled; ambiguous bytes are not.
+
+## Older RC2–RC8 installations
+
+Do not install RC9 over files or state still owned by RC2 through RC8.
+
+When an older manifest, support directory, transaction journal, or generated
+Baton skill is present:
+
+1. identify its exact release, scope, and destination;
+2. check out that exact immutable release;
+3. run that release's own safe uninstall preview;
+4. wait for approval and complete that exact uninstall; and
+5. confirm its manifest and transaction state no longer claim the skills
+   before previewing RC9.
+
+If the release or ownership is ambiguous, stop. The RC9 helper intentionally
+refuses an older or modified skill tree and never adopts or overwrites it.
+Historical installer code remains available from its Git tag; it is not part
+of the live RC9 product.
+
+## Update
+
+An update is two explicit exact operations, never an in-place overwrite:
+
+1. check out the currently installed release and preview `remove` with that
+   release's helper;
+2. after approval, remove its exact unmodified payload;
+3. check out the requested new release;
+4. preview its `install`; and
+5. after approval, install and verify the new exact payload.
+
+For RC9 removal, preview:
 
 ```sh
-./install-codex.sh --project --dry-run
-./install-codex.sh --project --yes
+node scripts/manage-skills.mjs remove /absolute/path/to/skills
 ```
 
-The default user paths are:
+Then apply only after approval:
 
-```text
-~/.agents/skills/baton-*/
-~/.codex/baton/
-~/.codex/.baton-install/
+```sh
+node scripts/manage-skills.mjs remove /absolute/path/to/skills --apply
 ```
 
-Project scope uses:
+Removal first atomically quarantines each exact managed directory within the
+same filesystem, rechecks its complete tree, and deletes only known files and
+empty known directories. An interruption is safely rerunnable. A concurrent
+addition or modification is preserved and stops cleanup.
 
-```text
-.agents/skills/baton-*/
-.codex/baton/
-.codex/.baton-install/
-```
+## Prove discovery
 
-Commit a project install only when the repository intentionally vendors the
-generated package. Baton does not edit `.gitignore`.
-
-## Use the operations
-
-Both tools expose the same operations:
+Filesystem equality is necessary but not sufficient. The agent must start a
+clean tool context and use that tool's native skill listing or discovery
+surface. It must prove that these five names are available:
 
 ```text
 baton-plan
@@ -116,95 +171,24 @@ baton-verify
 baton-merge
 ```
 
-Free-form text supplies their inputs. Project packages take precedence over
-user packages. Invoking `baton-plan` can propose a plan but cannot approve it.
+If the tool does not discover one of them, do not report a successful install.
+Recheck the tool's current skill documentation and the chosen scope; do not
+move files by guessing.
 
-The ordinary guided sequence is:
+## Use Baton
 
-1. `baton-plan` proposes the applicable plan revision for external approval.
-2. The engine prepares the exact current consumed `PASS` authorities, then
-   `baton-implement` returns one eligible slice’s design TL;DR and stops.
-3. `baton-design-review` returns the distinct Captain decision.
-4. After `PROCEED`, the engine prepares those current authorities again, then
-   `baton-implement` builds the candidate, runs required checks, and returns
-   observable evidence.
-5. A fresh, read-only `baton-verify` returns `PASS`, `FAIL`, or `BLOCKED`.
-6. `baton-merge` composes passed tracks, obtains fresh whole-product
-   verification, and integrates only the exact candidate covered by `PASS`.
+Free-form text supplies each operation's inputs. `baton-plan` can propose plan
+bytes but cannot approve them. The ordinary guided sequence is plan, distinct
+Captain review, implementation after `PROCEED`, fresh read-only verification,
+and exact-candidate Merge.
 
-The surrounding tool or engine writes compact receipts for those boundaries.
-The role does not hand-author lifecycle records. A runtime failure produces no
-Baton verdict and may be retried without a new plan or slice identity.
-
-## Use the board
-
-The reference board reads the repository’s committed plan, receipts, and Git
-facts. JSON, terminal, and WebUI views share one read-only projection and
-cannot advance delivery.
+The surrounding tool or engine writes compact receipts for trust boundaries.
+Runner failure produces no Baton verdict. Repository board commands remain
+available from the checked-out Baton source:
 
 ```sh
 node reference/board/oracle.mjs /path/to/repository
-
 node reference/board/oracle.mjs /path/to/repository \
   | node reference/board/terminal.mjs
-
 node reference/board/web.mjs /path/to/repository
 ```
-
-The WebUI listens on loopback, defaults to `http://127.0.0.1:4177`, and accepts
-GET only.
-
-## Repeat, upgrade, rollback, and uninstall
-
-Every install owns an exact manifest. Repeating the same install is a no-op.
-RC8 directly upgrades exact, unmodified RC2 through RC7 installs. RC6 and RC7
-are admitted only by their immutable tagged package identity and host-specific
-ownership fingerprint. An upgrade replaces only bytes owned by the previous
-Baton manifest and stops on a collision, modified managed file, symlink,
-unsupported layout, or changed instruction block.
-
-Preview rollback or uninstall before applying it:
-
-```sh
-./install-claude.sh --user --rollback latest --dry-run
-./install-claude.sh --user --rollback latest --yes
-./install-claude.sh --user --uninstall --dry-run
-./install-claude.sh --user --uninstall --yes
-
-./install-codex.sh --user --rollback latest --dry-run
-./install-codex.sh --user --rollback latest --yes
-./install-codex.sh --user --uninstall --dry-run
-./install-codex.sh --user --uninstall --yes
-```
-
-Use the matching `--project` scope for project installs. Rollback restores the
-last complete manifest snapshot. Uninstall removes only current Baton-owned
-paths.
-
-## Exact Claude v0.16 migration
-
-The Claude user installer recognizes one audited Baton v0.16 installation:
-the known support package, eight legacy commands, and the exact trailing
-instruction block. A dry-run shows the migration. With `--yes`, the installer
-archives the owned bytes, removes only those known files and block, and installs
-the new package transactionally.
-
-Any modified, missing, additional, symlinked, or differently placed managed
-byte makes that migration ineligible. The installer stops without guessing and
-does not touch unrelated commands or earlier instruction text.
-
-Codex has no implicit legacy migration.
-
-## Failure and recovery
-
-Install mutations use a transaction journal and staged replacement. An
-interruption before commit leaves the prior installation authoritative; an
-interruption after an effect is reconciled from the journal and manifests on
-the next run. A mixed or ambiguous state is reported without deleting user
-data.
-
-Installer recovery is separate from delivery recovery. During delivery,
-Sworn or another engine owns scheduling, retries, worktrees, receipt
-persistence, projections, and effect reconciliation. Baton operations never
-turn a runner or bookkeeping failure into approval, `PROCEED`, `PASS`, or
-`MERGED`.

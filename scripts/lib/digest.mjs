@@ -8,7 +8,6 @@ export function digestEntries(entries) {
   const normalized = [...entries]
     .map((entry) => ({
       path: entry.path,
-      mode: entry.mode,
       digest: entry.digest,
     }))
     .sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)));

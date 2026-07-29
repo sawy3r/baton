@@ -1,2 +1,0 @@
-# Preserve immutable historical installer payloads byte-for-byte.
-test/install/fixtures/history/blobs/* binary

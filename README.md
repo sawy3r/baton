@@ -39,55 +39,26 @@ requirement for five people, processes, or providers.
 The durable minimum is one approved plan plus small machine-written receipts
 for decisions and outcomes. The candidate diff, tests, code, and Git history
 carry implementation evidence. Longer design or evidence documents are
-optional when the work needs them; Baton does not universally require
-`design.md`, `proof.md`, or a hand-maintained `status.json`.
+optional when the work needs them.
 
 ## Commitment, not inventory
 
 An approved plan commits the delivery to observable behavior, product surfaces,
 acceptance, minimum checks, semantic limits, authority, and real product
-dependencies. It is not a prediction of every file that implementation will
-touch or every command that evidence will need.
+dependencies. It is not a prediction of every file implementation will touch
+or every command evidence will need.
 
 Discovering an ancillary test, oracle, support file, or useful additional check
 does not change that commitment. Record the actual paths and check results in
 the candidate and evidence, then continue under the same approved plan and
-stable slice. The same applies to evidence corrections and procedural recovery.
-
-A material change to behavior, consumed product, contract, authority, or an
-externally owned decision still stops for the appropriate Captain, Planner, or
-authorizer. Exact approval, fresh verification, and exact-candidate Merge do
-not weaken.
-
-## Revision without churn
-
-A plan advances at one path under one release identity. Its slices keep stable
-identities:
-
-- a design revision adds a design attempt to the same slice;
-- a Verifier `FAIL` adds an implementation attempt to the same slice;
-- a plan revision reuses unchanged slices and invalidates only changed slices
-  and the real dependency closure whose inputs changed; and
-- a new release identity is needed only when the overall goal, target, or
-  authority is replaced.
-
-Git keeps every earlier revision and attempt. The board derives the most
-advanced trustworthy state; it is not another state store.
-
-## What can block
-
-Baton blocks when a trust-critical fact cannot be established: current
-approval, unambiguous scope and authority, an applicable Captain decision, an
-exact candidate and evidence, fresh verification, or safe exact composition.
-
-Missing derived status, duplicate dispatch, stale board output, runner
-interruption, a skipped cursor, or a reconcilable Git effect is operational.
-An engine reconstructs or retries it without manufacturing approval,
-`PROCEED`, `PASS`, or `MERGED`.
+stable slice. A material change to behavior, consumed product, contract,
+authority, or an externally owned decision still stops for the appropriate
+review or approval.
 
 ## Portable operations
 
-Baton ships five concise, tool-neutral operations:
+Baton ships one client-neutral Agent Skills payload containing exactly five
+standalone skills:
 
 - `baton-plan`
 - `baton-implement`
@@ -95,53 +66,53 @@ Baton ships five concise, tool-neutral operations:
 - `baton-verify`
 - `baton-merge`
 
-Claude Code and Codex expose byte-identical generated Skills. The board remains
-a thin, read-only projection: looking at it cannot advance delivery.
-
-## More than one track
-
-Independent tracks may run together. Ordered slices remain serial inside a
-track. Passed track candidates may be composed only through the approved plan;
-a fresh Verifier then checks the complete assembled product before final Merge.
+Each skill contains the exact canonical operation text. `baton-plan` also
+contains its plan template at `templates/plan.md`; no separate Baton support
+directory is required. The board remains a thin read-only repository tool.
 
 ## Get started
 
-RC8 prevents clean passed work from being rejected when older repository
-history makes Git choose the wrong merge base. Baton can compose that exact
-passed product without unnecessary replanning or replacement slices, while a
-real product conflict still stops without moving a ref. The lean protocol,
-roles, receipts, schemas, and lifecycle remain unchanged. See the
-[RC8 release note](docs/releases/v1.0.0-rc.8.md).
-
-The easiest route is to ask Claude Code or Codex:
+Ask the agent already running in your tool to install the exact RC9 payload:
 
 ```text
-Install Baton v1.0.0-rc.8 for me.
+Install Baton v1.0.0-rc.9 from
+https://github.com/sawy3r/baton.git.
 
-Clone the exact tag, read its INSTALL.md, show me the matching user-scope
-dry-run, and wait for my approval before applying it.
+Check out that exact tag and read INSTALL.md. Determine this tool's real user
+or project skills directory from current documentation or the live
+environment. Show me the complete no-write preview and wait for my approval
+before applying it. Do not guess paths, edit instruction files, or install
+Sworn. After approval, install the exact payload and prove in a clean context
+that all five Baton skills are discovered.
 ```
 
-If you prefer the shell, clone the reviewed tag and preview the matching
-installer yourself:
+The running agent owns destination discovery and the approval conversation.
+Baton deliberately has no maintained client list or client-path table. After
+approval, the repository provides one destination-agnostic helper that stages
+and compares the exact payload; its default invocation is a no-write preview.
+See [INSTALL.md](INSTALL.md).
 
-```sh
-git clone --branch v1.0.0-rc.8 --depth 1 https://github.com/sawy3r/baton.git
-cd baton
-./install-codex.sh --user --dry-run    # or ./install-claude.sh
-```
+## Revision and recovery
 
-Project-local installs are also supported. See [INSTALL.md](INSTALL.md), then
-follow the [platform-agnostic walkthrough](examples/README.md).
+A plan advances at one path under one release identity. Its slices keep stable
+identities. A design revision adds a design attempt, a Verifier `FAIL` adds an
+implementation attempt, and a plan revision reuses unchanged slices while
+invalidating only changed slices and the real dependency closure.
+
+Baton blocks when a trust-critical fact cannot be established. Duplicate
+dispatch, stale board output, runner interruption, or a reconcilable Git effect
+is operational; an engine reconstructs or retries it without manufacturing
+approval, `PROCEED`, `PASS`, or `MERGED`.
 
 ## Repository map
 
+- [`skills/`](skills/) — generated five-skill standalone payload
+- [`operations/`](operations/) — canonical operation sources
 - [`baton/CORE.md`](baton/CORE.md) — five trust principles
 - [`baton/PROTOCOL.md`](baton/PROTOCOL.md) — responsibilities, facts, and receipts
 - [`baton/ASSURANCE.md`](baton/ASSURANCE.md) — standard and heightened assurance
 - [`baton/CONFORMANCE.md`](baton/CONFORMANCE.md) — observable obligations
-- [`operations/`](operations/) — five canonical operations
-- [`reference/`](reference/) — the portable receipt, Git, and read-only board kit
+- [`reference/`](reference/) — portable receipt, Git, and read-only board kit
 - [`conformance/`](conformance/) — portable and autonomous profiles
 
 ## License

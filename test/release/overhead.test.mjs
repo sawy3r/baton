@@ -31,8 +31,9 @@ test('lightweight Baton overhead is reproducible and remains below every budget'
     ['plan', 'receipts'],
   );
   assert.equal(report.current.operations.length, 5);
-  assert.equal(report.current.adapters.length, 10);
-  assert.equal(report.current.generated_package.parity, true);
+  assert.equal(report.current.skills.length, 5);
+  assert.equal(report.current.generated_payload.files, 6);
+  assert.equal(report.current.generated_payload.provenance_complete, true);
   assert.equal(report.current.normal_work_happy_path.minimum_invocations, 4);
   assert.ok(report.current.normal_work_happy_path.fixed_words < 1512);
   assert.ok(report.comparison.fixed_word_ratio < 0.026539);

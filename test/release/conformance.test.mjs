@@ -13,10 +13,7 @@ import {
   parsePlanBytes,
   parseReceiptCommitMessage,
 } from '../../reference/records/receipts.mjs';
-import {
-  PORTABLE_RUNTIME_FILES,
-  SUPPORT_FILES,
-} from '../../scripts/lib/catalog.mjs';
+import { OPERATIONS } from '../../scripts/lib/payload.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const WALKTHROUGH = path.join(ROOT, 'examples/walkthrough');
@@ -168,32 +165,23 @@ test('the walkthrough replaces status and proof records with canonical receipt c
   }
 });
 
-test('the install catalog contains only the compact active reference kit', () => {
-  assert.deepEqual(PORTABLE_RUNTIME_FILES, [
-    'reference/board/oracle.mjs',
-    'reference/board/terminal.mjs',
-    'reference/board/web.mjs',
-    'reference/records/actions.mjs',
-    'reference/records/git.mjs',
-    'reference/records/receipts.mjs',
-    'reference/records/state.mjs',
-  ]);
-  for (const required of [
-    'schemas/receipt-v1.json',
-    'reference/records/receipts.mjs',
-    'templates/plan.md',
-  ]) {
-    assert.equal(SUPPORT_FILES.includes(required), true, required);
-  }
-  for (const retired of [
-    'schemas/work-status-v1.json',
-    'reference/records/records.mjs',
-    'reference/records/transition.mjs',
-    'reference/driver/fake-driver.mjs',
-    'templates/design.md',
-    'templates/proof.md',
-  ]) {
-    assert.equal(SUPPORT_FILES.includes(retired), false, retired);
+test('the generated payload is exactly five operations with one bundled resource', () => {
+  assert.deepEqual(
+    OPERATIONS.map(({ name }) => name),
+    [
+      'baton-plan',
+      'baton-implement',
+      'baton-design-review',
+      'baton-verify',
+      'baton-merge',
+    ],
+  );
+  assert.deepEqual(OPERATIONS[0].resources, [{
+    source: 'templates/plan.md',
+    path: 'templates/plan.md',
+  }]);
+  for (const operation of OPERATIONS.slice(1)) {
+    assert.deepEqual(operation.resources, [], operation.name);
   }
 });
 
