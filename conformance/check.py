@@ -73,7 +73,7 @@ REFERENCE_SUITES = (
 PORTABLE_COMMANDS = (
     "python3 conformance/check.py",
     "node --test test/records/*.test.mjs test/operations/*.test.mjs "
-    "test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs "
+    "test/skills/*.test.mjs test/board/*.test.mjs "
     "test/release/*.test.mjs",
 )
 
@@ -98,11 +98,11 @@ PORTABLE_CASES = (
         REFERENCE_SUITES[2:],
     ),
     (
-        "operations-generated-adapters-and-install",
+        "operations-standalone-skills-and-agent-led-install-contract",
         (
             "test/operations/operations.test.mjs",
-            "test/adapters/generated.test.mjs",
-            "test/install/install.test.mjs",
+            "test/skills/generated.test.mjs",
+            "test/skills/docs.test.mjs",
         ),
     ),
     (

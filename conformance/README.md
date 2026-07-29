@@ -14,11 +14,9 @@ repository root:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r conformance/requirements.txt
 .venv/bin/python conformance/check.py
-node --test test/records/*.test.mjs test/operations/*.test.mjs test/adapters/*.test.mjs test/install/*.test.mjs test/board/*.test.mjs test/release/*.test.mjs
-node scripts/generate-adapters.mjs --check
+node --test test/records/*.test.mjs test/operations/*.test.mjs test/skills/*.test.mjs test/board/*.test.mjs test/release/*.test.mjs
+node scripts/generate-skills.mjs --check
 node scripts/measure-overhead.mjs --check
-sh -n install-claude.sh
-sh -n install-codex.sh
 ```
 
 If the pinned dependency is already available to `python3`, the manifest's
@@ -37,8 +35,9 @@ The Node suites add the real-Git boundaries: forward plan revisions, stable
 slice attempts, reviewed consumed-product pins, exact producer-authority
 preparation, selective dependency invalidation, exact candidate and product
 tree binding, metadata-only receipt history, deterministic composition,
-procedural reconciliation, compare-and-set, generated adapters, installer
-isolation, and terminal-safe Git-derived board output.
+procedural reconciliation, compare-and-set, exact standalone skill generation,
+the agent-led installation contract, and terminal-safe Git-derived board
+output.
 
 The manifest deliberately contains no status fixture, proof bundle, transition
 cursor, fake driver, or scripted claim that a runtime event is a Baton verdict.

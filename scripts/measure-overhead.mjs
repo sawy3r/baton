@@ -16,8 +16,8 @@ import {
   checkGenerated,
   extractCanonicalRegion,
   renderGenerated,
-} from './generate-adapters.mjs';
-import { OPERATIONS } from './lib/catalog.mjs';
+} from './generate-skills.mjs';
+import { OPERATIONS } from './lib/payload.mjs';
 import {
   repositoryRoot,
   unsafeRunGit,
@@ -260,10 +260,10 @@ async function measureCurrent(root) {
   const rendered = await renderGenerated({ bundleRoot: root });
   await checkGenerated({
     bundleRoot: root,
-    outputRoot: join(root, 'adapters', 'generated'),
+    outputRoot: join(root, 'skills'),
   });
   const checkedManifest = JSON.parse(
-    await readFile(join(root, 'adapters', 'generated', 'generated-manifest.json'), 'utf8'),
+    await readFile(join(root, 'skills', '.baton-payload.json'), 'utf8'),
   );
   if (!isDeepStrictEqual(checkedManifest, rendered.manifest)) {
     fail('checked-in generated manifest differs from regenerated data');
@@ -279,8 +279,8 @@ async function measureCurrent(root) {
     const bytes = await readFile(join(root, operation.source));
     const text = UTF8.decode(bytes);
     const digest = sha256(bytes);
-    const manifestEntry = rendered.manifest.operations.find(({ name }) => name === operation.name);
-    if (!manifestEntry || manifestEntry.digest !== digest) {
+    const manifestEntry = rendered.manifest.skills.find(({ name }) => name === operation.name);
+    if (!manifestEntry || manifestEntry.operation_digest !== digest) {
       fail(`generated operation digest differs for ${operation.name}`);
     }
     if (/\b(?:providers?|models?)\b/iu.test(text) || /\bdefault[-_\s]+model\b/iu.test(text)) {
@@ -296,56 +296,53 @@ async function measureCurrent(root) {
     });
   }
 
-  const adapterResults = [];
-  const maxWordsByOperation = new Map();
-  for (const host of ['claude', 'codex']) {
-    for (const operation of OPERATIONS) {
-      const path = `${host}/skills/${operation.name}/SKILL.md`;
-      const bytes = rendered.files.get(path);
-      if (!bytes) fail(`rendered adapter is missing ${path}`);
-      const canonical = extractCanonicalRegion(bytes, operation.name);
-      if (!canonical.equals(operationBytes.get(operation.name))) {
-        fail(`canonical adapter region differs for ${path}`);
-      }
-      const digest = sha256(bytes);
-      const record = rendered.manifest.adapters.find((entry) => (
-        entry.host === host && entry.operation === operation.name
-      ));
-      if (
-        !record
-        || record.path !== path
-        || record.digest !== digest
-        || record.canonical_digest !== sha256(canonical)
-      ) {
-        fail(`generated adapter manifest binding differs for ${path}`);
-      }
-      const words = countWords(bytes);
-      maxWordsByOperation.set(
-        operation.name,
-        Math.max(maxWordsByOperation.get(operation.name) ?? 0, words),
-      );
-      adapterResults.push({
-        host,
-        operation: operation.name,
-        path: `adapters/generated/${path}`,
-        bytes: bytes.byteLength,
-        words,
-        digest,
-        canonical_digest: record.canonical_digest,
-      });
+  const skillResults = [];
+  const wordsByOperation = new Map();
+  for (const operation of OPERATIONS) {
+    const path = `${operation.name}/SKILL.md`;
+    const bytes = rendered.files.get(path);
+    if (!bytes) fail(`rendered skill is missing ${path}`);
+    const canonical = extractCanonicalRegion(bytes, operation.name);
+    if (!canonical.equals(operationBytes.get(operation.name))) {
+      fail(`canonical skill region differs for ${path}`);
     }
+    const digest = sha256(bytes);
+    const record = rendered.manifest.files.find((entry) => entry.path === path);
+    if (
+      !record
+      || record.digest !== digest
+      || record.source_digest !== sha256(canonical)
+      || record.release !== rendered.manifest.release
+    ) {
+      fail(`generated skill provenance differs for ${path}`);
+    }
+    const words = countWords(bytes);
+    wordsByOperation.set(operation.name, words);
+    skillResults.push({
+      operation: operation.name,
+      path: `skills/${path}`,
+      bytes: bytes.byteLength,
+      words,
+      digest,
+      canonical_digest: record.source_digest,
+    });
   }
 
-  const packageParity = (
-    rendered.manifest.packages?.claude?.digest === rendered.manifest.package_digest
-    && rendered.manifest.packages?.codex?.digest === rendered.manifest.package_digest
+  const provenanceComplete = (
+    rendered.manifest.skills.length === EXPECTED_OPERATIONS.length
+    && rendered.manifest.files.length === rendered.files.size - 1
+    && rendered.manifest.files.every((entry) => (
+      entry.release === rendered.manifest.release
+      && rendered.files.has(entry.path)
+      && sha256(rendered.files.get(entry.path)) === entry.digest
+    ))
   );
   const schemas = (await readdir(join(root, 'schemas')))
     .filter((path) => path.endsWith('.json'))
     .sort();
   const invocations = NORMAL_WORK_INVOCATIONS.map((invocation) => ({
     ...invocation,
-    fixed_words: maxWordsByOperation.get(invocation.operation),
+    fixed_words: wordsByOperation.get(invocation.operation),
   }));
   const fixedWords = invocations.reduce((total, invocation) => total + invocation.fixed_words, 0);
 
@@ -354,12 +351,11 @@ async function measureCurrent(root) {
     authored_schemas: schemas,
     logical_handoffs: LOGICAL_HANDOFFS,
     operations: operationResults,
-    adapters: adapterResults,
-    generated_package: {
-      digest: rendered.manifest.package_digest,
-      claude_digest: rendered.manifest.packages.claude.digest,
-      codex_digest: rendered.manifest.packages.codex.digest,
-      parity: packageParity,
+    skills: skillResults,
+    generated_payload: {
+      digest: rendered.manifest.payload_digest,
+      files: rendered.manifest.files.length,
+      provenance_complete: provenanceComplete,
     },
     normal_work_happy_path: {
       minimum_invocations: invocations.length,
@@ -383,14 +379,14 @@ export async function measureOverhead({
   const current = await measureCurrent(exactRoot);
   const operationWords = current.operations.map(({ name, words }) => ({ name, words }));
   const operationTotal = operationWords.reduce((total, entry) => total + entry.words, 0);
-  const invocationMaximum = Math.max(...current.adapters.map(({ words }) => words));
+  const invocationMaximum = Math.max(...current.skills.map(({ words }) => words));
   const ratio = Number((
     current.normal_work_happy_path.fixed_words
     / baseline.normal_work_happy_path.fixed_words
   ).toFixed(6));
   const canonicalParity = EXPECTED_OPERATIONS.every((name) => {
     const canonical = new Set(
-      current.adapters
+      current.skills
         .filter((entry) => entry.operation === name)
         .map((entry) => entry.canonical_digest),
     );
@@ -442,16 +438,16 @@ export async function measureOverhead({
       current.provider_or_model_mentions.length === 0,
     ),
     budget(
-      'Claude and Codex canonical digest parity',
+      'generated skill canonical digest binding',
       canonicalParity,
       true,
       canonicalParity,
     ),
     budget(
-      'Claude and Codex package digest parity',
-      current.generated_package.parity,
+      'generated payload provenance coverage',
+      current.generated_payload.provenance_complete,
       true,
-      current.generated_package.parity,
+      current.generated_payload.provenance_complete,
     ),
   ];
 

@@ -49,21 +49,15 @@ jobs:
           node --test
           test/records/*.test.mjs
           test/operations/*.test.mjs
-          test/adapters/*.test.mjs
-          test/install/*.test.mjs
+          test/skills/*.test.mjs
           test/board/*.test.mjs
           test/release/*.test.mjs
 
-      - name: Verify generated adapters and package digests
-        run: node scripts/generate-adapters.mjs --check
+      - name: Verify the standalone skills payload and provenance
+        run: node scripts/generate-skills.mjs --check
 
       - name: Verify historical overhead and release budgets
         run: node scripts/measure-overhead.mjs --check
-
-      - name: Check installer shell syntax
-        run: |
-          sh -n install-claude.sh
-          sh -n install-codex.sh
 
       - name: Require a clean generated and tested tree
         run: |
