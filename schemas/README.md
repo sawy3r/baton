@@ -28,8 +28,8 @@ contract, and checks the forward-only `revision` / `previous_plan` chain.
 Schema validity alone cannot prove a Baton result. The reference records and
 Git actions also enforce approval, role separation, plan and contract binding,
 attempt ordering, candidate and product-tree identity, dependency inputs,
-metadata-only receipt commits, fresh verification, deterministic composition,
-and target compare-and-set.
+metadata-only receipt commits, independent read-only verification,
+deterministic composition, and target compare-and-set.
 
 The board has no authored status schema. It is a read-only projection derived
 from the current plan, valid receipts, and captured Git objects.

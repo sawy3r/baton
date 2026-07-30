@@ -39,9 +39,9 @@ modify it. The reference layer does not pretend to detect semantic reads.
 Plan scope is a commitment to owned behavioral and product surfaces, not a
 candidate-path allowlist. The action layer derives the complete candidate diff
 from Git and binds the product tree. It accepts ancillary support paths that
-remain inside the approved outcome; fresh verification decides whether the
-actual diff satisfies the unchanged contract or exposes a material change that
-must stop. Required plan checks are the minimum, while the candidate and
+remain inside the approved outcome; independent verification decides whether
+the actual diff satisfies the unchanged contract or exposes a material change
+that must stop. Required plan checks are the minimum, while the candidate and
 Verifier receipt `checks` digests bind the complete results actually supplied,
 including additional focused checks.
 

@@ -51,16 +51,23 @@ The repository, candidate, tree, changed product, checks, and evidence
 references are independently observable. Missing, stale, fabricated, or
 unreachable evidence cannot support completion.
 
-## B4 — Use a fresh independent Verifier
+## B4 — Start with a fresh independent Verifier
 
-No Implementer certifies its own work. Verification runs in a clean context
-with no inherited implementation conversation, no authority to change the
-candidate, and read-only access to the exact candidate and applicable facts.
+No Implementer certifies its own work. A Verifier thread starts in a clean
+context with no inherited delivery conversation. Every invocation has no
+authority to change the candidate and read-only access to the exact candidate
+and applicable facts.
+
+After a recorded `FAIL`, that thread MAY continue only under the
+[Protocol's direct-repair rule](PROTOCOL.md#direct-repair-continuation).
+Every invocation remains read-only and MUST check the whole contract. Starting
+a new Verifier thread is always valid.
 
 The Verifier returns `PASS`, `FAIL`, or `BLOCKED`. A crash, timeout,
 cancellation, malformed response, or bookkeeping failure creates no verdict.
 A `PASS` binds the applicable plan, Captain decision, exact candidate,
-evidence, and fresh Verifier invocation. Changing a bound fact invalidates it.
+evidence, and independent Verifier invocation. Changing a bound fact
+invalidates it.
 
 ## B5 — Merge only what passed
 
@@ -79,7 +86,7 @@ approved plan
   -> Implementer design TL;DR
   -> Captain decision
   -> candidate and evidence
-  -> fresh Verifier
+  -> independent Verifier
   -> exact Merge
 ```
 

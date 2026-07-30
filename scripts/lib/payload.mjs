@@ -34,7 +34,7 @@ export const OPERATIONS = Object.freeze([
     name: 'baton-verify',
     source: 'operations/baton-verify.md',
     description:
-      'Independently check finished work from a fresh, read-only context.',
+      'Independently check finished work in Verifier threads with read-only invocations.',
     resources: Object.freeze([]),
   }),
   Object.freeze({

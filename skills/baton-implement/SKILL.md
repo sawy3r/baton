@@ -7,7 +7,7 @@ description: "Explain an approach or build approved work."
 release: v1.0.0-rc.12
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:e4754ea1838bc376f0b268fecfe246fd70b1c580b634b1a815771d1bf0a49c07
+operation-sha256: sha256:c274017d47d9dd7bc86ff1188cab1b688f7df73500b3bacdb4244bf496c8c473
 -->
 
 Use the invoking request as input. Resolve relative files from this directory. This standalone skill needs no shared Baton folder.
@@ -74,6 +74,7 @@ operational failure without inventing a Baton outcome.
 
 ## Next handoff
 
-Send a design to `baton-design-review`; send an implemented candidate and
-evidence to a fresh `baton-verify`.
+Send a design to `baton-design-review` and candidate evidence to
+`baton-verify`. The engine applies the Protocol's direct-repair rule and
+assurance policy.
 <!-- BATON_CANONICAL_END baton-implement -->

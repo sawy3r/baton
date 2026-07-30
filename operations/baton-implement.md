@@ -59,5 +59,6 @@ operational failure without inventing a Baton outcome.
 
 ## Next handoff
 
-Send a design to `baton-design-review`; send an implemented candidate and
-evidence to a fresh `baton-verify`.
+Send a design to `baton-design-review` and candidate evidence to
+`baton-verify`. The engine applies the Protocol's direct-repair rule and
+assurance policy.

@@ -15,6 +15,10 @@ approve the work
   -> merge exactly what passed
 ```
 
+After `FAIL`, the same independent Verifier may check the repair under the
+[direct-repair rule](PROTOCOL.md#direct-repair-continuation), or a new Verifier
+may start fresh. Both check the complete current candidate.
+
 Read:
 
 1. [CORE.md](CORE.md) for the five promises Baton protects;

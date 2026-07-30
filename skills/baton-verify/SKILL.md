@@ -1,13 +1,13 @@
 ---
 name: baton-verify
-description: "Independently check finished work from a fresh, read-only context."
+description: "Independently check finished work in Verifier threads with read-only invocations."
 ---
 
 <!-- baton-skill
 release: v1.0.0-rc.12
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:2894f5b6f814816815febc7859ce47caebd2b69387937743ab2f633ed8361f74
+operation-sha256: sha256:8ca4dff1ab2c607cd23ea2828daf11dc88a7dbeb3194229f2ff5c3c83f510014
 -->
 
 Use the invoking request as input. Resolve relative files from this directory. This standalone skill needs no shared Baton folder.
@@ -20,39 +20,36 @@ version: baton.operation/v2
 
 ## Purpose
 
-Independently check one finished slice or the complete release against what was
-approved.
+Independently check finished work against approval.
 
 ## Inputs
 
-- One stable slice or the complete release.
-- The approved plan and exact candidate.
-- The Captain decision when checking a slice.
-- Required checks, observable evidence, and proof that this is a fresh,
-  read-only verification.
+- Work identity, approved plan, exact candidate, and slice Captain decision.
+- Required checks, observable evidence, and proof this thread and invocation
+  are permitted and read-only.
 
 ## Authority
 
-Begin in fresh context with read-only access. Differ from the Implementer and
-Captain. Bind the decision to the exact plan revision, candidate, product
-identity, evidence, and invocation.
+Start threads fresh and separate from delivery roles. Reuse one only for its own
+recorded `FAIL`'s direct repair while approved bindings stay unchanged and no
+later verdict exists. Keep every invocation read-only; bind its identity, exact
+candidate, product identity, and evidence.
 
-Judge the actual candidate against the approved behavioral commitment.
-Ancillary support paths and additional checks are evidence, not scope failures
-by themselves. They cannot excuse a material behavior, consumed-product,
-contract, or authority change.
+Judge the candidate against the approved commitment. Support paths and extra
+checks are evidence, not scope failures by themselves. They cannot excuse a
+material behavior, consumed product, contract, or authority change.
 
-Product code, build, test, package, deploy, hooks, and runtime MUST NOT read or
-depend on reserved `.baton/releases`; verify the candidate preserves it from
-its exact implementation base.
+Ensure product code, build, test, package, deploy, hooks, and runtime neither
+read nor depend on reserved `.baton/releases`; verify the candidate preserves it
+from its exact implementation base.
 
 ## Actions
 
-1. Recheck every fact needed to trust the result from saved evidence that
-   cannot quietly change.
-2. Inspect the real candidate and complete diff, rerun required checks, use
-   helpful extra evidence, and test each acceptance claim where it matters.
-3. For assembly, check every composed component and the complete product.
+1. Recheck every trust fact from immutable saved evidence.
+2. Inspect the exact candidate and full diff; rerun required checks, use helpful
+   extra evidence, and test each acceptance claim where it matters. After
+   repair, recheck the whole candidate and earlier findings.
+3. For assembly, check every component and whole product.
 4. Return exactly one verdict:
    - `PASS` when the exact candidate satisfies the contract;
    - `FAIL` when the contract is adequate but candidate or evidence needs
@@ -62,20 +59,20 @@ its exact implementation base.
 
 ## Required output
 
-Lead with the verdict and plain reason, then say what happens next. Give
-numbered evidence or violations. Put scope, exact bindings, and Verifier
-invocation under technical details. Do not write the Verifier receipt. On
-operational failure, explain the condition and return no verdict.
+Lead with verdict, reason, and next step; number evidence or violations. Put
+exact bindings and invocation under technical details. Never write the receipt.
+An operational failure returns no verdict. Make `FAIL` useful to the
+Implementer and a fresh fallback; private context grants no authority.
 
 ## Stop conditions
 
 Never return `PASS` with inherited implementation context, writable candidate
-access, missing approval, a stale Captain decision, a changed candidate,
-unclear evidence, or unavailable required checks.
+access, missing approval, a stale Captain decision, candidate movement after
+dispatch, unclear evidence, or unavailable required checks.
 
 ## Next handoff
 
-Slice `PASS` hands to `baton-merge`; `FAIL` returns the same stable slice
-directly to `baton-implement` for another implementation attempt; `BLOCKED`
-hands to `baton-plan`. Assembly `PASS` permits final Merge.
+`PASS` hands to `baton-merge`; `FAIL` returns the same stable slice to
+`baton-implement`; `BLOCKED` hands to `baton-plan`. The engine chooses
+continuation under Protocol and policy. Assembly `PASS` permits final Merge.
 <!-- BATON_CANONICAL_END baton-verify -->

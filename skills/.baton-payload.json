@@ -2,7 +2,7 @@
   "schema_version": "baton.skills-payload/v1",
   "release": "v1.0.0-rc.12",
   "package_version": "1.0.0-rc.12",
-  "payload_digest": "sha256:fc524bf9db51b9e8e41e7e60fd904f187664560ba48c0e3b0769f1f3ca29c07d",
+  "payload_digest": "sha256:f2db06b64a31403e7a864816a3b278a48578a5788eed3235d2be95cfbf093ef2",
   "generator_version": "baton.skill-generator/v1",
   "operation_version": "baton.operation/v2",
   "skills": [
@@ -20,7 +20,7 @@
       "name": "baton-implement",
       "path": "baton-implement",
       "operation_source": "operations/baton-implement.md",
-      "operation_digest": "sha256:e4754ea1838bc376f0b268fecfe246fd70b1c580b634b1a815771d1bf0a49c07",
+      "operation_digest": "sha256:c274017d47d9dd7bc86ff1188cab1b688f7df73500b3bacdb4244bf496c8c473",
       "files": [
         "baton-implement/SKILL.md"
       ]
@@ -38,7 +38,7 @@
       "name": "baton-verify",
       "path": "baton-verify",
       "operation_source": "operations/baton-verify.md",
-      "operation_digest": "sha256:2894f5b6f814816815febc7859ce47caebd2b69387937743ab2f633ed8361f74",
+      "operation_digest": "sha256:8ca4dff1ab2c607cd23ea2828daf11dc88a7dbeb3194229f2ff5c3c83f510014",
       "files": [
         "baton-verify/SKILL.md"
       ]
@@ -63,10 +63,10 @@
     },
     {
       "path": "baton-implement/SKILL.md",
-      "digest": "sha256:8332880061d856d5e048aa76267ef3e93d38cdb0c9a5326691d8ce47dd179bd5",
+      "digest": "sha256:40d13c26229889968a29620c6d02fa8b23697e7820e8d0114e8fb0a64e8c38f0",
       "release": "v1.0.0-rc.12",
       "source": "operations/baton-implement.md",
-      "source_digest": "sha256:e4754ea1838bc376f0b268fecfe246fd70b1c580b634b1a815771d1bf0a49c07"
+      "source_digest": "sha256:c274017d47d9dd7bc86ff1188cab1b688f7df73500b3bacdb4244bf496c8c473"
     },
     {
       "path": "baton-merge/SKILL.md",
@@ -91,10 +91,10 @@
     },
     {
       "path": "baton-verify/SKILL.md",
-      "digest": "sha256:b7efcfdb9b6520b7ad9601f0cafe081c0ad68591cea7f710a5abb722ca41e31f",
+      "digest": "sha256:c2f4bfdebd20d6d35781b26b8a56a484efa5ee8e3d398c3e4aa37fd2039ecccb",
       "release": "v1.0.0-rc.12",
       "source": "operations/baton-verify.md",
-      "source_digest": "sha256:2894f5b6f814816815febc7859ce47caebd2b69387937743ab2f633ed8361f74"
+      "source_digest": "sha256:8ca4dff1ab2c607cd23ea2828daf11dc88a7dbeb3194229f2ff5c3c83f510014"
     }
   ]
 }

@@ -125,7 +125,7 @@ PORTABLE_CASES = (
 AUTONOMOUS_CASES = (
     "protected-external-approval",
     "role-instruction-credential-workspace-process-isolation",
-    "clean-read-only-fresh-verifier-dispatch",
+    "fresh-verifier-thread-and-read-only-invocation-dispatch",
     "one-writer-per-track-with-independent-track-concurrency",
     "procedural-retry-and-git-reconciliation-without-verdict",
     "crash-recovery-at-every-effect-boundary",

@@ -13,7 +13,8 @@ Standard delivery requires:
 - an exact externally approved plan revision;
 - an Implementer design TL;DR reviewed by a distinct Captain;
 - an exact candidate with acceptance-linked evidence and required checks;
-- a fresh, read-only, adversarial Verifier;
+- an adversarial Verifier thread that starts fresh, with every invocation
+  read-only;
 - exact composition and fresh whole-product verification when tracks combine;
   and
 - expected-target Merge or an honest stop.
@@ -38,6 +39,10 @@ Heightened policy SHOULD define its deterministic trigger, required
 observations, stronger evidence boundary, Verifier questions, and externally
 owned decisions. Those requirements belong in the approved plan revision.
 
+Standard delivery follows the
+[Protocol's direct-repair continuation rule](PROTOCOL.md#direct-repair-continuation).
+Heightened policy MAY require a new Verifier thread after every repair.
+
 An engine or Verifier may request stronger assurance but cannot weaken approved
 requirements. If the contract or authority must change, the Planner proposes a
 forward-only revision under the same release and stable slice identities unless
@@ -59,4 +64,5 @@ other.
 A universal Baton requirement is justified only when removing it would break
 trust for nearly every delivery. Otherwise it belongs in a deterministic
 reference or engine invariant, a repository check, explicit heightened policy,
-or nowhere when fresh verification and cheap retry already contain the risk.
+or nowhere when independent verification and cheap retry already contain the
+risk.

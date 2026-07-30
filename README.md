@@ -45,6 +45,11 @@ run models, hold provider credentials, or choose a model.
 These are responsibilities, not a requirement for five people, five providers,
 or five long-running processes.
 
+If the Verifier records `FAIL`, the Implementer fixes the same piece of work.
+The same independent Verifier may check the repair under the
+[direct-repair rule](baton/PROTOCOL.md#direct-repair-continuation), or a new one
+may start fresh. Either way, it checks the whole result again.
+
 ## What Baton keeps
 
 Baton keeps only the facts needed to trust the handoff:
