@@ -1093,7 +1093,7 @@ test('Captain revision and Verifier failure keep one slice identity with new att
   }
 });
 
-test('a linear head move before the current candidate verdict refreshes the exact candidate', () => {
+test('a linear head move before verification is recorded refreshes the exact candidate', () => {
   const { fixture, engine, implemented } = candidateAwaitingVerdict();
   try {
     write(fixture.repo, 'src/product.txt', 'corrected candidate\n');
@@ -1107,6 +1107,16 @@ test('a linear head move before the current candidate verdict refreshes the exac
     assert.equal(sliceState.outcome, 'stale');
     assert.equal(sliceState.attempt, implemented.receipt.attempt + 1);
     assert.equal(sliceState.current_receipt.oid, implemented.receipt_commit);
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S1',
+    });
+    assert.equal(prepared.changed, false);
+    assert.equal(prepared.base, implemented.receipt_commit);
+    assert.equal(
+      resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T1')),
+      corrected,
+    );
 
     const refreshed = engine.appendReceipt({
       release: 'actions-v2',
@@ -1180,6 +1190,16 @@ test('a repaired candidate can refresh again before its own Verifier verdict', (
     assert.equal(state.slices[0].next_role, 'implementer');
     assert.equal(state.slices[0].attempt, second.receipt.attempt + 1);
     assert.equal(state.slices[0].current_receipt.oid, second.receipt_commit);
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S1',
+    });
+    assert.equal(prepared.changed, false);
+    assert.equal(prepared.base, second.receipt_commit);
+    assert.equal(
+      resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T1')),
+      thirdCandidate,
+    );
 
     const third = engine.appendReceipt({
       release: 'actions-v2',
@@ -1226,6 +1246,77 @@ test('a same-product linear head move refreshes identity without inventing a ver
       readBatonState(fixture.repo, 'actions-v2').slices[0].next_role,
       'verifier',
     );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a consuming slice prepares its existing base without resetting a moved candidate', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    engine.recordPlanRevision({
+      planBytes: planBytes(consumedPlan()),
+      summary: 'Approve one producer and consumer.',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'producer\n',
+    });
+    designConsumer(engine, 'proceed');
+    const initialBase = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S2',
+    });
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T2');
+    write(fixture.repo, 'src/consumer.txt', 'first consumer candidate\n');
+    const firstCandidate = commitAll(fixture.repo, 'feat: first consumer candidate');
+    const implemented = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The first consumer candidate passes focused checks.',
+      base: initialBase.base,
+      candidate: firstCandidate,
+      checkResults: 'consumer implementer PASS\n',
+    });
+
+    write(fixture.repo, 'src/consumer.txt', 'corrected consumer candidate\n');
+    const corrected = commitAll(
+      fixture.repo,
+      'fix: correct consumer candidate before verification',
+    );
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S2',
+    });
+    assert.equal(prepared.changed, false);
+    assert.equal(prepared.base, implemented.receipt_commit);
+    assert.equal(
+      resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T2')),
+      corrected,
+    );
+
+    const refreshed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The corrected consumer candidate passes focused checks.',
+      base: prepared.base,
+      candidate: corrected,
+      checkResults: 'consumer implementer PASS after correction\n',
+    });
+    assert.equal(refreshed.receipt.binds, implemented.receipt_commit);
+    const state = readBatonState(fixture.repo, 'actions-v2');
+    const consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
+    assert.equal(consumer.stage, 'verify');
+    assert.equal(consumer.next_role, 'verifier');
   } finally {
     fixture.cleanup();
   }

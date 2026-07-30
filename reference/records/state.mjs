@@ -1954,7 +1954,7 @@ export function readBatonState(
     active.outcome = 'stale';
     active.attempt = active.history.maximum_attempt + 1;
     active.retained = false;
-    active.stale_reason = 'track head moved before its current candidate verdict';
+    active.stale_reason = 'track head changed before verification was recorded';
   }
   const tracks = current.parsed.metadata.tracks.map((track, index) => frozen({
     id: track.id,
