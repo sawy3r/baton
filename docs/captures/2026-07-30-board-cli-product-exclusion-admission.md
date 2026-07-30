@@ -1,27 +1,27 @@
-# Board CLI product-exclusion admission
+# Board reserved-root correction
 
 ## Finding
 
 The standalone board worked for planned releases but became invalid after the
-first candidate receipt required product-tree validation. Its programmatic
-tests supplied a product-exclusion admission; the real CLI and WebUI did not.
-
-This produced `PRODUCT_EXCLUSION_ADMISSION_REQUIRED` and an empty graph even
-when the typed action layer had prepared the next slice correctly.
+first candidate receipt required product-tree validation. Tests supplied an
+opaque resolver that always returned `inert`; the real CLI and WebUI did not.
+That resolver could not detect arbitrary product behavior and was not a real
+security boundary.
 
 ## Correction
 
-The read-only board now supplies its own fixed projection policy for Baton's
-fixed `.baton/releases` record root. That policy can validate display state but
-cannot authorize or perform an action. Typed actions retain their separate,
-explicit host policy admission.
+`.baton/releases` is reserved Baton metadata. Product code must not read or
+depend on it, including from build, test, package, deploy, hooks, or runtime.
+Product identity now structurally ignores exactly that fixed non-symlinked
+directory; plans cannot scope it, candidates must preserve it from their exact
+implementation base, and only the confined record writer may modify it.
 
-The CLI test now crosses the missed boundary by recording a candidate and
-Verifier PASS before invoking the real board process.
+The false resolver and its capability threading were removed. The CLI and
+WebUI now project a candidate and Verifier PASS without a token.
 
 ## Lesson
 
-An invalid primary projection is a product defect, not a limitation for an
-agent to explain away. The action layer remains authoritative, but the board
-must project the same valid repository facts without requiring callers to
-construct an undocumented capability.
+An unexplained invalid projection is diagnostic and escalation work. A worker
+must never infer that it is a known limitation or treat it as permission to
+bypass the board. The board must project the same structural repository truth
+as the action layer.

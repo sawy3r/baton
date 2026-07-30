@@ -28,7 +28,6 @@ import {
   commitAll,
   git,
   temporaryRepository,
-  testProductExclusionAdmission,
   write,
 } from './helpers.mjs';
 
@@ -87,13 +86,7 @@ function unrelatedTrack() {
 }
 
 function actions(repo) {
-  return createBatonActions({
-    repo,
-    resolveBehavioralInertness: (request) => ({
-      ...request,
-      decision: 'inert',
-    }),
-  });
+  return createBatonActions({ repo });
 }
 
 function appendMetadataReceipt(repo, expectedHead, subject, receipt) {
@@ -408,7 +401,6 @@ test('state rejects a forged zero-input design that omits its repinned target', 
 
     assert.throws(
       () => readBatonState(fixture.repo, 'actions-v2', {
-        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
       }),
       (error) => (
         error?.code === 'STALE_BINDING'
@@ -465,13 +457,11 @@ test('a non-consuming candidate cannot bypass a repinned target after PROCEED', 
     );
     assert.equal(captain.receipt.result, 'proceed');
 
-    const admission = testProductExclusionAdmission(fixture.repo);
     const track = referenceNames.trackRef('actions-v2', 'T1');
     const exactBase = unsafePrepareApprovedTargetBase(fixture.repo, {
       targetRef: track,
       expectedHead: captain.receipt_commit,
       approvedTarget: movedTarget,
-      productExclusionAdmission: admission,
     });
     const arbitraryBase = git(
       fixture.repo,
@@ -498,7 +488,7 @@ test('a non-consuming candidate cannot bypass a repinned target after PROCEED', 
       newHead: arbitraryCandidate,
     }]);
 
-    const product = productTreeIdentity(fixture.repo, arbitraryCandidate, admission);
+    const product = productTreeIdentity(fixture.repo, arbitraryCandidate);
     const forgedMessage = renderReceiptCommit({
       subject: 'forge candidate from arbitrary merge',
       detail: Buffer.alloc(0),
@@ -532,7 +522,6 @@ test('a non-consuming candidate cannot bypass a repinned target after PROCEED', 
     }]);
     assert.throws(
       () => readBatonState(fixture.repo, 'actions-v2', {
-        productExclusionAdmission: admission,
       }),
       (error) => (
         error?.code === 'CHANGED_CANDIDATE'
@@ -595,7 +584,6 @@ test('a consuming candidate remains valid after retained PROCEED and target repi
       checkResults: 'consumer checks PASS\n',
     });
     const state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     const consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(consumer.current_receipt.oid, implemented.receipt_commit);
@@ -763,7 +751,6 @@ test('one slice advances through concise receipts and merges the exact fresh PAS
     assert.equal(direct.candidate, candidate);
     assert.equal(resolveRef(fixture.repo, 'refs/heads/main'), target);
     const beforeMerge = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(beforeMerge.plan.approval.receipt.target, target);
     assert.equal(beforeMerge.plan.target_stale, false);
@@ -778,7 +765,6 @@ test('one slice advances through concise receipts and merges the exact fresh PAS
     assert.equal(merged.result_commit, candidate);
     assert.equal(resolveRef(fixture.repo, 'refs/heads/main'), candidate);
     const afterMerge = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(afterMerge.assembly.outcome, 'merged');
     assert.equal(afterMerge.plan.target_stale, false);
@@ -793,6 +779,99 @@ test('one slice advances through concise receipts and merges the exact fresh PAS
     assert.equal(retry.changed, false);
     assert.equal(retry.result_commit, candidate);
     assert.equal(isDescendant(fixture.repo, target, candidate), true);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('candidate validation rejects reserved-root mutation without changing refs', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'Plan approved.',
+    });
+    appendDesign(engine);
+    const proceed = appendCaptain(engine);
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S1',
+    });
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+    write(
+      fixture.repo,
+      referenceNames.planPath('actions-v2'),
+      Buffer.concat([planBytes(), Buffer.from('\nreserved mutation\n')]),
+    );
+    const candidate = commitAll(fixture.repo, 'forge reserved record mutation');
+    assert.equal(
+      productTreeIdentity(fixture.repo, candidate).productTree,
+      productTreeIdentity(fixture.repo, prepared.base).productTree,
+    );
+    const refsBefore = git(
+      fixture.repo,
+      'for-each-ref',
+      '--format=%(refname) %(objectname)',
+      'refs/heads',
+    );
+
+    assert.throws(
+      () => engine.appendReceipt({
+        release: 'actions-v2',
+        slice: 'S1',
+        role: 'implementer',
+        result: 'candidate',
+        summary: 'Attempt to admit a candidate that changed reserved records.',
+        candidate,
+        checkResults: 'focused checks PASS\n',
+      }),
+      (error) => error?.code === 'RESERVED_RECORD_ROOT_CHANGED',
+    );
+    assert.equal(
+      git(
+        fixture.repo,
+        'for-each-ref',
+        '--format=%(refname) %(objectname)',
+        'refs/heads',
+      ),
+      refsBefore,
+    );
+
+    const product = productTreeIdentity(fixture.repo, candidate);
+    const forged = appendMetadataReceipt(
+      fixture.repo,
+      candidate,
+      'forge reserved-root candidate receipt',
+      {
+        version: 1,
+        release: 'actions-v2',
+        slice: 'S1',
+        role: 'implementer',
+        result: 'candidate',
+        attempt: 1,
+        plan: approved.plan,
+        contract: parsePlanBytes(planBytes()).metadata.contracts.S1,
+        binds: proceed.receipt_commit,
+        candidate,
+        product_tree: product.productTree,
+        inputs: {},
+        checks: digestBytes(Buffer.from('forged checks')),
+        summary: 'Forge structurally invalid candidate evidence.',
+      },
+    );
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'update',
+      ref: referenceNames.trackRef('actions-v2', 'T1'),
+      newHead: forged,
+      expectedHead: candidate,
+    }]);
+    assert.throws(
+      () => readBatonState(fixture.repo, 'actions-v2'),
+      (error) => error?.code === 'RESERVED_RECORD_ROOT_CHANGED',
+    );
   } finally {
     fixture.cleanup();
   }
@@ -857,7 +936,6 @@ test('ancillary paths, extra checks, and evidence correction repair one commitme
       assert.equal(changed.includes(path), true, path);
     }
     let state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(state.plan.oid, approved.plan);
     assert.equal(state.plan.metadata.revision, 1);
@@ -909,7 +987,6 @@ test('ancillary paths, extra checks, and evidence correction repair one commitme
       checkResults: 'required and additional checks independently PASS\n',
     });
     state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(state.plan.oid, approved.plan);
     assert.equal(state.plan.metadata.revision, 1);
@@ -1067,7 +1144,6 @@ test('an unchanged design crosses an unrelated plan revision into Captain review
       summary: 'Only the unrelated slice contract changed.',
     });
     const waiting = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(waiting.slices[0].next_role, 'captain');
     assert.equal(waiting.slices[0].current_receipt.oid, designed.receipt_commit);
@@ -1127,7 +1203,6 @@ test('Verifier FAIL repairs across an unrelated plan revision', () => {
       summary: 'Only the unrelated slice checks changed.',
     });
     const repairState = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(repairState.slices[0].stage, 'implement');
     assert.equal(repairState.slices[0].outcome, 'fail');
@@ -1182,7 +1257,6 @@ test('one track advances only its first incomplete slice', () => {
     });
 
     const waiting = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(waiting.slices[0].next_role, 'implementer');
     assert.equal(waiting.slices[1].status, 'waiting');
@@ -1259,7 +1333,6 @@ test('a multi-slice track requires a fresh assembly PASS before Merge', () => {
     });
 
     let state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(state.assembly.pass, null);
     assert.equal(state.assembly.next_role, 'merge');
@@ -1306,7 +1379,6 @@ test('a multi-slice track requires a fresh assembly PASS before Merge', () => {
     });
     assert.equal(merged.candidate, assembled.candidate);
     state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(state.assembly.outcome, 'merged');
   } finally {
@@ -1392,7 +1464,6 @@ test('two passed tracks produce one exact assembly, one fresh verdict, and one m
     assert.equal(resolveRef(fixture.repo, 'refs/heads/main'), assembled.candidate);
     assert.equal(isDescendant(fixture.repo, target, merged.result_commit), true);
     const afterMerge = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(afterMerge.plan.target_stale, false);
     assert.equal(
@@ -1491,8 +1562,7 @@ test('assembly replays false history across serial multi-attempt tracks at one e
     const legacyCandidate = commitAll(fixture.repo, 'legacy consumer false history');
     const legacyIdentity = productTreeIdentity(
       fixture.repo,
-      legacyCandidate,
-      testProductExclusionAdmission(fixture.repo),
+      legacyCandidate
     );
     const pins = { S0: foundation.passed.receipt.product_tree };
     const candidateReceipt = appendMetadataReceipt(
@@ -1637,7 +1707,6 @@ test('assembly replays false history across serial multi-attempt tracks at one e
     assert.equal(retry.changed, false);
     assert.equal(retry.candidate, assembled.candidate);
     const replayed = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     const replayedEvidence = unsafeProductBaseEvidence(replayed);
     assert.equal(replayedEvidence.track('T1'), foundation.candidate);
@@ -1711,9 +1780,7 @@ test('changed contract invalidates only its consumer, and equal product restores
       planBytes: planBytes(metadata(2, approved.plan, { tracks: revisedTracks })),
       summary: 'S1 contract clarification approved without replacing either slice.',
     });
-    const admission = testProductExclusionAdmission(fixture.repo);
     const invalidated = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: admission,
     });
     assert.equal(invalidated.slices[0].pass, null);
     assert.equal(invalidated.slices[0].next_role, 'implementer');
@@ -1759,7 +1826,6 @@ test('changed contract invalidates only its consumer, and equal product restores
     });
 
     const restored = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: admission,
     });
     assert.ok(restored.slices[0].pass);
     assert.equal(restored.slices[1].pass.oid, consumer.passed.receipt_commit);
@@ -1887,8 +1953,7 @@ test('consumed-track preparation replays a retained PASS from its whole-slice pr
     const candidate = commitAll(fixture.repo, 'legacy producer candidate');
     const product = productTreeIdentity(
       fixture.repo,
-      candidate,
-      testProductExclusionAdmission(fixture.repo),
+      candidate
     );
     const pins = { S1: foundation.passed.receipt.product_tree };
     const candidateReceipt = appendMetadata(candidate, 'legacy producer candidate receipt', {
@@ -2053,8 +2118,7 @@ test('retained legacy composition stops when multiple PASS authorities share one
     const repeatedCandidate = resolveRef(fixture.repo, 'HEAD');
     const repeatedIdentity = productTreeIdentity(
       fixture.repo,
-      repeatedCandidate,
-      testProductExclusionAdmission(fixture.repo),
+      repeatedCandidate
     );
     const repeatedCandidateReceipt = appendMetadataReceipt(
       fixture.repo,
@@ -2099,7 +2163,6 @@ test('retained legacy composition stops when multiple PASS authorities share one
       firstProducer.passed.receipt.product_tree,
     );
     const repeatedState = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     const repeatedEvidence = unsafeProductBaseEvidence(repeatedState);
     assert.equal(
@@ -2140,8 +2203,7 @@ test('retained legacy composition stops when multiple PASS authorities share one
     const candidate = commitAll(fixture.repo, 'ambiguous legacy candidate');
     const identity = productTreeIdentity(
       fixture.repo,
-      candidate,
-      testProductExclusionAdmission(fixture.repo),
+      candidate
     );
     const pins = { S1: firstProducer.passed.receipt.product_tree };
     const candidateReceipt = appendMetadataReceipt(
@@ -2268,7 +2330,6 @@ for (const stage of ['before design', 'after design', 'after PROCEED']) {
         `Producer contract changed ${stage}.`,
       );
       let waiting = readBatonState(fixture.repo, 'actions-v2', {
-        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
       });
       const consumer = waiting.slices.find(({ location }) => location.slice.id === 'S2');
       assert.equal(consumer.status, 'waiting');
@@ -2281,7 +2342,6 @@ for (const stage of ['before design', 'after design', 'after PROCEED']) {
         value: 'producer v2\n',
       });
       waiting = readBatonState(fixture.repo, 'actions-v2', {
-        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
       });
       const ready = waiting.slices.find(({ location }) => location.slice.id === 'S2');
       assert.equal(ready.next_role, 'implementer');
@@ -2351,7 +2411,6 @@ test('same-product producer PASS retains review and exact retries require candid
       first.implemented.receipt.product_tree,
     );
     let state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     const retained = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(retained.current_receipt.oid, review.captain.receipt_commit);
@@ -2424,7 +2483,6 @@ test('same-product producer PASS retains review and exact retries require candid
     );
     assert.equal(passed.receipt.inputs.S1, second.passed.receipt.product_tree);
     state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(
       state.slices.find(({ location }) => location.slice.id === 'S2').pass.oid,
@@ -2471,7 +2529,6 @@ test('changed candidate pins require a fresh reviewed design and exact prepared 
       value: 'producer v2\n',
     });
     let state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     const stale = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(stale.stage, 'design');
@@ -2501,7 +2558,6 @@ test('changed candidate pins require a fresh reviewed design and exact prepared 
       firstConsumer.passed.receipt.inputs.S1,
     );
     state = readBatonState(fixture.repo, 'actions-v2', {
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(
       state.slices.find(({ location }) => location.slice.id === 'S2').current_receipt.oid,

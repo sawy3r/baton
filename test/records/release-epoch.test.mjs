@@ -23,7 +23,6 @@ import {
   commitAll,
   git,
   temporaryRepository,
-  testProductExclusionAdmission,
   testRecordPathAdmission,
   write,
 } from './helpers.mjs';
@@ -63,13 +62,7 @@ function planBytes(value) {
 }
 
 function actions(repo) {
-  return createBatonActions({
-    repo,
-    resolveBehavioralInertness: (request) => ({
-      ...request,
-      decision: 'inert',
-    }),
-  });
+  return createBatonActions({ repo });
 }
 
 function approve(engine, release, revision = 1, previousPlan = null, sliceIDs = ['S1']) {
@@ -123,9 +116,7 @@ function deliver(engine, repo, release, slice = 'S1') {
 }
 
 function state(repo, release) {
-  return readBatonState(repo, release, {
-    productExclusionAdmission: testProductExclusionAdmission(repo),
-  });
+  return readBatonState(repo, release);
 }
 
 test('a later release ignores prior receipts while reusing track and slice identities', () => {
@@ -206,21 +197,18 @@ test('deleting and reinstalling an identical revision-1 plan cannot move its epo
       summary: 'Approve the original revision-1 plan.',
     });
     const recordPathAdmission = testRecordPathAdmission(fixture.repo);
-    const productExclusionAdmission = testProductExclusionAdmission(fixture.repo);
     const relativePlanPath = referenceNames.planPath(release);
 
     const deleted = unsafePrepareRecordTransition(fixture.repo, {
       expectedHead: original.receipt_commit,
       message: 'test: delete the installed plan path',
       recordPathAdmission,
-      productExclusionAdmission,
       changes: { [relativePlanPath]: null },
     });
     const reinstalled = unsafePrepareRecordTransition(fixture.repo, {
       expectedHead: deleted.commit,
       message: 'test: reinstall the identical revision-1 plan',
       recordPathAdmission,
-      productExclusionAdmission,
       changes: { [relativePlanPath]: bytes },
     });
     assert.equal(

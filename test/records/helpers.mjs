@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
-  resolveProductExclusionAdmission,
   resolveRecordPathAdmission,
 } from '../../reference/records/git.mjs';
 
@@ -41,19 +40,6 @@ export function testRecordPathAdmission(repo) {
   return resolveRecordPathAdmission(repo);
 }
 
-export function testProductExclusionAdmission(repo, decide = () => 'inert') {
-  const recordPathAdmission = resolveRecordPathAdmission(repo);
-  return resolveProductExclusionAdmission(repo, {
-    recordPathAdmission,
-    resolveBehavioralInertness(request) {
-      return {
-        ...request,
-        decision: decide(request),
-      };
-    },
-  });
-}
-
 export function makePlanMetadata() {
   const work = (id, include, dependsOn = []) => ({
     id,
@@ -61,7 +47,7 @@ export function makePlanMetadata() {
     scope: { include: [include], exclude: [] },
     acceptance: [{ id: `${id}-A1`, text: `${id} is demonstrably complete.` }],
     checks: ['node --test'],
-    constraints: ['Keep the record root inert.'],
+    constraints: ['Keep Baton records reserved.'],
     depends_on: dependsOn,
   });
   return {

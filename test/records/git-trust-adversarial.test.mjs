@@ -15,6 +15,7 @@ import test from 'node:test';
 
 import {
   unsafeApplyExactComposition,
+  assertCandidateRecordRootUnchanged,
   assertStructuralRecordOnlyTransition,
   captureHeadRefs,
   changedPathsBetween,
@@ -24,7 +25,6 @@ import {
   gitExecutablePath,
   productTreeIdentity,
   readFilesAtOID,
-  resolveProductExclusionAdmission,
   resolveRecordPathAdmission,
   resolveRef,
   unsafeAtomicUpdateRefs,
@@ -33,7 +33,6 @@ import {
 import {
   commitAll,
   git,
-  testProductExclusionAdmission,
   temporaryRepository,
   write,
 } from './helpers.mjs';
@@ -197,7 +196,6 @@ test('Git execution ignores hostile PATH and accepts only an explicit absolute o
 test('custom merge drivers fail closed before a configured command can execute', () => {
   const fixture = divergentMergeFixture('*.txt merge=hostile');
   try {
-    const admission = testProductExclusionAdmission(fixture.repo);
     const sentinel = path.join(fixture.repo, 'custom-driver-ran');
     const driver = path.join(fixture.repo, 'custom-driver.sh');
     writeFileSync(
@@ -217,7 +215,6 @@ test('custom merge drivers fail closed before a configured command can execute',
         targetRef: fixture.targetRef,
         expectedHead: fixture.expected,
         candidate: fixture.candidate,
-        productExclusionAdmission: admission,
       }),
       'UNTRUSTED_MERGE_DRIVER',
     );
@@ -231,7 +228,6 @@ test('custom merge drivers fail closed before a configured command can execute',
 test('a nondeterministic external merge driver cannot influence composition', () => {
   const fixture = divergentMergeFixture('*.txt merge=randomized');
   try {
-    const admission = testProductExclusionAdmission(fixture.repo);
     const sentinel = path.join(fixture.repo, 'random-driver-ran');
     const driver = path.join(fixture.repo, 'random-driver.sh');
     writeFileSync(
@@ -252,7 +248,6 @@ test('a nondeterministic external merge driver cannot influence composition', ()
           targetRef: fixture.targetRef,
           expectedHead: fixture.expected,
           candidate: fixture.candidate,
-          productExclusionAdmission: admission,
         }),
         'UNTRUSTED_MERGE_DRIVER',
       );
@@ -266,12 +261,10 @@ test('a nondeterministic external merge driver cannot influence composition', ()
 test('safe built-in merge semantics remain deterministic in the engine context', () => {
   const fixture = divergentMergeFixture('*.txt merge=union');
   try {
-    const admission = testProductExclusionAdmission(fixture.repo);
     const first = unsafeApplyExactComposition(fixture.repo, {
       targetRef: fixture.targetRef,
       expectedHead: fixture.expected,
       candidate: fixture.candidate,
-      productExclusionAdmission: admission,
     });
     assert.equal(first.mode, 'two-parent');
     git(fixture.repo, 'update-ref', fixture.targetRef, fixture.expected, first.result);
@@ -279,7 +272,6 @@ test('safe built-in merge semantics remain deterministic in the engine context',
       targetRef: fixture.targetRef,
       expectedHead: fixture.expected,
       candidate: fixture.candidate,
-      productExclusionAdmission: admission,
     });
     assert.equal(second.result, first.result);
   } finally {
@@ -325,132 +317,51 @@ test('changed paths are NUL-safe and expose both sides of renames plus Git objec
   }
 });
 
-test('product-tree exclusion requires an opaque admission for exactly the v1 root', () => {
+test('product identity structurally excludes exactly the fixed record root', () => {
   const fixture = temporaryRepository();
-  const other = temporaryRepository();
   try {
     write(fixture.repo, '.baton/releases/keep', 'record\n');
+    write(fixture.repo, '.baton/runtime.json', '{"product":true}\n');
+    write(fixture.repo, '.baton-release', 'product-adjacent\n');
     write(fixture.repo, 'product.txt', 'product\n');
-    const commit = commitAll(fixture.repo, 'product');
-    write(other.repo, '.baton/releases/keep', 'other\n');
-    commitAll(other.repo, 'other');
-
-    throwsCode(
-      () => resolveProductExclusionAdmission(fixture.repo, {
-        recordPathAdmission: '.other/releases',
-        resolveBehavioralInertness() {},
-      }),
-      'RECORD_PATH_ADMISSION_REQUIRED',
+    const base = commitAll(fixture.repo, 'product and records');
+    const baseline = productTreeIdentity(fixture.repo, base);
+    assert.deepEqual(
+      baseline.entries.map((entry) => entry.path),
+      ['.baton-release', '.baton/runtime.json', 'product.txt'],
     );
-    for (const forged of [undefined, true, {}, { root: '.baton/releases' }]) {
-      throwsCode(
-        () => productTreeIdentity(fixture.repo, commit, forged),
-        'PRODUCT_EXCLUSION_ADMISSION_REQUIRED',
-      );
-    }
-    const admission = testProductExclusionAdmission(fixture.repo);
-    assert.equal(productTreeIdentity(fixture.repo, commit, admission).entries.length, 1);
-    const foreignAdmission = testProductExclusionAdmission(other.repo);
-    throwsCode(
-      () => productTreeIdentity(fixture.repo, commit, foreignAdmission),
-      'RECORD_ROOT_ADMISSION_MISMATCH',
-    );
-  } finally {
-    fixture.cleanup();
-    other.cleanup();
-  }
-});
-
-test('product exclusion requires one exact synchronous inertness decision per commit OID', () => {
-  const fixture = temporaryRepository();
-  try {
-    write(fixture.repo, '.baton/releases/keep', 'record\n');
-    write(fixture.repo, 'product.txt', 'one\n');
-    const first = commitAll(fixture.repo, 'first product');
-    write(fixture.repo, 'product.txt', 'two\n');
-    const second = commitAll(fixture.repo, 'second product');
-    const recordPathAdmission = resolveRecordPathAdmission(fixture.repo);
-
-    throwsCode(
-      () => resolveProductExclusionAdmission(fixture.repo, { recordPathAdmission }),
-      'RECORD_ROOT_POLICY_REQUIRED',
-    );
-    for (const resolveBehavioralInertness of [
-      () => true,
-      async (request) => ({ ...request, decision: 'inert' }),
-      () => ({ decision: 'inert' }),
-      (request) => ({ ...request, commit: first, decision: 'inert' }),
-    ]) {
-      const admission = resolveProductExclusionAdmission(fixture.repo, {
-        recordPathAdmission,
-        resolveBehavioralInertness,
-      });
-      throwsCode(
-        () => productTreeIdentity(fixture.repo, second, admission),
-        'UNTRUSTED_RECORD_ROOT_POLICY',
-      );
-    }
-
-    const observed = [];
-    const admitted = resolveProductExclusionAdmission(fixture.repo, {
-      recordPathAdmission,
-      resolveBehavioralInertness(request) {
-        observed.push(request.commit);
-        return { ...request, decision: 'inert' };
-      },
-    });
-    productTreeIdentity(fixture.repo, first, admitted);
-    productTreeIdentity(fixture.repo, second, admitted);
-    productTreeIdentity(fixture.repo, first, admitted);
-    assert.deepEqual(observed, [first, second]);
-
-    const consumed = resolveProductExclusionAdmission(fixture.repo, {
-      recordPathAdmission,
-      resolveBehavioralInertness(request) {
-        return {
-          ...request,
-          decision: request.commit === second ? 'consumed' : 'inert',
-        };
-      },
-    });
-    throwsCode(
-      () => productTreeIdentity(fixture.repo, second, consumed),
-      'RECORD_ROOT_CONSUMED',
+    write(fixture.repo, '.baton/releases/keep', 'changed record\n');
+    const recordOnly = commitAll(fixture.repo, 'change reserved records');
+    assert.equal(productTreeIdentity(fixture.repo, recordOnly).productTree, baseline.productTree);
+    write(fixture.repo, '.baton/runtime.json', '{"product":false}\n');
+    const adjacentProduct = commitAll(fixture.repo, 'change adjacent product');
+    assert.notEqual(
+      productTreeIdentity(fixture.repo, adjacentProduct).productTree,
+      baseline.productTree,
     );
   } finally {
     fixture.cleanup();
   }
 });
 
-test('a consumed new record commit fails policy before its ref can advance', () => {
+test('candidate validation rejects reserved-root mutation without moving refs', () => {
   const fixture = temporaryRepository();
   try {
     write(fixture.repo, '.baton/releases/status.json', '{"state":0}\n');
-    write(fixture.repo, 'package.json', '{"scripts":{"build":"read .baton/releases/status.json"}}\n');
-    const base = commitAll(fixture.repo, 'consumed record base');
-    git(fixture.repo, 'branch', 'record-target', base);
-    const recordPathAdmission = resolveRecordPathAdmission(fixture.repo);
-    const admission = resolveProductExclusionAdmission(fixture.repo, {
-      recordPathAdmission,
-      resolveBehavioralInertness(request) {
-        return {
-          ...request,
-          decision: request.commit === base ? 'inert' : 'consumed',
-        };
-      },
-    });
-    throwsCode(
-      () => unsafeCommitRecordTransition(fixture.repo, {
-        ref: 'refs/heads/record-target',
-        expectedHead: base,
-        message: 'consumed record change',
-        recordPathAdmission: admission,
-        productExclusionAdmission: admission,
-        changes: { '.baton/releases/status.json': '{"state":1}\n' },
-      }),
-      'RECORD_ROOT_CONSUMED',
+    write(fixture.repo, 'product.txt', 'product\n');
+    const base = commitAll(fixture.repo, 'candidate base');
+    git(fixture.repo, 'branch', 'candidate-authority', base);
+    write(fixture.repo, '.baton/releases/status.json', '{"state":1}\n');
+    const candidate = commitAll(fixture.repo, 'mutate reserved records');
+    assert.equal(
+      productTreeIdentity(fixture.repo, candidate).productTree,
+      productTreeIdentity(fixture.repo, base).productTree,
     );
-    assert.equal(resolveRef(fixture.repo, 'refs/heads/record-target'), base);
+    throwsCode(
+      () => assertCandidateRecordRootUnchanged(fixture.repo, base, candidate),
+      'RESERVED_RECORD_ROOT_CHANGED',
+    );
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/candidate-authority'), base);
   } finally {
     fixture.cleanup();
   }
@@ -463,7 +374,7 @@ test('record transitions cannot delete or replace the admitted root directory', 
     write(fixture.repo, 'product.txt', 'product\n');
     const base = commitAll(fixture.repo, 'record base');
     git(fixture.repo, 'branch', 'record-target', base);
-    const admission = testProductExclusionAdmission(fixture.repo);
+    const admission = resolveRecordPathAdmission(fixture.repo);
 
     throwsCode(
       () => unsafeCommitRecordTransition(fixture.repo, {
@@ -471,7 +382,6 @@ test('record transitions cannot delete or replace the admitted root directory', 
         expectedHead: base,
         message: 'delete root',
         recordPathAdmission: admission,
-        productExclusionAdmission: admission,
         changes: { '.baton/releases': null },
       }),
       'NON_RECORD_CHANGE',
@@ -482,7 +392,6 @@ test('record transitions cannot delete or replace the admitted root directory', 
         expectedHead: base,
         message: 'delete final root child',
         recordPathAdmission: admission,
-        productExclusionAdmission: admission,
         changes: { '.baton/releases/status.json': null },
       }),
       'RECORD_ROOT_REPLACED',
@@ -506,7 +415,7 @@ test('record materialisation updates release and creates its owner in one ref tr
     write(fixture.repo, '.baton/releases/status.json', '{"state":0}\n');
     const base = commitAll(fixture.repo, 'materialisation base');
     git(fixture.repo, 'branch', 'release-wt/v1.0.0', base);
-    const admission = testProductExclusionAdmission(fixture.repo);
+    const admission = resolveRecordPathAdmission(fixture.repo);
 
     throwsCode(
       () => unsafeCommitRecordTransition(fixture.repo, {
@@ -514,7 +423,6 @@ test('record materialisation updates release and creates its owner in one ref tr
         expectedHead: base,
         message: 'forged admission',
         recordPathAdmission: { root: '.baton/releases' },
-        productExclusionAdmission: { root: '.baton/releases' },
         changes: { '.baton/releases/status.json': '{"state":1}\n' },
       }),
       'RECORD_PATH_ADMISSION_REQUIRED',
@@ -525,7 +433,6 @@ test('record materialisation updates release and creates its owner in one ref tr
       expectedHead: base,
       message: 'materialize owner',
       recordPathAdmission: admission,
-      productExclusionAdmission: admission,
       changes: { '.baton/releases/status.json': '{"state":1}\n' },
       createRef: { ref: 'refs/heads/track/v1.0.0/T1' },
     });
@@ -539,7 +446,6 @@ test('record materialisation updates release and creates its owner in one ref tr
         expectedHead: materialized,
         message: 'must remain atomic',
         recordPathAdmission: admission,
-        productExclusionAdmission: admission,
         changes: { '.baton/releases/status.json': '{"state":2}\n' },
         createRef: { ref: 'refs/heads/track/v1.0.0/already-exists' },
       }),
@@ -558,13 +464,12 @@ test('record transition allocations are bounded before any record object is writ
     write(fixture.repo, '.baton/releases/status.json', '{"state":0}\n');
     const base = commitAll(fixture.repo, 'bounded record base');
     git(fixture.repo, 'branch', 'bounded-records', base);
-    const admission = testProductExclusionAdmission(fixture.repo);
+    const admission = resolveRecordPathAdmission(fixture.repo);
     const invocation = (message, changes) => unsafeCommitRecordTransition(fixture.repo, {
       ref: 'refs/heads/bounded-records',
       expectedHead: base,
       message,
       recordPathAdmission: admission,
-      productExclusionAdmission: admission,
       changes,
     });
 
@@ -572,7 +477,6 @@ test('record transition allocations are bounded before any record object is writ
       expectedHead: base,
       message: 'exact 1025-path install boundary',
       recordPathAdmission: admission,
-      productExclusionAdmission: admission,
       changes: Object.fromEntries(Array.from(
         { length: 1025 },
         (_, index) => [`.baton/releases/exact/${index}`, null],
@@ -649,13 +553,12 @@ test('every helper suppresses hostile fsmonitor and repository hook execution', 
 
     unsafeRunGit(fixture.repo, ['status', '--porcelain']);
     unsafeRunGit(fixture.repo, ['update-ref', 'refs/heads/helper-update', base]);
-    const admission = testProductExclusionAdmission(fixture.repo);
+    const admission = resolveRecordPathAdmission(fixture.repo);
     const transitioned = unsafeCommitRecordTransition(fixture.repo, {
       ref: 'refs/heads/record-target',
       expectedHead: base,
       message: 'hook-safe record transition',
       recordPathAdmission: admission,
-      productExclusionAdmission: admission,
       changes: { '.baton/releases/status.json': '{"state":1}\n' },
     });
     assert.equal(resolveRef(fixture.repo, 'refs/heads/record-target'), transitioned);

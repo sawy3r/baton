@@ -7,7 +7,7 @@ description: "Design or implement one eligible Baton slice attempt without cross
 release: v1.0.0-rc.9
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:30061e6ea64004237f17c1bf51a279a76bd7efff5d1cd39b12016bab942d5efc
+operation-sha256: sha256:3563e5936e9bee2550945297739bd1c801f1bbb2e660388e60f1ffcbc771b5ea
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve relative resources from this skill directory. This skill is standalone and requires no files outside its directory.
@@ -40,13 +40,17 @@ Scope commits behavior and product, not exhaustive paths. Ancillary support
 paths and extra checks are evidence unless they change behavior, consumed
 product, contract, authority, or an external decision.
 
+Product code, build, test, package, deploy, hooks, and runtime MUST NOT read or
+depend on reserved `.baton/releases`; do not modify it.
+
 ## Actions
 
 1. Before design, require the exact engine-prepared current consumed `PASS`
    base. Inspect the work; return a concise design TL;DR covering approach,
    surfaces, decisions, risks, and evidence. Stop.
 2. After `PROCEED`, require that base again. Build the approved outcome, apply
-   bounded corrections, and repair prior `FAIL` on the same stable slice.
+   bounded corrections, preserve the reserved record root exactly, and repair
+   prior `FAIL` on the same stable slice.
 3. Run required and useful extra checks. Inspect the actual diff, candidate,
    product identity, and evidence.
 4. Return acceptance-linked evidence over the exact candidate, including
