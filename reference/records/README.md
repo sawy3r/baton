@@ -28,7 +28,7 @@ the current PASS.
 `.baton/releases` is reserved Baton metadata. Product code MUST NOT read or
 depend on it, including from build, test, package, deploy, hooks, or runtime.
 Product identity structurally ignores exactly this fixed non-symlinked
-directory. Plan product scope cannot name it, candidates must preserve it from
+directory. Plan product scope cannot include it, candidates must preserve it from
 their exact implementation base, and only the confined record writer may
 modify it. The reference layer does not pretend to detect semantic reads.
 

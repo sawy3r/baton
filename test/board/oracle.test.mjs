@@ -373,6 +373,55 @@ test('one-track direct PASS skips assembly and hands the exact Merge operation f
   }
 });
 
+test('completed historical release remains valid when product scope excludes reserved records', () => {
+  const release = 'sworn-v0.3.0-baton-v2';
+  const fixture = baselineFixture(oneSliceMetadata({
+    release,
+    tracks: [{
+      id: 'T1',
+      depends_on: [],
+      slices: [slice('S1', 'src/one.txt', {
+        scope: {
+          include: ['src/one.txt'],
+          exclude: ['.baton/releases'],
+        },
+      })],
+    }],
+  }));
+  try {
+    passSlice(fixture, 'S1');
+    batonActions(fixture.repo).mergePassedCandidate({
+      release,
+      summary: 'Merge the exact candidate covered by fresh PASS.',
+    });
+    const refs = git(
+      fixture.repo,
+      'for-each-ref',
+      '--format=%(refname) %(objectname)',
+      'refs/heads',
+    );
+
+    const board = projectBoard(fixture.repo);
+
+    assert.equal(board.valid, true);
+    assert.equal(board.releases[0].release, release);
+    assert.equal(board.releases[0].tracks[0].work[0].outcome, 'pass');
+    assert.equal(graphNode(board.releases[0], 'merge').state, 'complete');
+    assert.deepEqual(board.releases[0].diagnostics, []);
+    assert.equal(
+      git(
+        fixture.repo,
+        'for-each-ref',
+        '--format=%(refname) %(objectname)',
+        'refs/heads',
+      ),
+      refs,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('ordinary projection passes no capability and preserves exact refs after PASS', () => {
   const fixture = baselineFixture();
   try {

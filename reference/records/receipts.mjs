@@ -352,14 +352,14 @@ function validateScope(value, label) {
     exclude: uniqueStrings(value.exclude, `${label}.exclude`, repositoryPath),
   };
   if (result.include.length === 0) fail('INVALID_FIELD', `${label}.include cannot be empty`);
-  for (const scopedPath of [...result.include, ...result.exclude]) {
+  for (const scopedPath of result.include) {
     if (
       scopedPath === RESERVED_RECORD_ROOT
       || scopedPath.startsWith(`${RESERVED_RECORD_ROOT}/`)
     ) {
       fail(
         'RESERVED_RECORD_ROOT',
-        `${label} cannot name reserved Baton records at ${scopedPath}`,
+        `${label}.include cannot name reserved Baton records at ${scopedPath}`,
       );
     }
   }

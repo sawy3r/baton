@@ -197,7 +197,7 @@ test('plan validation rejects broken revision, dependency, and parallel ownershi
   assert.equal(parsePlanBytes(planBytes(explicitlyOrderedOverlap)).metadata.tracks.length, 2);
 });
 
-test('plan product scope cannot name the reserved record root', () => {
+test('plan product scope cannot include the reserved record root', () => {
   for (const scopedPath of [
     '.baton/releases',
     '.baton/releases/actions-v2',
@@ -209,7 +209,7 @@ test('plan product scope cannot name the reserved record root', () => {
 
     const excluded = planMetadata();
     excluded.tracks[0].slices[0].scope.exclude = [scopedPath];
-    throwsCode(() => parsePlanBytes(planBytes(excluded)), 'RESERVED_RECORD_ROOT');
+    assert.equal(parsePlanBytes(planBytes(excluded)).metadata.tracks.length, 2);
   }
 
   const adjacent = planMetadata();

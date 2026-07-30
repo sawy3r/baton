@@ -13,7 +13,7 @@ security boundary.
 `.baton/releases` is reserved Baton metadata. Product code must not read or
 depend on it, including from build, test, package, deploy, hooks, or runtime.
 Product identity now structurally ignores exactly that fixed non-symlinked
-directory; plans cannot scope it, candidates must preserve it from their exact
+directory; plans cannot include it, candidates must preserve it from their exact
 implementation base, and only the confined record writer may modify it.
 
 The false resolver and its capability threading were removed. The CLI and
