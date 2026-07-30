@@ -4,7 +4,7 @@ description: "Propose an externally approved Baton plan or forward-only revision
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.10
+release: v1.0.0-rc.11
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413

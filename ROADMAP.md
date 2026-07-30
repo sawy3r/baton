@@ -1,5 +1,15 @@
 # Baton roadmap
 
+## RC11 — recover publication without changing behavior
+
+`v1.0.0-rc.11` republishes the exact RC10 behavior under a fresh immutable
+release identity. RC10 remains a valid immutable code tag, but its empty GitHub
+release was removed before assets were attached and GitHub permanently prevents
+that tag name from being published again.
+
+No protocol, operation, receipt, schema, board, or record-engine behavior
+changes in RC11.
+
 ## RC10 — reserve records structurally
 
 `v1.0.0-rc.10` removes the false behavioral-inertness capability from the

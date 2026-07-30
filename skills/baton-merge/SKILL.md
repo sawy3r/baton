@@ -4,7 +4,7 @@ description: "Mechanically compose passed Baton candidates or integrate the exac
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.10
+release: v1.0.0-rc.11
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d
