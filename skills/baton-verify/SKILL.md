@@ -4,7 +4,7 @@ description: "Independently verify an exact Baton slice candidate or assembled p
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.9
+release: v1.0.0-rc.10
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:859d18353177b8f7692ae2e8fdb7b763020d7d0ab312d492e055565043b0bc4f

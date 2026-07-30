@@ -1,5 +1,16 @@
 # Baton roadmap
 
+## RC10 — reserve records structurally
+
+`v1.0.0-rc.10` removes the false behavioral-inertness capability from the
+standalone board. `.baton/releases` is reserved for Baton's record writer and
+ignored exactly by product identity. Product scope cannot include it, and a
+candidate cannot change it from its implementation base; safe historical
+exclusions remain valid.
+
+An invalid projection is a diagnostic and escalation condition, never
+permission to bypass the board.
+
 ## RC9 — let the running agent install Baton
 
 `v1.0.0-rc.9` removes the maintained client boundary. Baton now ships one

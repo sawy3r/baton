@@ -30,9 +30,9 @@ depend on reserved `.baton/releases`; do not modify it.
 
 ## Actions
 
-1. Before design, require the exact engine-prepared current consumed `PASS`
-   base. Inspect the work; return a concise design TL;DR covering approach,
-   surfaces, decisions, risks, and evidence. Stop.
+1. Before design, use the current release plan and exact engine-prepared
+   consumed `PASS` base; track-local records are history. Return a concise
+   design TL;DR covering approach, risks, and evidence. Stop.
 2. After `PROCEED`, require that base again. Build the approved outcome, apply
    bounded corrections, preserve the reserved record root exactly, and repair
    prior `FAIL` on the same stable slice.

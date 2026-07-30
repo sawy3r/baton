@@ -4,10 +4,10 @@ description: "Design or implement one eligible Baton slice attempt without cross
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.9
+release: v1.0.0-rc.10
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:3563e5936e9bee2550945297739bd1c801f1bbb2e660388e60f1ffcbc771b5ea
+operation-sha256: sha256:52bd75efb49252cfe15b9a9711c8b816e40e559084aa200d1b881e135df50398
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve relative resources from this skill directory. This skill is standalone and requires no files outside its directory.
@@ -45,9 +45,9 @@ depend on reserved `.baton/releases`; do not modify it.
 
 ## Actions
 
-1. Before design, require the exact engine-prepared current consumed `PASS`
-   base. Inspect the work; return a concise design TL;DR covering approach,
-   surfaces, decisions, risks, and evidence. Stop.
+1. Before design, use the current release plan and exact engine-prepared
+   consumed `PASS` base; track-local records are history. Return a concise
+   design TL;DR covering approach, risks, and evidence. Stop.
 2. After `PROCEED`, require that base again. Build the approved outcome, apply
    bounded corrections, preserve the reserved record root exactly, and repair
    prior `FAIL` on the same stable slice.

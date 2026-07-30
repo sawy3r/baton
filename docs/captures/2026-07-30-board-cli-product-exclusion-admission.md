@@ -25,3 +25,8 @@ An unexplained invalid projection is diagnostic and escalation work. A worker
 must never infer that it is a known limitation or treat it as permission to
 bypass the board. The board must project the same structural repository truth
 as the action layer.
+
+A revised plan need not rewrite an unchanged prepared product base. The release
+ref supplies current plan authority; record files visible on a track remain
+history. Treating those files as competing authority creates metadata-only
+handoff churn.
