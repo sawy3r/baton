@@ -675,13 +675,7 @@ function validateSlice(
         && bound.attempt === receipt.attempt - 1
         && sameInputs(receipt.inputs, bound.inputs)
         && linearOneParentAncestry(repo, receipt.binds, receipt.candidate)
-        && historyAt(repo, receipt.candidate, receipt.binds).receipts.length === 0
-        && ![...byOID.values()].some(({ receipt: prior }) => (
-          prior.role === 'verifier'
-          && prior.slice === receipt.slice
-          && prior.contract === receipt.contract
-          && slicePlanLineage(planByOID, plan, receipt.slice).has(prior.plan)
-        ));
+        && historyAt(repo, receipt.candidate, receipt.binds).receipts.length === 0;
       const staleRetry = sameLineage
         && bound.attempt === receipt.attempt - 1
         && (
@@ -1943,23 +1937,13 @@ export function readBatonState(
       !head || !active?.candidate
       || head === active.current_receipt.oid
     ) continue;
-    const lineage = slicePlanLineage(
-      planByOID,
-      current,
-      active.location.slice.id,
-    );
-    const awaitingFirstVerdict = (
+    const awaitingCandidateVerdict = (
       active.stage === 'verify'
       && active.next_role === 'verifier'
       && active.current_receipt.oid === active.candidate.oid
-      && !active.history.entries.some(({ receipt }) => (
-        receipt.role === 'verifier'
-        && receipt.contract === active.current_receipt.receipt.contract
-        && lineage.has(receipt.plan)
-      ))
     );
     if (
-      !awaitingFirstVerdict
+      !awaitingCandidateVerdict
       || !linearOneParentAncestry(repo, active.candidate.oid, head)
       || historyAt(repo, head, active.candidate.oid).receipts.length > 0
     ) fail('CHANGED_CANDIDATE', `track ${track.id} moved after its current candidate`);
@@ -1970,7 +1954,7 @@ export function readBatonState(
     active.outcome = 'stale';
     active.attempt = active.history.maximum_attempt + 1;
     active.retained = false;
-    active.stale_reason = 'track head moved before its first Verifier verdict';
+    active.stale_reason = 'track head moved before its current candidate verdict';
   }
   const tracks = current.parsed.metadata.tracks.map((track, index) => frozen({
     id: track.id,

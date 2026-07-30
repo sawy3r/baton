@@ -127,7 +127,7 @@ function appendCaptain(engine, result = 'proceed') {
   });
 }
 
-function candidateAwaitingFirstVerdict() {
+function candidateAwaitingVerdict() {
   const fixture = temporaryRepository();
   write(fixture.repo, 'README.md', 'product\n');
   commitAll(fixture.repo, 'base');
@@ -1093,8 +1093,8 @@ test('Captain revision and Verifier failure keep one slice identity with new att
   }
 });
 
-test('a linear head move before the first Verifier verdict refreshes the exact candidate', () => {
-  const { fixture, engine, implemented } = candidateAwaitingFirstVerdict();
+test('a linear head move before the current candidate verdict refreshes the exact candidate', () => {
+  const { fixture, engine, implemented } = candidateAwaitingVerdict();
   try {
     write(fixture.repo, 'src/product.txt', 'corrected candidate\n');
     const corrected = commitAll(fixture.repo, 'fix: correct candidate before verification');
@@ -1142,8 +1142,68 @@ test('a linear head move before the first Verifier verdict refreshes the exact c
   }
 });
 
+test('a repaired candidate can refresh again before its own Verifier verdict', () => {
+  const {
+    fixture, engine, candidate, implemented,
+  } = candidateAwaitingVerdict();
+  try {
+    const failed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'verifier',
+      result: 'fail',
+      summary: 'The first candidate violates A1.',
+      candidate,
+      checkResults: 'verifier FAIL\n',
+    });
+    write(fixture.repo, 'src/product.txt', 'second candidate\n');
+    const secondCandidate = commitAll(fixture.repo, 'fix: repair first candidate');
+    const second = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The repaired candidate passes focused checks.',
+      candidate: secondCandidate,
+      checkResults: 'implementer PASS after verifier FAIL\n',
+    });
+    assert.equal(second.receipt.binds, failed.receipt_commit);
+    assert.equal(second.receipt.attempt, implemented.receipt.attempt + 1);
+
+    write(fixture.repo, 'src/product.txt', 'third candidate\n');
+    const thirdCandidate = commitAll(
+      fixture.repo,
+      'fix: correct repaired candidate before re-verification',
+    );
+    let state = readBatonState(fixture.repo, 'actions-v2');
+    assert.equal(state.slices[0].stage, 'implement');
+    assert.equal(state.slices[0].next_role, 'implementer');
+    assert.equal(state.slices[0].attempt, second.receipt.attempt + 1);
+    assert.equal(state.slices[0].current_receipt.oid, second.receipt_commit);
+
+    const third = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The exact third candidate passes focused checks.',
+      candidate: thirdCandidate,
+      checkResults: 'implementer PASS on refreshed repair\n',
+    });
+    assert.equal(third.receipt.binds, second.receipt_commit);
+    assert.equal(third.receipt.attempt, second.receipt.attempt + 1);
+
+    state = readBatonState(fixture.repo, 'actions-v2');
+    assert.equal(state.slices[0].stage, 'verify');
+    assert.equal(state.slices[0].next_role, 'verifier');
+    assert.equal(state.slices[0].current_receipt.oid, third.receipt_commit);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('a same-product linear head move refreshes identity without inventing a verdict', () => {
-  const { fixture, engine, implemented } = candidateAwaitingFirstVerdict();
+  const { fixture, engine, implemented } = candidateAwaitingVerdict();
   try {
     git(fixture.repo, 'commit', '--allow-empty', '-q', '-m', 'chore: retain exact evidence');
     const movedHead = git(fixture.repo, 'rev-parse', 'HEAD');
@@ -1173,7 +1233,7 @@ test('a same-product linear head move refreshes identity without inventing a ver
 
 test('candidate refresh rejects merge, reserved-record, and post-PASS movement', async (t) => {
   await t.test('merge movement', () => {
-    const { fixture, implemented, candidate } = candidateAwaitingFirstVerdict();
+    const { fixture, implemented, candidate } = candidateAwaitingVerdict();
     try {
       const tree = git(fixture.repo, 'rev-parse', `${candidate}^{tree}`);
       const merge = git(
@@ -1203,7 +1263,7 @@ test('candidate refresh rejects merge, reserved-record, and post-PASS movement',
   });
 
   await t.test('reserved-record movement', () => {
-    const { fixture } = candidateAwaitingFirstVerdict();
+    const { fixture } = candidateAwaitingVerdict();
     try {
       write(
         fixture.repo,
@@ -1223,7 +1283,7 @@ test('candidate refresh rejects merge, reserved-record, and post-PASS movement',
   await t.test('post-PASS movement', () => {
     const {
       fixture, engine, candidate,
-    } = candidateAwaitingFirstVerdict();
+    } = candidateAwaitingVerdict();
     try {
       engine.appendReceipt({
         release: 'actions-v2',
