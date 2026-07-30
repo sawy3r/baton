@@ -29,7 +29,7 @@ final say, and the version that was checked is the version that gets merged.
 If a tool crashes or a response is malformed, Baton stops rather than guessing
 that the work passed.
 
-[Sworn](https://github.com/sawy3r/sworn) runs this loop: it starts agents,
+[Sworn](https://github.com/swornagent/sworn) runs this loop: it starts agents,
 keeps work moving, recovers interrupted runs, connects to different AI tools,
 and shows progress. Baton itself is only the shared way of working. It does not
 run models, hold provider credentials, or choose a model.
