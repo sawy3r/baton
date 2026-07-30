@@ -4,10 +4,10 @@ description: "Independently verify an exact Baton slice candidate or assembled p
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.9
+release: v1.0.0-rc.10
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:2a6b14e214b6aea9c7d2c27072289735085626d3f4fc81f3a0fe76af3d2353d4
+operation-sha256: sha256:859d18353177b8f7692ae2e8fdb7b763020d7d0ab312d492e055565043b0bc4f
 -->
 
 Treat the free-form invocation text as the operation inputs. Resolve relative resources from this skill directory. This skill is standalone and requires no files outside its directory.
@@ -41,6 +41,10 @@ Judge the actual candidate against the approved behavioral commitment.
 Ancillary support paths and additional checks are evidence, not scope failures
 by themselves. They cannot excuse a material behavior, consumed-product,
 contract, or authority change.
+
+Product code, build, test, package, deploy, hooks, and runtime MUST NOT read or
+depend on reserved `.baton/releases`; verify the candidate preserves it from
+its exact implementation base.
 
 ## Actions
 

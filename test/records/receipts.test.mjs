@@ -197,6 +197,27 @@ test('plan validation rejects broken revision, dependency, and parallel ownershi
   assert.equal(parsePlanBytes(planBytes(explicitlyOrderedOverlap)).metadata.tracks.length, 2);
 });
 
+test('plan product scope cannot include the reserved record root', () => {
+  for (const scopedPath of [
+    '.baton/releases',
+    '.baton/releases/actions-v2',
+    '.baton/releases/actions-v2/plan.md',
+  ]) {
+    const included = planMetadata();
+    included.tracks[0].slices[0].scope.include = [scopedPath];
+    throwsCode(() => parsePlanBytes(planBytes(included)), 'RESERVED_RECORD_ROOT');
+
+    const excluded = planMetadata();
+    excluded.tracks[0].slices[0].scope.exclude = [scopedPath];
+    assert.equal(parsePlanBytes(planBytes(excluded)).metadata.tracks.length, 2);
+  }
+
+  const adjacent = planMetadata();
+  adjacent.tracks[0].slices[0].scope.include = ['.baton/runtime'];
+  adjacent.tracks[0].slices[0].scope.exclude = ['.baton-release'];
+  assert.equal(parsePlanBytes(planBytes(adjacent)).metadata.tracks.length, 2);
+});
+
 test('receipt JSON is strict, canonical, bounded, and role-aware', () => {
   const canonical = Buffer.from(canonicalJSON(receipt()));
   assert.deepEqual(parseReceiptBytes(canonical), receipt());

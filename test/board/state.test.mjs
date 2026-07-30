@@ -48,7 +48,6 @@ test('canonical role chain selects PASS and the one-track exact merge fast path'
   try {
     const passed = passSlice(fixture, 'S1');
     const state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.slices[0].pass.oid, passed.verified.oid);
     assert.equal(state.slices[0].candidate.oid, passed.implemented.oid);
@@ -81,7 +80,6 @@ test('terminal Merge accepts target advancement only when it contains the record
     git(fixture.repo, 'branch', '-f', 'main', passed.candidate);
 
     let state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.assembly.current_receipt.oid, merged.oid);
     assert.equal(state.assembly.status, 'complete');
@@ -93,7 +91,6 @@ test('terminal Merge accepts target advancement only when it contains the record
     write(fixture.repo, 'after-merge.txt', 'still contains the recorded result\n');
     commitAll(fixture.repo, 'advance after recorded merge');
     state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.plan.target_stale, false);
     assert.equal(state.diagnostics.some(({ code }) => code === 'TARGET_MOVED'), false);
@@ -102,7 +99,6 @@ test('terminal Merge accepts target advancement only when it contains the record
     git(fixture.repo, 'branch', '-f', 'main', fixture.target);
     assert.throws(
       () => readBatonState(fixture.repo, 'v1.0.0', {
-        productExclusionAdmission: fixture.admission,
       }),
       (error) => error instanceof BatonStateError && error.code === 'MOVED_TARGET',
     );
@@ -117,7 +113,6 @@ test('unchanged contracts retain PASS across an approved plan revision', () => {
     const passed = passSlice(fixture, 'S1');
     revisePlan(fixture, null, { moveTarget: true });
     const state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.plan.metadata.revision, 2);
     assert.equal(state.slices[0].pass.oid, passed.verified.oid);
@@ -167,7 +162,6 @@ test('an intermediate contract change prevents a reverted digest resurrecting ol
     assert.equal(fixture.parsed.metadata.contracts.S1, originalContract);
 
     const state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.plan.metadata.revision, 3);
     assert.equal(state.slices[0].pass, null);
@@ -193,7 +187,6 @@ test('an inserted serial predecessor invalidates only the affected suffix', () =
     });
 
     const state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     const slices = new Map(state.slices.map((entry) => [
       entry.location.slice.id,
@@ -228,7 +221,6 @@ test('reordering and then restoring a serial prefix cannot resurrect its old PAS
     });
 
     const state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.plan.metadata.revision, 3);
     assert.equal(state.slices[0].pass, null);
@@ -278,7 +270,6 @@ test('a newer approval resolves an unchanged Verifier blocker into a new design 
   try {
     const blocked = passSlice(fixture, 'S1', { verifierResult: 'blocked' });
     let state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.slices[0].current_receipt.oid, blocked.verified.oid);
     assert.equal(state.slices[0].next_role, 'planner');
@@ -286,7 +277,6 @@ test('a newer approval resolves an unchanged Verifier blocker into a new design 
 
     revisePlan(fixture, null);
     state = readBatonState(fixture.repo, 'v1.0.0', {
-      productExclusionAdmission: fixture.admission,
     });
     assert.equal(state.slices[0].stage, 'design');
     assert.equal(state.slices[0].status, 'ready');
@@ -354,7 +344,6 @@ test('consumed-product drift cannot override Captain escalation', () => {
     });
 
     let state = readBatonState(fixture.repo, fixture.metadata.release, {
-      productExclusionAdmission: fixture.admission,
     });
     let consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(consumer.current_receipt.oid, escalated.oid);
@@ -364,7 +353,6 @@ test('consumed-product drift cannot override Captain escalation', () => {
 
     revisePlan(fixture, null);
     state = readBatonState(fixture.repo, fixture.metadata.release, {
-      productExclusionAdmission: fixture.admission,
     });
     consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(consumer.stage, 'design');
@@ -388,7 +376,6 @@ test('consumed-product drift cannot override Verifier BLOCKED', () => {
     });
 
     let state = readBatonState(fixture.repo, fixture.metadata.release, {
-      productExclusionAdmission: fixture.admission,
     });
     let consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(consumer.current_receipt.oid, blocked.verified.oid);
@@ -398,7 +385,6 @@ test('consumed-product drift cannot override Verifier BLOCKED', () => {
 
     revisePlan(fixture, null);
     state = readBatonState(fixture.repo, fixture.metadata.release, {
-      productExclusionAdmission: fixture.admission,
     });
     consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(consumer.stage, 'design');
@@ -547,7 +533,6 @@ for (const legacyMode of ['missing', 'inexact']) {
         metadata.tracks[2].slices[0].acceptance[0].text = 'S3 changed independently.';
       });
       const state = readBatonState(fixture.repo, 'v1.0.0', {
-        productExclusionAdmission: fixture.admission,
       });
       const consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
       assert.equal(legacy.implemented.receipt.base, undefined);
@@ -589,10 +574,7 @@ test('marker-present consuming design rejects a forged prior track authority', (
   }));
   try {
     const producer = passSlice(fixture, 'S1');
-    const engine = createBatonActions({
-      repo: fixture.repo,
-      resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
-    });
+    const engine = createBatonActions({ repo: fixture.repo });
     const prepared = engine.prepareTrackBase({
       release: fixture.metadata.release,
       slice: 'S2',
@@ -614,7 +596,6 @@ test('marker-present consuming design rejects a forged prior track authority', (
     });
     assert.throws(
       () => readBatonState(fixture.repo, fixture.metadata.release, {
-        productExclusionAdmission: fixture.admission,
       }),
       (error) => (
         error instanceof BatonStateError
@@ -679,7 +660,6 @@ test('marker-present consuming design rejects merely ancestral input authority',
     });
     assert.throws(
       () => readBatonState(fixture.repo, fixture.metadata.release, {
-        productExclusionAdmission: fixture.admission,
       }),
       (error) => (
         error instanceof BatonStateError
@@ -723,10 +703,7 @@ test('marker-present review rejects a changed-product retry after Verifier FAIL'
       attempt: 2,
       productValue: 'S1 changed product\n',
     });
-    const engine = createBatonActions({
-      repo: fixture.repo,
-      resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
-    });
+    const engine = createBatonActions({ repo: fixture.repo });
     const prepared = engine.prepareTrackBase({
       release: fixture.metadata.release,
       slice: 'S2',
@@ -734,7 +711,7 @@ test('marker-present review rejects a changed-product retry after Verifier FAIL'
     git(fixture.repo, 'switch', '-q', 'track/v1.0.0/T2');
     write(fixture.repo, 'src/consumer.txt', 'forged changed-input retry\n');
     const candidate = commitAll(fixture.repo, 'forge changed-input retry');
-    const identity = productTreeIdentity(fixture.repo, candidate, fixture.admission);
+    const identity = productTreeIdentity(fixture.repo, candidate);
     appendReceipt(fixture.repo, {
       version: 1,
       release: fixture.metadata.release,
@@ -754,7 +731,6 @@ test('marker-present review rejects a changed-product retry after Verifier FAIL'
     });
     assert.throws(
       () => readBatonState(fixture.repo, fixture.metadata.release, {
-        productExclusionAdmission: fixture.admission,
       }),
       (error) => (
         error instanceof BatonStateError

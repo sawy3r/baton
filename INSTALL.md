@@ -1,6 +1,6 @@
 # Install Baton
 
-Baton RC9 ships one client-neutral Agent Skills payload under [`skills/`](skills/).
+Baton RC10 ships one client-neutral Agent Skills payload under [`skills/`](skills/).
 The five `baton-*` directories are the entire installed product. The repository
 board, record helpers, schemas, and protocol documents remain project tools.
 
@@ -11,7 +11,7 @@ client list or guessing paths.
 ## Copyable self-install request
 
 ```text
-Install Baton v1.0.0-rc.9 from
+Install Baton v1.0.0-rc.10 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user
@@ -60,7 +60,7 @@ baton-verify/SKILL.md
 baton-merge/SKILL.md
 ```
 
-`skills/.baton-payload.json` binds each file to the RC9 release, source path,
+`skills/.baton-payload.json` binds each file to the RC10 release, source path,
 source digest, generated digest, and complete payload digest. Each `SKILL.md`
 contains one exact canonical operation region. Regeneration is deterministic:
 
@@ -78,11 +78,11 @@ node scripts/generate-skills.mjs --check
 - Modified, mixed, ambiguous, or unowned state stops. The agent must not
   overwrite it or claim ownership.
 
-## Older RC2-RC8 installations
+## Older RC2-RC9 installations
 
-Do not install RC9 over files or state owned by RC2 through RC8. Use the exact
+Do not install RC10 over files or state owned by RC2 through RC9. Use the exact
 immutable release's own safe uninstall preview and apply flow. Only after its
-exact uninstall is approved and complete may the agent preview RC9. Ambiguous
+exact uninstall is approved and complete may the agent preview RC10. Ambiguous
 release, ownership, or bytes stops.
 
 ## Update and removal

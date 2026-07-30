@@ -9,6 +9,7 @@ import {
   productTreeIdentity,
   readFileAtOID,
   readFirstParentHistory,
+  resolveRecordPathAdmission,
   resolveRef,
   unsafeApplyExactComposition,
   unsafePrepareApprovedTargetBase,
@@ -22,7 +23,6 @@ import {
   commitAll,
   git,
   temporaryRepository,
-  testProductExclusionAdmission,
   write,
 } from './helpers.mjs';
 
@@ -38,12 +38,11 @@ test('metadata-only commits preserve product identity while product edits change
     write(fixture.repo, 'src/app.txt', 'product-v1\n');
     write(fixture.repo, PLAN_PATH, 'plan-v1\n');
     const base = commitAll(fixture.repo, 'base product and plan');
-    const admission = testProductExclusionAdmission(fixture.repo);
-    const baseline = productTreeIdentity(fixture.repo, base, admission);
+    const baseline = productTreeIdentity(fixture.repo, base);
 
     write(fixture.repo, PLAN_PATH, 'plan-v2\n');
     const metadataOnly = commitAll(fixture.repo, 'revise plan metadata');
-    const afterMetadata = productTreeIdentity(fixture.repo, metadataOnly, admission);
+    const afterMetadata = productTreeIdentity(fixture.repo, metadataOnly);
     assert.notEqual(afterMetadata.candidateTree, baseline.candidateTree);
     assert.equal(afterMetadata.productTree, baseline.productTree);
     assert.deepEqual(afterMetadata.entries.map((entry) => entry.path), ['src/app.txt']);
@@ -51,7 +50,7 @@ test('metadata-only commits preserve product identity while product edits change
     write(fixture.repo, 'src/app.txt', 'product-v2\n');
     const productChange = commitAll(fixture.repo, 'change product');
     assert.notEqual(
-      productTreeIdentity(fixture.repo, productChange, admission).productTree,
+      productTreeIdentity(fixture.repo, productChange).productTree,
       baseline.productTree,
     );
   } finally {
@@ -65,14 +64,13 @@ test('candidate ancestry is required even when product trees are equal', () => {
     write(fixture.repo, 'src/app.txt', 'base\n');
     write(fixture.repo, PLAN_PATH, 'plan-v1\n');
     const base = commitAll(fixture.repo, 'base');
-    const admission = testProductExclusionAdmission(fixture.repo);
 
     git(fixture.repo, 'switch', '-q', '-c', 'metadata-descendant');
     write(fixture.repo, PLAN_PATH, 'plan-v2\n');
     const descendant = commitAll(fixture.repo, 'metadata descendant');
     assert.equal(
-      productTreeIdentity(fixture.repo, base, admission).productTree,
-      productTreeIdentity(fixture.repo, descendant, admission).productTree,
+      productTreeIdentity(fixture.repo, base).productTree,
+      productTreeIdentity(fixture.repo, descendant).productTree,
     );
 
     git(fixture.repo, 'switch', '-q', '--detach', `${base}^0`);
@@ -92,7 +90,6 @@ test('captured refs reject symlinked record roots independently of the launch ch
   try {
     write(fixture.repo, 'README.md', 'safe checkout\n');
     const safe = commitAll(fixture.repo, 'safe checkout');
-    const admission = testProductExclusionAdmission(fixture.repo);
 
     symlinkSync('elsewhere', `${fixture.repo}/.baton`);
     const captured = commitAll(fixture.repo, 'captured symlink');
@@ -103,7 +100,7 @@ test('captured refs reject symlinked record roots independently of the launch ch
       'SYMLINKED_RECORD_ROOT',
     );
     throwsCode(
-      () => productTreeIdentity(fixture.repo, captured, admission),
+      () => productTreeIdentity(fixture.repo, captured),
       'SYMLINKED_RECORD_ROOT',
     );
   } finally {
@@ -119,15 +116,14 @@ test('one same-head metadata writer wins and a stale writer changes nothing', ()
     const base = commitAll(fixture.repo, 'base');
     const ref = 'refs/heads/release-wt/rc4';
     git(fixture.repo, 'branch', 'release-wt/rc4', base);
-    const admission = testProductExclusionAdmission(fixture.repo);
-    const baseline = productTreeIdentity(fixture.repo, base, admission);
+    const admission = resolveRecordPathAdmission(fixture.repo);
+    const baseline = productTreeIdentity(fixture.repo, base);
 
     const first = unsafeCommitRecordTransition(fixture.repo, {
       ref,
       expectedHead: base,
       message: 'plan revision two',
       recordPathAdmission: admission,
-      productExclusionAdmission: admission,
       changes: { [PLAN_PATH]: 'plan-v2\n' },
     });
     throwsCode(
@@ -136,14 +132,13 @@ test('one same-head metadata writer wins and a stale writer changes nothing', ()
         expectedHead: base,
         message: 'competing plan revision',
         recordPathAdmission: admission,
-        productExclusionAdmission: admission,
         changes: { [PLAN_PATH]: 'plan-competing\n' },
       }),
       'STALE_WRITER',
     );
     assert.equal(resolveRef(fixture.repo, ref), first);
     assert.equal(
-      productTreeIdentity(fixture.repo, first, admission).productTree,
+      productTreeIdentity(fixture.repo, first).productTree,
       baseline.productTree,
     );
   } finally {
@@ -177,8 +172,8 @@ test('Git reads and CAS ignore inherited control environment and replacement ref
     const base = commitAll(fixture.repo, 'base');
     write(fixture.repo, 'src/app.txt', 'candidate\n');
     const candidate = commitAll(fixture.repo, 'candidate');
-    const admission = testProductExclusionAdmission(fixture.repo);
-    const expectedProduct = productTreeIdentity(fixture.repo, candidate, admission).productTree;
+    const admission = resolveRecordPathAdmission(fixture.repo);
+    const expectedProduct = productTreeIdentity(fixture.repo, candidate).productTree;
     git(fixture.repo, 'replace', candidate, base);
     git(fixture.repo, 'branch', 'poison-safe-cas', candidate);
 
@@ -202,7 +197,7 @@ test('Git reads and CAS ignore inherited control environment and replacement ref
 
     assert.equal(resolveRef(fixture.repo, 'refs/heads/poison-safe-cas'), candidate);
     assert.equal(
-      productTreeIdentity(fixture.repo, candidate, admission).productTree,
+      productTreeIdentity(fixture.repo, candidate).productTree,
       expectedProduct,
     );
     const transitioned = unsafeCommitRecordTransition(fixture.repo, {
@@ -210,7 +205,6 @@ test('Git reads and CAS ignore inherited control environment and replacement ref
       expectedHead: candidate,
       message: 'poison-safe plan revision',
       recordPathAdmission: admission,
-      productExclusionAdmission: admission,
       changes: { [PLAN_PATH]: 'plan-v2\n' },
     });
     assert.equal(resolveRef(fixture.repo, 'refs/heads/poison-safe-cas'), transitioned);
@@ -276,13 +270,11 @@ test('composition admits only exact fast-forward or ordered two-parent topology'
       'fast-forward',
     );
     git(fixture.repo, 'branch', 'target-moved', unexpected);
-    const admission = testProductExclusionAdmission(fixture.repo);
     throwsCode(
       () => unsafeApplyExactComposition(fixture.repo, {
         targetRef: 'refs/heads/target-moved',
         expectedHead: base,
         candidate,
-        productExclusionAdmission: admission,
       }),
       'STALE_TARGET',
     );
@@ -314,7 +306,6 @@ test('approved-target preparation preserves second-parent authority on first-par
       targetRef: 'refs/heads/track/replay/T1',
       expectedHead: expected,
       approvedTarget: target,
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     };
     const prepared = unsafePrepareApprovedTargetBase(fixture.repo, options);
     assert.deepEqual(
@@ -348,14 +339,12 @@ test('an ordinary composition conflict leaves the target ref untouched', () => {
     git(fixture.repo, 'switch', '-q', '-c', 'conflict-release', base);
     write(fixture.repo, 'shared.txt', 'release\n');
     const expected = commitAll(fixture.repo, 'release edit');
-    const admission = testProductExclusionAdmission(fixture.repo);
 
     throwsCode(
       () => unsafeApplyExactComposition(fixture.repo, {
         targetRef: 'refs/heads/conflict-release',
         expectedHead: expected,
         candidate: 'refs/heads/conflict-track',
-        productExclusionAdmission: admission,
       }),
       'COMPOSITION_CONFLICT',
     );
@@ -410,7 +399,6 @@ test('product composition replays the exact producer delta when ancestry gives G
       expectedHead: consumer,
       candidate: producerPass,
       productBase: () => productBase,
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
 
     assert.equal(prepared.mode, 'two-parent');
@@ -430,7 +418,6 @@ test('product composition replays the exact producer delta when ancestry gives G
         expectedHead: consumer,
         candidate: producerPass,
         productBase: () => 'refs/heads/producer-product-base',
-        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
       }),
       'INVALID_REF_OID',
     );
@@ -472,7 +459,6 @@ test('exact composition ignores record-only conflicts and preserves first-parent
       targetRef: 'refs/heads/record-first-parent',
       expectedHead: consumer,
       candidate: producer,
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.deepEqual(
       git(fixture.repo, 'rev-list', '--parents', '-n', '1', prepared.result).split(' '),
@@ -554,7 +540,6 @@ test('exact verification preserves a missing first-parent record root across del
       targetRef: 'refs/heads/missing-record-first-parent',
       expectedHead: consumer,
       candidate: producer,
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     throwsCode(
       () => readFileAtOID(fixture.repo, prepared.result, PLAN_PATH),
@@ -595,7 +580,6 @@ test('product composition leaves its lazy base unresolved on the ordinary clean 
       productBase: () => {
         throw new Error('ordinary composition must not resolve a product base');
       },
-      productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
     });
     assert.equal(prepared.mode, 'two-parent');
     assert.equal(Object.hasOwn(prepared, 'productBase'), false);
@@ -605,7 +589,6 @@ test('product composition leaves its lazy base unresolved on the ordinary clean 
         expectedHead: consumer,
         candidate: producer,
         productBase: historical,
-        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
       }),
       'PRODUCT_BASE_RESOLVER_REQUIRED',
     );
@@ -640,7 +623,6 @@ test('product-base fallback refuses a custom merge driver without moving a ref',
         expectedHead: consumer,
         candidate: producer,
         productBase: () => productBase,
-        productExclusionAdmission: testProductExclusionAdmission(fixture.repo),
       }),
       'UNTRUSTED_MERGE_DRIVER',
     );
@@ -658,8 +640,7 @@ test('captured-object reads remain valid when the launch checkout becomes unsafe
     commitAll(fixture.repo, 'safe base');
     write(fixture.repo, PLAN_PATH, 'plan-v2\n');
     const captured = commitAll(fixture.repo, 'safe captured plan');
-    const admission = testProductExclusionAdmission(fixture.repo);
-    const identity = productTreeIdentity(fixture.repo, captured, admission);
+    const identity = productTreeIdentity(fixture.repo, captured);
 
     rmSync(`${fixture.repo}/.baton`, { recursive: true });
     symlinkSync('elsewhere', `${fixture.repo}/.baton`);
@@ -669,7 +650,7 @@ test('captured-object reads remain valid when the launch checkout becomes unsafe
       'SYMLINKED_RECORD_ROOT',
     );
     assert.equal(
-      productTreeIdentity(fixture.repo, captured, admission).productTree,
+      productTreeIdentity(fixture.repo, captured).productTree,
       identity.productTree,
     );
     assert.deepEqual(readFileAtOID(fixture.repo, captured, PLAN_PATH), Buffer.from('plan-v2\n'));

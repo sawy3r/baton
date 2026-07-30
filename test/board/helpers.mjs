@@ -13,7 +13,6 @@ import {
   commitAll,
   git,
   temporaryRepository,
-  testProductExclusionAdmission,
   write,
 } from '../records/helpers.mjs';
 
@@ -101,7 +100,6 @@ export function baselineFixture(metadata = oneSliceMetadata()) {
     planCommit,
     approval,
     target,
-    admission: testProductExclusionAdmission(repo),
   };
 }
 
@@ -133,15 +131,10 @@ export function passSlice(fixture, sliceID, {
   productValue = null,
 } = {}) {
   const { track, item } = plannedSlice(fixture, sliceID);
-  const engine = createBatonActions({
-    repo: fixture.repo,
-    resolveBehavioralInertness: (request) => ({ ...request, decision: 'inert' }),
-  });
+  const engine = createBatonActions({ repo: fixture.repo });
   let reviewed = null;
   if (!legacyConsumed) {
-    const state = readBatonState(fixture.repo, fixture.metadata.release, {
-      productExclusionAdmission: fixture.admission,
-    });
+    const state = readBatonState(fixture.repo, fixture.metadata.release);
     const authority = state.tracks.find(({ id }) => id === track.id).authority_head;
     const prepared = engine.prepareTrackBase({
       release: fixture.metadata.release,
@@ -195,7 +188,7 @@ export function passSlice(fixture, sliceID, {
     productValue ?? `${sliceID} product\n`,
   );
   const candidate = commitAll(fixture.repo, `implement ${sliceID}`);
-  const identity = productTreeIdentity(fixture.repo, candidate, fixture.admission);
+  const identity = productTreeIdentity(fixture.repo, candidate);
   const implemented = appendReceipt(fixture.repo, {
     ...common,
     role: 'implementer',

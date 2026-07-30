@@ -72,10 +72,10 @@ directory is required. The board remains a thin read-only repository tool.
 
 ## Get started
 
-Ask the agent already running in your tool to install the exact RC9 payload:
+Ask the agent already running in your tool to install the exact RC10 payload:
 
 ```text
-Install Baton v1.0.0-rc.9 from
+Install Baton v1.0.0-rc.10 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user

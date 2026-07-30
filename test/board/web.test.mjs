@@ -8,6 +8,10 @@ import {
   createBoardServer,
   startBoardServer,
 } from '../../reference/board/web.mjs';
+import {
+  baselineFixture,
+  passSlice,
+} from './helpers.mjs';
 
 const BOARD = JSON.parse(readFileSync(
   new URL('../../conformance/fixtures/board/valid-incomplete-board.json', import.meta.url),
@@ -174,6 +178,29 @@ test('server exposes only the fixed GET surface with exact security headers', as
     assert.equal(favicon.body, '');
   } finally {
     await running.close();
+  }
+});
+
+test('ordinary WebUI projection serves candidate and PASS state without a token', async () => {
+  const fixture = baselineFixture();
+  passSlice(fixture, 'S1');
+  const running = await startBoardServer({
+    repo: fixture.repo,
+    port: 0,
+  });
+  try {
+    const response = await fetchLocal(running, { path: '/api/board' });
+    assert.equal(response.status, 200);
+    const board = JSON.parse(response.body);
+    assert.equal(board.valid, true);
+    assert.equal(board.releases[0].tracks[0].work[0].outcome, 'pass');
+    assert.equal(
+      board.releases[0].graph.nodes.find(({ id }) => id === 'merge').state,
+      'ready',
+    );
+  } finally {
+    await running.close();
+    fixture.cleanup();
   }
 });
 

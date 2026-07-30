@@ -68,3 +68,22 @@ jobs:
             git status --short --untracked-files=all
             exit 1
           fi
+
+  portable-macos:
+    name: Portable records (macOS, Node 24)
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run the portable record engine
+        run: node --test test/records/*.test.mjs

@@ -6,10 +6,12 @@ import test from 'node:test';
 
 import {
   boardBytes,
+  createBoardOracle,
   GRAPH_VERSION,
   projectBoard,
 } from '../../reference/board/oracle.mjs';
 import { createBatonActions } from '../../reference/records/actions.mjs';
+import { readBatonState } from '../../reference/records/state.mjs';
 import {
   commitAll,
   git,
@@ -30,13 +32,7 @@ function graphNode(release, id) {
 }
 
 function batonActions(repo) {
-  return createBatonActions({
-    repo,
-    resolveBehavioralInertness: (request) => ({
-      ...request,
-      decision: 'inert',
-    }),
-  });
+  return createBatonActions({ repo });
 }
 
 test('release graph is canonical, direct, coalesced, and deterministic', () => {
@@ -311,7 +307,6 @@ test('plan revision invalidates only changed contracts and consumed input closur
       revision.tracks[0].slices[0].acceptance[0].text = 'S1 changed.';
     });
     const release = projectBoard(fixture.repo, {
-      productExclusionAdmission: fixture.admission,
     }).releases[0];
     const work = Object.fromEntries(release.tracks.flatMap((track) => (
       track.work.map((item) => [item.id, item])
@@ -337,7 +332,6 @@ test('one-track direct PASS skips assembly and hands the exact Merge operation f
   try {
     passSlice(fixture, 'S1');
     const release = projectBoard(fixture.repo, {
-      productExclusionAdmission: fixture.admission,
     }).releases[0];
     assert.equal(graphNode(release, 'slice:S1').state, 'passed');
     assert.deepEqual(graphNode(release, 'assembly'), {
@@ -365,7 +359,6 @@ test('one-track direct PASS skips assembly and hands the exact Merge operation f
     write(fixture.repo, 'target.txt', 'moved after direct PASS\n');
     commitAll(fixture.repo, 'move target after direct PASS');
     const stale = projectBoard(fixture.repo, {
-      productExclusionAdmission: fixture.admission,
     }).releases[0];
     assert.equal(graphNode(stale, 'plan').state, 'revision_required');
     assert.equal(graphNode(stale, 'assembly').state, 'not_required');
@@ -375,6 +368,101 @@ test('one-track direct PASS skips assembly and hands the exact Merge operation f
       state: 'waiting',
       next_operation: null,
     });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('completed historical release remains valid when product scope excludes reserved records', () => {
+  const release = 'sworn-v0.3.0-baton-v2';
+  const fixture = baselineFixture(oneSliceMetadata({
+    release,
+    tracks: [{
+      id: 'T1',
+      depends_on: [],
+      slices: [slice('S1', 'src/one.txt', {
+        scope: {
+          include: ['src/one.txt'],
+          exclude: ['.baton/releases'],
+        },
+      })],
+    }],
+  }));
+  try {
+    passSlice(fixture, 'S1');
+    batonActions(fixture.repo).mergePassedCandidate({
+      release,
+      summary: 'Merge the exact candidate covered by fresh PASS.',
+    });
+    const refs = git(
+      fixture.repo,
+      'for-each-ref',
+      '--format=%(refname) %(objectname)',
+      'refs/heads',
+    );
+
+    const board = projectBoard(fixture.repo);
+
+    assert.equal(board.valid, true);
+    assert.equal(board.releases[0].release, release);
+    assert.equal(board.releases[0].tracks[0].work[0].outcome, 'pass');
+    assert.equal(graphNode(board.releases[0], 'merge').state, 'complete');
+    assert.deepEqual(board.releases[0].diagnostics, []);
+    assert.equal(
+      git(
+        fixture.repo,
+        'for-each-ref',
+        '--format=%(refname) %(objectname)',
+        'refs/heads',
+      ),
+      refs,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('ordinary projection passes no capability and preserves exact refs after PASS', () => {
+  const fixture = baselineFixture();
+  try {
+    passSlice(fixture, 'S1');
+    const before = git(
+      fixture.repo,
+      'for-each-ref',
+      '--format=%(refname) %(objectname)',
+      'refs/heads',
+    );
+    const calls = [];
+    const oracle = createBoardOracle({
+      readState(repo, release, options) {
+        calls.push({ repo, release, options });
+        return readBatonState(repo, release, options);
+      },
+    });
+
+    const board = oracle.project(fixture.repo);
+    assert.equal(board.valid, true);
+    assert.equal(board.releases[0].tracks[0].work[0].outcome, 'pass');
+    assert.equal(graphNode(board.releases[0], 'merge').state, 'ready');
+    assert.equal(calls.length, 1);
+    assert.deepEqual(Object.keys(calls[0].options).sort(), [
+      'captureRefs',
+      'expectedReleaseHead',
+    ]);
+    assert.equal(calls[0].options.captureRefs, undefined);
+    assert.equal(
+      calls[0].options.expectedReleaseHead,
+      board.releases[0].release_head,
+    );
+    assert.equal(
+      git(
+        fixture.repo,
+        'for-each-ref',
+        '--format=%(refname) %(objectname)',
+        'refs/heads',
+      ),
+      before,
+    );
   } finally {
     fixture.cleanup();
   }
@@ -401,7 +489,6 @@ test('multi-track assembly moves the exact next operation and records Merge comp
     const engine = batonActions(fixture.repo);
 
     let release = projectBoard(fixture.repo, {
-      productExclusionAdmission: fixture.admission,
     }).releases[0];
     assert.equal(graphNode(release, 'assembly').state, 'ready');
     assert.equal(graphNode(release, 'assembly').next_operation.operation, 'baton-merge');
@@ -412,7 +499,6 @@ test('multi-track assembly moves the exact next operation and records Merge comp
       summary: 'Compose the two exact passed track candidates.',
     });
     release = projectBoard(fixture.repo, {
-      productExclusionAdmission: fixture.admission,
     }).releases[0];
     assert.equal(graphNode(release, 'assembly').state, 'ready');
     assert.deepEqual(graphNode(release, 'assembly').next_operation, {
@@ -433,7 +519,6 @@ test('multi-track assembly moves the exact next operation and records Merge comp
       checkResults: 'assembly verifier PASS\n',
     });
     release = projectBoard(fixture.repo, {
-      productExclusionAdmission: fixture.admission,
     }).releases[0];
     assert.equal(graphNode(release, 'assembly').state, 'passed');
     assert.equal(graphNode(release, 'assembly').next_operation, null);
@@ -446,7 +531,6 @@ test('multi-track assembly moves the exact next operation and records Merge comp
       summary: 'Merge the exact assembly covered by fresh PASS.',
     });
     release = projectBoard(fixture.repo, {
-      productExclusionAdmission: fixture.admission,
     }).releases[0];
     assert.equal(graphNode(release, 'assembly').state, 'passed');
     assert.equal(graphNode(release, 'assembly').next_operation, null);
