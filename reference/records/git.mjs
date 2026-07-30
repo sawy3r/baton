@@ -1871,6 +1871,31 @@ function sameRecordRootEntry(context, expected, candidate, recordRoot) {
   return raw.length === 0;
 }
 
+function exactBaseMergeSide(context, source, productBase, side) {
+  const tree = runEngineGit(
+    context,
+    ['rev-parse', '--verify', `${source}^{tree}`],
+    { label: `resolve exact-base ${side} tree` },
+  ).trim();
+  const date = `@${commitTimestamp(context.cwd, productBase) + 1} +0000`;
+  return runEngineGit(
+    context,
+    ['commit-tree', tree, '-p', productBase],
+    {
+      input: `Baton exact-base ${side} for ${source}\n`,
+      env: {
+        GIT_AUTHOR_NAME: 'Baton Merge',
+        GIT_AUTHOR_EMAIL: 'merge@baton.invalid',
+        GIT_AUTHOR_DATE: date,
+        GIT_COMMITTER_NAME: 'Baton Merge',
+        GIT_COMMITTER_EMAIL: 'merge@baton.invalid',
+        GIT_COMMITTER_DATE: date,
+      },
+      label: `create exact-base ${side}`,
+    },
+  ).trim();
+}
+
 function deterministicMergeTreeInContext(
   context,
   expected,
@@ -1885,9 +1910,6 @@ function deterministicMergeTreeInContext(
     { label: `seed engine-owned merge index at ${expected}` },
   );
   installBuiltInMergeAttributes(context, expected, candidate, productBase);
-  const baseArguments = productBase === null
-    ? []
-    : ['--merge-base', productBase];
   const recordRootsMatch = recordRoot !== null
     && sameRecordRootEntry(context, expected, candidate, recordRoot);
   const mergeCandidate = recordRoot === null || recordRootsMatch
@@ -1899,15 +1921,20 @@ function deterministicMergeTreeInContext(
       recordRoot,
       label,
     );
+  const mergeExpected = productBase === null
+    ? expected
+    : exactBaseMergeSide(context, expected, productBase, 'expected');
+  const mergePassed = productBase === null
+    ? mergeCandidate
+    : exactBaseMergeSide(context, mergeCandidate, productBase, 'candidate');
   const mergedTree = runEngineMergeTree(
     context,
     [
       'merge-tree',
       '--write-tree',
       '--no-messages',
-      ...baseArguments,
-      expected,
-      mergeCandidate,
+      mergeExpected,
+      mergePassed,
     ],
     `compute deterministic ${label} tree`,
   ).trim();

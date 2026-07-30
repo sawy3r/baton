@@ -32,6 +32,7 @@ history. Treating those files as competing authority creates metadata-only
 handoff churn.
 
 The portable record engine inspects attributes from an isolated exact-source
-index, avoiding newer-Git-only flags, and canonicalizes the private ref-helper
-directory before handing it to a child process. A macOS record-engine CI job
-now protects both paths.
+index and supplies an exact product base through deterministic single-parent
+merge sides, avoiding newer-Git-only flags. It also canonicalizes the private
+ref-helper directory before child-process handoff. A macOS record-engine CI job
+protects all three paths.
