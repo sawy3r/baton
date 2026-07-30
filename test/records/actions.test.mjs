@@ -127,6 +127,32 @@ function appendCaptain(engine, result = 'proceed') {
   });
 }
 
+function candidateAwaitingFirstVerdict() {
+  const fixture = temporaryRepository();
+  write(fixture.repo, 'README.md', 'product\n');
+  commitAll(fixture.repo, 'base');
+  const engine = actions(fixture.repo);
+  engine.recordPlanRevision({
+    planBytes: planBytes(),
+    summary: 'Plan approved.',
+  });
+  appendDesign(engine);
+  appendCaptain(engine);
+  git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+  write(fixture.repo, 'src/product.txt', 'first candidate\n');
+  const candidate = commitAll(fixture.repo, 'feat: first candidate');
+  const implemented = engine.appendReceipt({
+    release: 'actions-v2',
+    slice: 'S1',
+    role: 'implementer',
+    result: 'candidate',
+    summary: 'First exact candidate.',
+    candidate,
+    checkResults: 'implementer PASS\n',
+  });
+  return { fixture, engine, candidate, implemented };
+}
+
 function deliverSlice(engine, repo, {
   slice,
   track,
@@ -1065,6 +1091,159 @@ test('Captain revision and Verifier failure keep one slice identity with new att
   } finally {
     fixture.cleanup();
   }
+});
+
+test('a linear head move before the first Verifier verdict refreshes the exact candidate', () => {
+  const { fixture, engine, implemented } = candidateAwaitingFirstVerdict();
+  try {
+    write(fixture.repo, 'src/product.txt', 'corrected candidate\n');
+    const corrected = commitAll(fixture.repo, 'fix: correct candidate before verification');
+
+    let state = readBatonState(fixture.repo, 'actions-v2');
+    let sliceState = state.slices[0];
+    assert.equal(sliceState.stage, 'implement');
+    assert.equal(sliceState.status, 'ready');
+    assert.equal(sliceState.next_role, 'implementer');
+    assert.equal(sliceState.outcome, 'stale');
+    assert.equal(sliceState.attempt, implemented.receipt.attempt + 1);
+    assert.equal(sliceState.current_receipt.oid, implemented.receipt_commit);
+
+    const refreshed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The corrected head passed focused checks.',
+      candidate: corrected,
+      checkResults: 'implementer PASS after correction\n',
+    });
+    assert.equal(refreshed.receipt.binds, implemented.receipt_commit);
+    assert.equal(refreshed.receipt.attempt, implemented.receipt.attempt + 1);
+    assert.equal(refreshed.receipt.candidate, corrected);
+
+    state = readBatonState(fixture.repo, 'actions-v2');
+    [sliceState] = state.slices;
+    assert.equal(sliceState.stage, 'verify');
+    assert.equal(sliceState.next_role, 'verifier');
+    assert.equal(sliceState.current_receipt.oid, refreshed.receipt_commit);
+
+    const passed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'The refreshed candidate passes independent verification.',
+      candidate: corrected,
+      checkResults: 'verifier PASS\n',
+    });
+    assert.equal(passed.receipt.binds, refreshed.receipt_commit);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a same-product linear head move refreshes identity without inventing a verdict', () => {
+  const { fixture, engine, implemented } = candidateAwaitingFirstVerdict();
+  try {
+    git(fixture.repo, 'commit', '--allow-empty', '-q', '-m', 'chore: retain exact evidence');
+    const movedHead = git(fixture.repo, 'rev-parse', 'HEAD');
+    const state = readBatonState(fixture.repo, 'actions-v2');
+    assert.equal(state.slices[0].next_role, 'implementer');
+    assert.equal(state.slices[0].attempt, implemented.receipt.attempt + 1);
+
+    const refreshed = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The exact same-product head passed focused checks.',
+      candidate: movedHead,
+      checkResults: 'implementer PASS on exact head\n',
+    });
+    assert.equal(refreshed.receipt.product_tree, implemented.receipt.product_tree);
+    assert.equal(refreshed.receipt.binds, implemented.receipt_commit);
+    assert.equal(
+      readBatonState(fixture.repo, 'actions-v2').slices[0].next_role,
+      'verifier',
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('candidate refresh rejects merge, reserved-record, and post-PASS movement', async (t) => {
+  await t.test('merge movement', () => {
+    const { fixture, implemented, candidate } = candidateAwaitingFirstVerdict();
+    try {
+      const tree = git(fixture.repo, 'rev-parse', `${candidate}^{tree}`);
+      const merge = git(
+        fixture.repo,
+        'commit-tree',
+        tree,
+        '-p',
+        implemented.receipt_commit,
+        '-p',
+        candidate,
+        '-m',
+        'forge merged candidate head',
+      );
+      unsafeAtomicUpdateRefs(fixture.repo, [{
+        kind: 'update',
+        ref: referenceNames.trackRef('actions-v2', 'T1'),
+        expectedHead: implemented.receipt_commit,
+        newHead: merge,
+      }]);
+      assert.throws(
+        () => readBatonState(fixture.repo, 'actions-v2'),
+        (error) => error?.code === 'CHANGED_CANDIDATE',
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  await t.test('reserved-record movement', () => {
+    const { fixture } = candidateAwaitingFirstVerdict();
+    try {
+      write(
+        fixture.repo,
+        referenceNames.planPath('actions-v2'),
+        Buffer.concat([planBytes(), Buffer.from('\nreserved mutation\n')]),
+      );
+      commitAll(fixture.repo, 'forge reserved record movement');
+      assert.throws(
+        () => readBatonState(fixture.repo, 'actions-v2'),
+        (error) => error?.code === 'RESERVED_RECORD_ROOT_CHANGED',
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  await t.test('post-PASS movement', () => {
+    const {
+      fixture, engine, candidate,
+    } = candidateAwaitingFirstVerdict();
+    try {
+      engine.appendReceipt({
+        release: 'actions-v2',
+        slice: 'S1',
+        role: 'verifier',
+        result: 'pass',
+        summary: 'The exact candidate passes.',
+        candidate,
+        checkResults: 'verifier PASS\n',
+      });
+      write(fixture.repo, 'src/product.txt', 'changed after PASS\n');
+      commitAll(fixture.repo, 'forge post-PASS movement');
+      assert.throws(
+        () => readBatonState(fixture.repo, 'actions-v2'),
+        (error) => error?.code === 'CHANGED_CANDIDATE',
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
 });
 
 test('material behavior discovered in design still escalates before implementation', () => {
