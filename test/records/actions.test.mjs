@@ -1257,8 +1257,9 @@ test('a consuming slice prepares its existing base without resetting a moved can
     write(fixture.repo, 'README.md', 'product\n');
     commitAll(fixture.repo, 'base');
     const engine = actions(fixture.repo);
-    engine.recordPlanRevision({
-      planBytes: planBytes(consumedPlan()),
+    const initial = consumedPlan();
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
       summary: 'Approve one producer and consumer.',
     });
     deliverSlice(engine, fixture.repo, {
@@ -1317,12 +1318,38 @@ test('a consuming slice prepares its existing base without resetting a moved can
     const consumer = state.slices.find(({ location }) => location.slice.id === 'S2');
     assert.equal(consumer.stage, 'verify');
     assert.equal(consumer.next_role, 'verifier');
+
+    write(fixture.repo, 'src/consumer.txt', 'consumer with stale input authority\n');
+    const drifted = commitAll(fixture.repo, 'test: move consumer before input changes');
+    reviseProducer(
+      engine,
+      approved.plan,
+      initial.tracks,
+      'Change the producer contract and product.',
+    );
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'changed producer\n',
+    });
+    assert.throws(
+      () => engine.prepareTrackBase({
+        release: 'actions-v2',
+        slice: 'S2',
+      }),
+      (error) => error?.code === 'CHANGED_OWNER_HEAD',
+    );
+    assert.equal(
+      resolveRef(fixture.repo, referenceNames.trackRef('actions-v2', 'T2')),
+      drifted,
+    );
   } finally {
     fixture.cleanup();
   }
 });
 
-test('candidate refresh rejects merge, reserved-record, and post-PASS movement', async (t) => {
+test('candidate refresh rejects merge, receipt, reserved-record, and post-PASS movement', async (t) => {
   await t.test('merge movement', () => {
     const { fixture, implemented, candidate } = candidateAwaitingVerdict();
     try {
@@ -1365,6 +1392,43 @@ test('candidate refresh rejects merge, reserved-record, and post-PASS movement',
       assert.throws(
         () => readBatonState(fixture.repo, 'actions-v2'),
         (error) => error?.code === 'RESERVED_RECORD_ROOT_CHANGED',
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  await t.test('intervening Baton receipt', () => {
+    const {
+      fixture, implemented, candidate,
+    } = candidateAwaitingVerdict();
+    try {
+      const intervening = appendMetadataReceipt(
+        fixture.repo,
+        implemented.receipt_commit,
+        'forge intervening Baton receipt',
+        {
+          version: 1,
+          release: 'actions-v2',
+          role: 'planner',
+          result: 'approved',
+          plan: implemented.receipt.plan,
+          binds: implemented.receipt_commit,
+          target: candidate,
+          summary: 'A receipt cannot intervene in candidate refresh history.',
+        },
+      );
+      unsafeAtomicUpdateRefs(fixture.repo, [{
+        kind: 'update',
+        ref: referenceNames.trackRef('actions-v2', 'T1'),
+        expectedHead: implemented.receipt_commit,
+        newHead: intervening,
+      }]);
+      write(fixture.repo, 'src/product.txt', 'changed after intervening receipt\n');
+      commitAll(fixture.repo, 'forge product after intervening receipt');
+      assert.throws(
+        () => readBatonState(fixture.repo, 'actions-v2'),
+        (error) => error?.code === 'CHANGED_CANDIDATE',
       );
     } finally {
       fixture.cleanup();
