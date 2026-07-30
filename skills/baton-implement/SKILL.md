@@ -4,7 +4,7 @@ description: "Design or implement one eligible Baton slice attempt without cross
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.10
+release: v1.0.0-rc.11
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:52bd75efb49252cfe15b9a9711c8b816e40e559084aa200d1b881e135df50398
