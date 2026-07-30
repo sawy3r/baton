@@ -1,10 +1,11 @@
 # Why Baton has this shape
 
-Baton began as a useful five-responsibility delivery loop. It later accumulated
-schemas, repeated manuals, universal reviews, and incident-specific procedure.
-Each addition answered a real failure, but every future role paid for it.
+Baton began as a useful five-step delivery loop. Over time it gained more
+schemas, repeated manuals, universal reviews, and incident-specific rules. Each
+addition answered a real failure, but together they made every future delivery
+pay the cost.
 
-The durable value was smaller:
+The part worth keeping was much smaller:
 
 - externally bounded authority;
 - a design decision before implementation;

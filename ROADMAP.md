@@ -1,5 +1,14 @@
 # Baton roadmap
 
+## RC12 — say what Baton does in ordinary language
+
+`v1.0.0-rc.12` keeps the same protocol and safety boundaries while rewriting
+the words people see first: onboarding, the five skills, examples, errors, and
+the terminal and browser board.
+
+Stable roles, verdicts, schemas, fields, error codes, and Git rules do not
+change. Technical identifiers remain available after the plain explanation.
+
 ## RC11 — recover publication without changing behavior
 
 `v1.0.0-rc.11` republishes the exact RC10 behavior under a fresh immutable

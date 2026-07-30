@@ -55,9 +55,9 @@ function renderSkill({ operation, operationBytes, version }) {
       + `operation-version: ${OPERATION_VERSION}\n`
       + `operation-sha256: ${operationDigest}\n`
       + `-->\n\n`
-      + 'Treat the free-form invocation text as the operation inputs. '
-      + 'Resolve relative resources from this skill directory. '
-      + 'This skill is standalone and requires no files outside its directory.\n\n'
+      + 'Use the invoking request as input. '
+      + 'Resolve relative files from this directory. '
+      + 'This standalone skill needs no shared Baton folder.\n\n'
       + begin,
   );
   return Buffer.concat([prefix, operationBytes, Buffer.from(end)]);

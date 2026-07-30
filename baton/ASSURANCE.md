@@ -1,8 +1,10 @@
 # Baton Assurance 1.0
 
-The five principles and responsibilities apply to every delivery. Assurance
-adds evidence or external judgement when risk warrants it; it does not add a
-universal loop.
+Most work follows Baton's standard path. Risky work can require stronger proof
+or an extra decision from the right person, but that does not make every other
+delivery carry the same weight.
+
+The five principles and responsibilities still apply to every delivery.
 
 ## Standard
 

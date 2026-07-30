@@ -1,7 +1,11 @@
 # Baton reference records
 
-The reference record layer keeps authored protocol state to one plan and small
-machine-written receipt commits.
+These helpers save Baton's important facts as one plan and small receipt
+commits. A receipt is a short, machine-written note that says what happened and
+connects it to the exact Git work it covered.
+
+Projects should call these helpers rather than ask an AI agent to construct the
+machine-readable record itself.
 
 - `receipts.mjs` parses `baton-plan/v2`, derives stable slice-contract digests,
   encodes canonical `receipt-v1` trailers, binds exact detail bytes, and rejects
@@ -13,11 +17,11 @@ machine-written receipt commits.
   preparation, receipt append, assembly preparation, and exact
   passed-candidate merge actions.
 
-An engine passes role decisions and evidence to the action layer; it does not
-ask a model to construct protocol JSON. Each action captures the applicable
-refs, validates the plan, receipt, and immutable Git bindings, creates at most
-one bounded commit or effect, and compare-and-set updates only its declared
-ref. An exact retry returns the existing receipt rather than duplicating it.
+An engine passes role decisions and evidence to the action layer. Each action
+captures the applicable refs, validates the plan, receipt, and immutable Git
+bindings, creates at most one bounded commit or effect, and compare-and-set
+updates only its declared ref. An exact retry returns the existing receipt
+rather than duplicating it.
 
 Product candidates remain ordinary product commits. Receipt commits have one
 parent and exactly the same tree as that parent. Captain and Verifier decisions

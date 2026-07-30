@@ -1,9 +1,12 @@
 # Baton Core 1.0
 
-Baton is a small protocol for delivering software autonomously without treating
-an agent’s confidence as proof. It keeps five trust boundaries stable while
-leaving scheduling, retries, recovery, worktrees, drivers, projections, and
-telemetry to the system using it.
+Baton protects five simple promises: agree the work, save the important facts,
+prove the real result, use a fresh checker, and merge only what passed. An
+agent sounding confident is not proof.
+
+The rest of this document states those promises precisely. Scheduling, retries,
+recovery, worktrees, model connections, the read-only board, and telemetry
+belong to the system using Baton.
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 

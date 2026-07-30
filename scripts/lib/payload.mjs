@@ -8,7 +8,7 @@ export const OPERATIONS = Object.freeze([
     name: 'baton-plan',
     source: 'operations/baton-plan.md',
     description:
-      'Propose an externally approved Baton plan or forward-only revision with stable slice identities.',
+      'Plan small, checkable work for someone else to approve.',
     resources: Object.freeze([
       Object.freeze({
         source: 'templates/plan.md',
@@ -20,28 +20,28 @@ export const OPERATIONS = Object.freeze([
     name: 'baton-implement',
     source: 'operations/baton-implement.md',
     description:
-      'Design or implement one eligible Baton slice attempt without crossing review boundaries.',
+      'Explain an approach or build approved work.',
     resources: Object.freeze([]),
   }),
   Object.freeze({
     name: 'baton-design-review',
     source: 'operations/baton-design-review.md',
     description:
-      'Return the Captain decision over one exact Baton plan revision, slice, and design attempt.',
+      'Check an approach before implementation starts.',
     resources: Object.freeze([]),
   }),
   Object.freeze({
     name: 'baton-verify',
     source: 'operations/baton-verify.md',
     description:
-      'Independently verify an exact Baton slice candidate or assembled product from fresh read-only context.',
+      'Independently check finished work from a fresh, read-only context.',
     resources: Object.freeze([]),
   }),
   Object.freeze({
     name: 'baton-merge',
     source: 'operations/baton-merge.md',
     description:
-      'Mechanically compose passed Baton candidates or integrate the exact assembled candidate that passed.',
+      'Combine passed work and merge exactly what the Verifier approved.',
     resources: Object.freeze([]),
   }),
 ]);

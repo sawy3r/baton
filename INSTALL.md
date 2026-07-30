@@ -1,17 +1,16 @@
 # Install Baton
 
-Baton RC11 ships one client-neutral Agent Skills payload under [`skills/`](skills/).
-The five `baton-*` directories are the entire installed product. The repository
-board, record helpers, schemas, and protocol documents remain project tools.
+Baton installs as five Agent Skills. The easiest route is to ask the agent
+already running in your tool to install them.
 
-The agent already running in your tool performs installation because it can
-resolve that tool's current canonical skills directory without Baton keeping a
-client list or guessing paths.
+The agent can check the tool's current documentation, find the right skills
+folder, and show you the complete change before writing anything. Baton does
+not need a separate installer for every AI tool.
 
-## Copyable self-install request
+## Copy this request
 
 ```text
-Install Baton v1.0.0-rc.11 from
+Install Baton v1.0.0-rc.12 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user
@@ -22,34 +21,25 @@ Sworn. After approval, install the exact payload and prove in a clean context
 that all five Baton skills are discovered.
 ```
 
-That request authorises inspection only.
+This first request allows inspection only. The agent must show the preview and
+wait for you before it changes anything.
 
-## Agent installation contract
+## What should happen
 
-The installing agent must:
+1. The agent checks the exact release and its payload fingerprint.
+2. It finds the correct skills folder for your tool.
+3. It shows a complete no-write preview.
+4. You approve that exact preview.
+5. It checks that nothing changed, copies only the approved files, and verifies
+   the result.
+6. It opens a clean tool context and proves all five skills are available.
 
-1. check out the exact requested release, report its commit, and verify
-   `skills/.baton-payload.json`, including its payload digest;
-2. resolve and report the canonical skills destination from current
-   documentation or the live environment, then inspect every expected source
-   and destination path without following symlinks;
-3. show a no-write preview that binds approval to the exact release and commit,
-   payload digest, canonical destination, complete relative-path change set,
-   and observed destination state, then wait for approval;
-4. immediately before any effect, recheck every bound field and the observed
-   destination state; if anything changed, stop and show a new preview;
-5. make only the approved changes, rejecting symlinks and special entries and
-   preserving unrelated skill directories; and
-6. verify the exact installed bytes, then prove native discovery of all five
-   skills in a clean tool context.
+If the preview or destination changes at any point, the agent stops and shows a
+new preview. It never guesses a path or silently replaces files.
 
-The final recheck cannot stop another local process from changing the
-destination afterward. After interruption or change, inspect it and show a new
-preview; never infer success from assumed state.
+## Files installed
 
-## Payload
-
-The complete expected installed path set is:
+The complete payload is:
 
 ```text
 baton-plan/SKILL.md
@@ -60,47 +50,24 @@ baton-verify/SKILL.md
 baton-merge/SKILL.md
 ```
 
-`skills/.baton-payload.json` binds each file to the RC11 release, source path,
-source digest, generated digest, and complete payload digest. Each `SKILL.md`
-contains one exact canonical operation region. Regeneration is deterministic:
+No board, schema, repository helper, or Sworn file is installed with these
+skills.
 
-```sh
-node scripts/generate-skills.mjs --check
-```
+## Updating or removing Baton
 
-## Exact-state rules
+An update has two separately approved operations: removal, then installation.
 
-- The payload is installed or removable only when the complete expected path
-  set is byte-identical, with no missing, extra, symlink, or special entries
-  inside the five skill directories.
-- An incomplete exact payload is never adopted as installed or removed
-  automatically. It requires a new preview and user direction.
-- Modified, mixed, ambiguous, or unowned state stops. The agent must not
-  overwrite it or claim ownership.
+1. preview removal of the exact old payload;
+2. approve and remove only those exact files;
+3. preview the new payload; and
+4. approve, install, and verify it.
 
-## Older RC2-RC10 installations
+An incomplete or modified install is not removed automatically. The agent
+shows what it found and asks what to do.
 
-Do not install RC11 over files or state owned by RC2 through RC10. Use the exact
-immutable release's own safe uninstall preview and apply flow. Only after its
-exact uninstall is approved and complete may the agent preview RC11. Ambiguous
-release, ownership, or bytes stops.
+## Prove the install
 
-## Update and removal
-
-An update is two separately approved operations:
-
-1. inspect and preview removal of the exact complete old payload;
-2. after approval and the final recheck, remove only that payload;
-3. inspect the resulting destination and preview installation of the new
-   release; and
-4. after separate approval and another final recheck, install and verify the
-   new exact payload.
-
-## Prove discovery
-
-Filesystem equality is necessary but not sufficient. Start a clean tool
-context and use its native skill listing or discovery surface to prove these
-five names are available:
+The install is complete only when a clean tool context discovers:
 
 ```text
 baton-plan
@@ -110,11 +77,37 @@ baton-verify
 baton-merge
 ```
 
-If any skill is missing, do not report a successful install. Recheck the
-tool's current documentation and the chosen scope; do not move files by
-guessing.
+If one is missing, the agent rechecks the tool's current documentation and the
+chosen install scope. It does not move files by guessing.
 
-## Start
+Start by asking the agent to use `baton-plan`.
 
-Ask the agent to begin with `baton-plan`. The [README](README.md) explains the
-five handoffs and the optional repository board.
+## Technical safety details
+
+The installing agent must bind approval to the exact release and commit,
+payload digest, canonical destination, complete relative-path change set, and
+observed destination state. It must recheck all of those facts and the
+destination immediately before any effect.
+The rule is simple: if anything changed, stop and show a new preview.
+
+The complete expected path set is byte-identical only when there are no
+missing, extra, symlink, or special entries inside the five skill directories.
+An incomplete exact payload is never adopted as installed or removed
+automatically. Modified, mixed, ambiguous, or unowned state stops.
+
+After interruption or change, the agent inspects the destination and presents a
+new preview. The final recheck cannot prevent another local process from
+changing the destination afterward, so success is based on the observed result,
+not assumed state.
+
+Do not install RC12 over files owned by RC2 through RC11. Use the exact
+immutable release's own safe uninstall, including its preview and approval
+flow. Only after that exact uninstall completes may the agent preview RC12.
+
+`skills/.baton-payload.json` lists every source and generated fingerprint and
+the complete payload digest. Regeneration is deterministic: the same sources
+produce the same files.
+
+```sh
+node scripts/generate-skills.mjs --check
+```

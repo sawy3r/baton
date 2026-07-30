@@ -1,8 +1,11 @@
 # Baton Protocol 1.0
 
-Baton specifies responsibility boundaries and the durable facts transferred
-between them. It does not prescribe a scheduler, worktree strategy, provider,
-model, project-management method, or recovery state machine.
+In plain language, this document says who may make each decision and what must
+be saved when work moves to the next person or agent. Those boundaries stop the
+builder from approving its own plan or marking its own work as passed.
+
+Baton does not choose the scheduler, worktree strategy, AI provider, model,
+project-management method, or recovery system.
 
 ## 1. Responsibilities
 

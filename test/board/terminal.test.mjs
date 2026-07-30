@@ -32,8 +32,12 @@ test('terminal renderer exposes plan revision and slice attempt when projected',
   board.releases[0].plan_revision = 3;
   board.releases[0].tracks[0].work[0].attempt = 2;
   const rendered = renderTerminal(board, { color: 'never' });
-  assert.match(rendered, /  plan r3 /);
-  assert.match(rendered, /W1 .*  attempt=2  outcome=/);
+  assert.match(rendered, /Plan revision 3/);
+  assert.match(rendered, /W1 — Ready for implementation · attempt 2/);
+  assert.ok(
+    rendered.indexOf('Ready for implementation') < rendered.indexOf('stage=design'),
+    'plain status must appear before raw status details',
+  );
 });
 
 test('terminal renderer sanitizes executable and directional control text', () => {

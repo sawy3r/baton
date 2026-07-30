@@ -1,7 +1,10 @@
 # Baton Conformance 1.0
 
-Conformance is behavioral. Loading Baton prose, naming five agents, or drawing
-a workflow does not establish it.
+Following Baton means the system actually protects the five handoffs. Merely
+loading these documents, naming five agents, or drawing the workflow is not
+enough.
+
+The requirements below explain the behavior an implementation must prove.
 
 ## Portable protocol profile
 

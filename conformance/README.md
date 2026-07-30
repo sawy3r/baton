@@ -1,8 +1,14 @@
 # Baton conformance
 
-Baton separates evidence the portable reference kit can produce from evidence
-that only a real autonomous engine can produce. The checked-in manifest has one
-profile for each boundary.
+These checks answer two different questions:
+
+1. Does the portable Baton kit handle plans, receipts, Git, and the board
+   correctly?
+2. Does a real autonomous engine keep the full agent loop safe when processes
+   fail, retry, or run at the same time?
+
+The portable kit can answer the first question itself. Only a real engine can
+answer the second.
 
 ## Portable kit
 

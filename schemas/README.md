@@ -1,10 +1,11 @@
 # Baton receipt schema
 
-Baton's authored JSON Schema is
-[`receipt-v1.json`](receipt-v1.json). It bounds the compact receipt envelope
-and its role-specific evidence fields. The reference validator additionally
-enforces canonical one-line JSON, allowed role/result pairs, required evidence
-for each result, and exact detail hashing.
+A Baton receipt is a small saved note about a decision or result. Its readable
+part explains what happened; its machine-readable part connects that outcome
+to the exact plan, work, and evidence.
+
+Baton's JSON Schema is [`receipt-v1.json`](receipt-v1.json). The technical
+rules below keep every receipt small and unambiguous.
 
 One receipt is stored in the final `Baton-Receipt:` trailer of a metadata-only
 Git commit:
