@@ -30,3 +30,8 @@ A revised plan need not rewrite an unchanged prepared product base. The release
 ref supplies current plan authority; record files visible on a track remain
 history. Treating those files as competing authority creates metadata-only
 handoff churn.
+
+The portable record engine inspects attributes from an isolated exact-source
+index, avoiding newer-Git-only flags, and canonicalizes the private ref-helper
+directory before handing it to a child process. A macOS record-engine CI job
+now protects both paths.

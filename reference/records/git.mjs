@@ -568,7 +568,9 @@ export function unsafeAtomicUpdateRefs(repo, operations) {
     label: 'resolve ref transaction object format',
   }).trim();
   const prepared = validateRefTransactionOperations(operations, objectFormat);
-  const hooksDirectory = mkdtempSync(path.join(tmpdir(), 'baton-ref-hooks-'));
+  const hooksDirectory = realpathSync(
+    mkdtempSync(path.join(tmpdir(), 'baton-ref-hooks-')),
+  );
   const request = Buffer.from(JSON.stringify({
     gitExecutable: gitExecutablePath(),
     hooksDirectory,
@@ -1632,9 +1634,14 @@ function treePaths(context, commit) {
 function mergeAttributesAtSource(context, source, paths) {
   if (paths.length === 0) return [];
   const input = Buffer.concat(paths.flatMap((entry) => [entry, Buffer.from([0])]));
+  runEngineGit(
+    context,
+    ['read-tree', source],
+    { label: `seed exact merge attributes at ${source}` },
+  );
   const raw = runEngineGit(
     context,
-    ['check-attr', '-z', '--stdin', `--source=${source}`, 'merge'],
+    ['check-attr', '-z', '--stdin', '--cached', 'merge'],
     {
       encoding: null,
       input,
