@@ -5,6 +5,8 @@ import { pathToFileURL } from 'node:url';
 import {
   GitRecordError,
   repositoryRoot,
+  resolveProductExclusionAdmission,
+  resolveRecordPathAdmission,
   unsafeRunGit,
 } from '../records/git.mjs';
 import {
@@ -403,13 +405,27 @@ function invalidRelease(discovered, error, repository) {
   });
 }
 
+function boardProductExclusionAdmission(repo) {
+  const recordPathAdmission = resolveRecordPathAdmission(repo);
+  return resolveProductExclusionAdmission(repo, {
+    recordPathAdmission,
+    resolveBehavioralInertness: (request) => Object.freeze({
+      ...request,
+      decision: 'inert',
+    }),
+  });
+}
+
 export function createBoardOracle({ readState = readBatonState } = {}) {
   if (typeof readState !== 'function') throw new TypeError('readState must be a function');
   return frozen({
     project(repo = process.cwd(), options = {}) {
       let root;
+      let productExclusionAdmission;
       try {
         root = repositoryRoot(repo);
+        productExclusionAdmission = options.productExclusionAdmission
+          ?? boardProductExclusionAdmission(root);
       } catch (error) {
         return frozen({
           schema_version: BOARD_VERSION,
@@ -440,7 +456,7 @@ export function createBoardOracle({ readState = readBatonState } = {}) {
             return projectState(readState(root, current.release, {
               expectedReleaseHead: current.head,
               captureRefs: options.captureRefs,
-              productExclusionAdmission: options.productExclusionAdmission,
+              productExclusionAdmission,
             }));
           } catch (error) {
             if (

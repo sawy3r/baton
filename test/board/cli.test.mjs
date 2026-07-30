@@ -10,7 +10,10 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
-import { baselineFixture } from './helpers.mjs';
+import {
+  baselineFixture,
+  passSlice,
+} from './helpers.mjs';
 
 const ORACLE = fileURLToPath(
   new URL('../../reference/board/oracle.mjs', import.meta.url),
@@ -37,6 +40,7 @@ test('oracle CLI uses 0, 2, and 64 for valid, invalid-state, and invocation resu
   const fixture = baselineFixture();
   const nonRepository = mkdtempSync(path.join(tmpdir(), 'baton-cli-non-repo-'));
   try {
+    passSlice(fixture, 'S1');
     const valid = invoke(ORACLE, [fixture.repo]);
     assert.equal(valid.status, 0, valid.stderr);
     assert.equal(JSON.parse(valid.stdout).valid, true);
