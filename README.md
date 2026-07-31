@@ -1,64 +1,75 @@
 # Baton
 
-Baton is a small, open protocol for delivering software with agents. It keeps
-the facts that make “done” believable and leaves the operational machinery to
-an engine.
+Baton is a simple way for AI agents to hand software work to one another
+without losing track of what was agreed or what actually passed.
+
+> Baton is how the work is handed off. Sworn is the team that carries it.
 
 ```text
-approved plan and slices
-  -> Implementer design TL;DR
-  -> Captain decision
-  -> implementation candidate
-  -> fresh Verifier decision
-  -> merge the exact candidate that passed
+You approve the work
+        |
+        v
+Implementer explains the approach
+        |
+        v
+Captain checks the approach
+        |
+        v
+Implementer builds it
+        |
+        v
+Fresh Verifier checks the result
+        |
+        v
+Merge exactly what passed
 ```
 
-The Verifier starts fresh, cannot change the candidate, and returns `PASS`,
-`FAIL`, or `BLOCKED`. A broken runner is not a verdict. Only `PASS` over the
-current candidate can reach Merge.
+The point is straightforward: the agent that builds the work does not get the
+final say, and the version that was checked is the version that gets merged.
+If a tool crashes or a response is malformed, Baton stops rather than guessing
+that the work passed.
 
-Baton defines those responsibilities and trust-critical facts.
-[Sworn](https://github.com/sawy3r/sworn) is the reference engine for scheduling,
-retries, recovery, worktrees, drivers, projections, and telemetry. Baton does
-not run models, hold provider credentials, or choose a model.
+[Sworn](https://github.com/swornagent/sworn) runs this loop: it starts agents,
+keeps work moving, recovers interrupted runs, connects to different AI tools,
+and shows progress. Baton itself is only the shared way of working. It does not
+run models, hold provider credentials, or choose a model.
 
-## The small model
+## The five jobs
 
-Five principles make completion trustworthy:
+- **Planner** — turns the goal into small pieces that a person approves.
+- **Implementer** — explains an approach, then builds the approved work.
+- **Captain** — checks the approach before implementation begins.
+- **Verifier** — starts fresh and checks the finished work independently.
+- **Merge** — combines and merges only the exact work that passed.
 
-1. **Stay inside the agreed work** — begin from an externally approved plan.
-2. **Keep durable facts** — Git and compact receipts outrank chat and dashboards.
-3. **Prove the real result** — connect each claim to observable evidence.
-4. **Use a fresh Verifier** — the builder does not mark its own homework.
-5. **Merge only what passed** — recheck the candidate and target at Merge.
+These are responsibilities, not a requirement for five people, five providers,
+or five long-running processes.
 
-Five responsibilities carry those principles: **Planner**, **Implementer**,
-**Captain**, **Verifier**, and **Merge**. They are authority boundaries, not a
-requirement for five people, processes, or providers.
+If the Verifier records `FAIL`, the Implementer fixes the same piece of work.
+The same independent Verifier may check the repair under the
+[direct-repair rule](baton/PROTOCOL.md#direct-repair-continuation), or a new one
+may start fresh. Either way, it checks the whole result again.
 
-The durable minimum is one approved plan plus small machine-written receipts
-for decisions and outcomes. The candidate diff, tests, code, and Git history
-carry implementation evidence. Longer design or evidence documents are
-optional when the work needs them.
+## What Baton keeps
 
-## Commitment, not inventory
+Baton keeps only the facts needed to trust the handoff:
 
-An approved plan commits the delivery to observable behavior, product surfaces,
-acceptance, minimum checks, semantic limits, authority, and real product
-dependencies. It is not a prediction of every file implementation will touch
-or every command evidence will need.
+- the approved plan;
+- the exact work each decision covered;
+- a small receipt for each decision or result; and
+- the evidence that shows what passed.
 
-Discovering an ancillary test, oracle, support file, or useful additional check
-does not change that commitment. Record the actual paths and check results in
-the candidate and evidence, then continue under the same approved plan and
-stable slice. A material change to behavior, consumed product, contract,
-authority, or an externally owned decision still stops for the appropriate
-review or approval.
+The code, tests, diff, commits, and Git history carry most of the detail. Baton
+does not require a second pile of design and proof documents.
 
-## Portable operations
+The plan says what must be true, not every file an agent might touch. Finding a
+supporting test, helper, or useful extra check does not restart the work.
+Changing the promised behavior, a real product dependency, who may approve
+the work, or another externally owned decision does.
 
-Baton ships one client-neutral Agent Skills payload containing exactly five
-standalone skills:
+## Use Baton in any agent tool
+
+Baton ships five standalone Agent Skills:
 
 - `baton-plan`
 - `baton-implement`
@@ -66,16 +77,10 @@ standalone skills:
 - `baton-verify`
 - `baton-merge`
 
-Each skill contains the exact canonical operation text. `baton-plan` also
-contains its plan template at `templates/plan.md`; no separate Baton support
-directory is required. The board remains a thin read-only repository tool.
-
-## Get started
-
-Ask the agent already running in your tool to install the exact RC11 payload:
+Ask the agent already running in your tool to install the exact RC12 payload:
 
 ```text
-Install Baton v1.0.0-rc.11 from
+Install Baton v1.0.0-rc.12 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user
@@ -86,25 +91,11 @@ Sworn. After approval, install the exact payload and prove in a clean context
 that all five Baton skills are discovered.
 ```
 
-The running agent owns destination discovery and the approval conversation.
-Baton deliberately has no maintained client list, client-path table, or
-installer helper. Approval binds the exact release commit, payload digest,
-canonical destination, complete change set, and observed state. The agent
-rechecks those facts immediately before effects. See [INSTALL.md](INSTALL.md).
+The agent finds the right skills folder for the tool, shows exactly what it
+will change, waits for approval, installs the files, and proves the tool can
+see all five skills. See [INSTALL.md](INSTALL.md) for the full safety checks.
 
-## Revision and recovery
-
-A plan advances at one path under one release identity. Its slices keep stable
-identities. A design revision adds a design attempt, a Verifier `FAIL` adds an
-implementation attempt, and a plan revision reuses unchanged slices while
-invalidating only changed slices and the real dependency closure.
-
-Baton blocks when a trust-critical fact cannot be established. Duplicate
-dispatch, stale board output, runner interruption, or a reconcilable Git effect
-is operational; an engine reconstructs or retries it without manufacturing
-approval, `PROCEED`, `PASS`, or `MERGED`.
-
-## Repository map
+## Technical reference
 
 - [`skills/`](skills/) — generated five-skill standalone payload
 - [`operations/`](operations/) — canonical operation sources
@@ -114,6 +105,11 @@ approval, `PROCEED`, `PASS`, or `MERGED`.
 - [`baton/CONFORMANCE.md`](baton/CONFORMANCE.md) — observable obligations
 - [`reference/`](reference/) — portable receipt, Git, and read-only board kit
 - [`conformance/`](conformance/) — portable and autonomous profiles
+
+Plans keep the same release and slice names as work changes. A new design is
+another attempt on the same slice; a failed implementation is repaired on that
+same slice; and a changed plan keeps completed work whose promise and inputs
+did not change. Git preserves the earlier versions.
 
 ## License
 

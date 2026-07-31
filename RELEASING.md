@@ -49,9 +49,9 @@ contracts. Release candidates use immutable annotated
    Record source tag, payload digest, chosen scope and destination, preview,
    approval, installed tree digest, and native discovery result. These are
    release-evidence clients, not a maintained product allow-list.
-8. Prove an exact RC2–RC10 installation is never overwritten. Its own immutable
-   release must preview and complete safe uninstall before RC11 installation is
-   eligible.
+8. Prove an exact older installation is never overwritten. Its own immutable
+   release must preview and complete safe uninstall before the current
+   installation is eligible.
 9. Merge the reviewed candidate under branch protection and rerun every gate
    on the exact result. Create the annotated tag only after those checks pass.
 10. Create the GitHub prerelease as a draft, attach and download-verify every
@@ -75,7 +75,7 @@ from Sworn or another real engine.
 
 ## History boundary
 
-Git tags preserve the retired host-specific installers and their exact
-ownership rules. They are release-specific removal tools, not live RC11 product
-code. Do not copy historical uninstall logic into the live product or silently
-translate old state.
+Git tags preserve retired host-specific installers and their exact ownership
+rules. They are release-specific removal tools, not live product code. Do not
+copy historical uninstall logic into the current product or silently translate
+old state.

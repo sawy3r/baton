@@ -1,24 +1,29 @@
-Baton baton.board/v1  example/baton  valid
+Baton board — Current
+Repository: example/baton
 
-Release v1.0.0  in_progress
-  plan r1 sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-  release refs/heads/release-wt/v1.0.0 @ 1111111111111111111111111111111111111111
-  target  refs/heads/main @ 2222222222222222222222222222222222222222
-  ! TRACK_REF_ABSENT v1.0.0 / T1: track T1 may be materialized from approved facts
-  ! TRACK_REF_ABSENT v1.0.0 / T2: track T2 may be materialized from approved facts
-  Track T1  pending  materialisation=baseline
-    ref refs/heads/track/v1.0.0/T1 @ —
-    W1  design / ready / implementer  attempt=1  outcome=none
-      source plan refs/heads/track/v1.0.0/T1 @ 1111111111111111111111111111111111111111
-      next baton-implement [work] v1.0.0 / T1 / W1
-  Track T2  pending  materialisation=baseline
-    ref refs/heads/track/v1.0.0/T2 @ —
-    depends T1
-    waiting for T1
-    W2  design / waiting / none  attempt=1  outcome=none
-      source plan refs/heads/track/v1.0.0/T2 @ 1111111111111111111111111111111111111111
-      depends W1
-  Assembly  verify / waiting / none  outcome=none
+Release v1.0.0 — In progress
+  Track T1 — Waiting
+    W1 — Ready for implementation · attempt 1
+      Next: Design or build the work — v1.0.0 / T1 / W1 (baton-implement)
+      Technical details: stage=design · status=ready · next_role=implementer · outcome=none
+      Source: plan refs/heads/track/v1.0.0/T1 @ 1111111111111111111111111111111111111111
+    Technical details: materialisation=baseline · ref=refs/heads/track/v1.0.0/T1 @ —
+  Track T2 — Waiting
+    Follows: T1
+    Waiting for: T1
+    W2 — Waiting · attempt 1
+      Follows: W1
+      Technical details: stage=design · status=waiting · next_role=none · outcome=none
+      Source: plan refs/heads/track/v1.0.0/T2 @ 1111111111111111111111111111111111111111
+    Technical details: materialisation=baseline · ref=refs/heads/track/v1.0.0/T2 @ —
+  Complete release — Waiting
+    Technical details: stage=verify · status=waiting · next_role=none · outcome=none
+  Release technical details
+    Plan revision 1 · fingerprint sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    Release ref refs/heads/release-wt/v1.0.0 @ 1111111111111111111111111111111111111111
+    Target ref  refs/heads/main @ 2222222222222222222222222222222222222222
 
-Next operations
-  baton-implement [work] v1.0.0 / T1 / W1
+Next steps
+  Design or build the work — v1.0.0 / T1 / W1 (baton-implement)
+
+Board technical details: format=baton.board/v1 · state=valid

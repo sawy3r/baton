@@ -293,7 +293,7 @@ test('shell, client, and stylesheet remain static and executable-sink free', asy
     assert.match(client, /textContent/);
     assert.match(client, /replaceChildren/);
     assert.match(client, /setInterval\(refresh, 15000\)/);
-    assert.match(client, /showing last committed view/);
+    assert.match(client, /showing the last saved view/);
     assert.match(client, /baton\.graph\/v1/);
     assert.doesNotMatch(
       client,
@@ -336,7 +336,7 @@ test('client renders repository text literally and retains the last view after r
     await new Promise((resolve) => setImmediate(resolve));
 
     assert.equal(execution.requestCount(), 1);
-    assert.equal(execution.freshness.textContent, 'Committed state · current');
+    assert.equal(execution.freshness.textContent, 'Up to date');
     assert.match(execution.board.textContent, /<script>/);
     assert.match(execution.board.textContent, /<svg onload/);
     assert.equal(execution.createdTags.includes('script'), false);
@@ -350,7 +350,7 @@ test('client renders repository text literally and retains the last view after r
     assert.deepEqual(nodeSnapshot(execution.board), committedView);
     assert.equal(
       execution.freshness.textContent,
-      'Refresh failed · showing last committed view',
+      'Could not refresh · showing the last saved view',
     );
   } finally {
     await running.close();
@@ -376,7 +376,7 @@ test('malformed graph refresh retains the last complete committed view', async (
     assert.deepEqual(nodeSnapshot(execution.board), committedView);
     assert.equal(
       execution.freshness.textContent,
-      'Refresh failed · showing last committed view',
+      'Could not refresh · showing the last saved view',
     );
   } finally {
     await running.close();
@@ -403,9 +403,9 @@ test('client renders the release as a semantic relay graph with explicit relatio
     assert.match(execution.board.textContent, /after W1 · uses W1/);
     assert.match(execution.board.textContent, /Depends on W1/);
     assert.match(execution.board.textContent, /Consumes W1/);
-    assert.match(execution.board.textContent, /Final exchangeAssembly/);
-    assert.match(execution.board.textContent, /FinishMergewaiting/);
-    assert.match(execution.board.textContent, /Leg 01W2waiting/);
+    assert.match(execution.board.textContent, /Final checkComplete release/);
+    assert.match(execution.board.textContent, /FinishMergeWaiting/);
+    assert.match(execution.board.textContent, /Leg 01W2Waiting/);
 
     const semanticTags = new Set(descendants(
       execution.board,

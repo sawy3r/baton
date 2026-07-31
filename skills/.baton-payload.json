@@ -1,8 +1,8 @@
 {
   "schema_version": "baton.skills-payload/v1",
-  "release": "v1.0.0-rc.11",
-  "package_version": "1.0.0-rc.11",
-  "payload_digest": "sha256:f3125e25d85f13cbab5437cb52a61627be33775d4f46b5665d4976b94cba12cc",
+  "release": "v1.0.0-rc.12",
+  "package_version": "1.0.0-rc.12",
+  "payload_digest": "sha256:f2db06b64a31403e7a864816a3b278a48578a5788eed3235d2be95cfbf093ef2",
   "generator_version": "baton.skill-generator/v1",
   "operation_version": "baton.operation/v2",
   "skills": [
@@ -10,7 +10,7 @@
       "name": "baton-plan",
       "path": "baton-plan",
       "operation_source": "operations/baton-plan.md",
-      "operation_digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413",
+      "operation_digest": "sha256:443f8bbce2914f2586de8ae7796b346554097421742071e8494d459673b82760",
       "files": [
         "baton-plan/SKILL.md",
         "baton-plan/templates/plan.md"
@@ -20,7 +20,7 @@
       "name": "baton-implement",
       "path": "baton-implement",
       "operation_source": "operations/baton-implement.md",
-      "operation_digest": "sha256:52bd75efb49252cfe15b9a9711c8b816e40e559084aa200d1b881e135df50398",
+      "operation_digest": "sha256:c274017d47d9dd7bc86ff1188cab1b688f7df73500b3bacdb4244bf496c8c473",
       "files": [
         "baton-implement/SKILL.md"
       ]
@@ -29,7 +29,7 @@
       "name": "baton-design-review",
       "path": "baton-design-review",
       "operation_source": "operations/baton-design-review.md",
-      "operation_digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84",
+      "operation_digest": "sha256:ecfecf92a1858db9a27de6105ccf647f5a15ec85ed76a346072182e22e99a6d5",
       "files": [
         "baton-design-review/SKILL.md"
       ]
@@ -38,7 +38,7 @@
       "name": "baton-verify",
       "path": "baton-verify",
       "operation_source": "operations/baton-verify.md",
-      "operation_digest": "sha256:859d18353177b8f7692ae2e8fdb7b763020d7d0ab312d492e055565043b0bc4f",
+      "operation_digest": "sha256:8ca4dff1ab2c607cd23ea2828daf11dc88a7dbeb3194229f2ff5c3c83f510014",
       "files": [
         "baton-verify/SKILL.md"
       ]
@@ -47,7 +47,7 @@
       "name": "baton-merge",
       "path": "baton-merge",
       "operation_source": "operations/baton-merge.md",
-      "operation_digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d",
+      "operation_digest": "sha256:4056008e46a987a9c08cc69f297acfe08c1844eb1edcadf146096ea9bd23ada3",
       "files": [
         "baton-merge/SKILL.md"
       ]
@@ -56,45 +56,45 @@
   "files": [
     {
       "path": "baton-design-review/SKILL.md",
-      "digest": "sha256:3fb8c22d763b46f98bd4cf12ffd42e4d079f1763fa27203b97c40f64638ee8e6",
-      "release": "v1.0.0-rc.11",
+      "digest": "sha256:2094edbc1af663809a7fdb605dfd772f4b3e1635a177b09a41a547d8efa3d341",
+      "release": "v1.0.0-rc.12",
       "source": "operations/baton-design-review.md",
-      "source_digest": "sha256:71cf67af0b9f3089a58bd6dc9d4c4054a41643135b89bf5bc332a2861d68ea84"
+      "source_digest": "sha256:ecfecf92a1858db9a27de6105ccf647f5a15ec85ed76a346072182e22e99a6d5"
     },
     {
       "path": "baton-implement/SKILL.md",
-      "digest": "sha256:dd7e59eb2acc8398ee8d2ac6238a5dfe51d9c5844a6388c4889c70a572f25a8c",
-      "release": "v1.0.0-rc.11",
+      "digest": "sha256:40d13c26229889968a29620c6d02fa8b23697e7820e8d0114e8fb0a64e8c38f0",
+      "release": "v1.0.0-rc.12",
       "source": "operations/baton-implement.md",
-      "source_digest": "sha256:52bd75efb49252cfe15b9a9711c8b816e40e559084aa200d1b881e135df50398"
+      "source_digest": "sha256:c274017d47d9dd7bc86ff1188cab1b688f7df73500b3bacdb4244bf496c8c473"
     },
     {
       "path": "baton-merge/SKILL.md",
-      "digest": "sha256:8993a0c87d74296841c132b36d277a29e92b190154be65a86f166f5a01a725d5",
-      "release": "v1.0.0-rc.11",
+      "digest": "sha256:8a0ab413ec15545092cfcf67d44b74589cea5aebdf09ce703f3ea6583abe027a",
+      "release": "v1.0.0-rc.12",
       "source": "operations/baton-merge.md",
-      "source_digest": "sha256:d2c1b324ff251c3abe8e1e32a7651b9896b69271a6d7b37107efcd09e2da141d"
+      "source_digest": "sha256:4056008e46a987a9c08cc69f297acfe08c1844eb1edcadf146096ea9bd23ada3"
     },
     {
       "path": "baton-plan/SKILL.md",
-      "digest": "sha256:e9c8bbda06a03dad8eafdb631a1da827f13804394756848839a136e837089a3b",
-      "release": "v1.0.0-rc.11",
+      "digest": "sha256:4cd5dc506761f8137521d08197c9ec7ec18ce19f19588fb434d6901cec69c7b0",
+      "release": "v1.0.0-rc.12",
       "source": "operations/baton-plan.md",
-      "source_digest": "sha256:3385b9bd62eee8cbe8b7e23e04abe872e133aa113d2c9ca0b7da3454a17bd413"
+      "source_digest": "sha256:443f8bbce2914f2586de8ae7796b346554097421742071e8494d459673b82760"
     },
     {
       "path": "baton-plan/templates/plan.md",
       "digest": "sha256:ec9571a105445875c3b94f6303035c2dfc9985f39972790ea6473d39e96c9ba5",
-      "release": "v1.0.0-rc.11",
+      "release": "v1.0.0-rc.12",
       "source": "templates/plan.md",
       "source_digest": "sha256:ec9571a105445875c3b94f6303035c2dfc9985f39972790ea6473d39e96c9ba5"
     },
     {
       "path": "baton-verify/SKILL.md",
-      "digest": "sha256:60b2f02045b968149515fcb84a73cb11c0a2fc439f867a1277d1b45469b02035",
-      "release": "v1.0.0-rc.11",
+      "digest": "sha256:c2f4bfdebd20d6d35781b26b8a56a484efa5ee8e3d398c3e4aa37fd2039ecccb",
+      "release": "v1.0.0-rc.12",
       "source": "operations/baton-verify.md",
-      "source_digest": "sha256:859d18353177b8f7692ae2e8fdb7b763020d7d0ab312d492e055565043b0bc4f"
+      "source_digest": "sha256:8ca4dff1ab2c607cd23ea2828daf11dc88a7dbeb3194229f2ff5c3c83f510014"
     }
   ]
 }
