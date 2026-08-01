@@ -85,7 +85,7 @@ test('terminal Merge accepts target advancement only when it contains the record
     assert.equal(state.assembly.status, 'complete');
     assert.equal(state.assembly.outcome, 'merged');
     assert.equal(state.plan.target_stale, false);
-    assert.equal(state.diagnostics.some(({ code }) => code === 'TARGET_MOVED'), false);
+    assert.equal(state.diagnostics.some(({ code }) => code === 'TARGET_DIVERGED'), false);
 
     git(fixture.repo, 'switch', '-q', 'main');
     write(fixture.repo, 'after-merge.txt', 'still contains the recorded result\n');
@@ -93,7 +93,7 @@ test('terminal Merge accepts target advancement only when it contains the record
     state = readBatonState(fixture.repo, 'v1.0.0', {
     });
     assert.equal(state.plan.target_stale, false);
-    assert.equal(state.diagnostics.some(({ code }) => code === 'TARGET_MOVED'), false);
+    assert.equal(state.diagnostics.some(({ code }) => code === 'TARGET_DIVERGED'), false);
 
     git(fixture.repo, 'switch', '-q', `release-wt/${fixture.metadata.release}`);
     git(fixture.repo, 'branch', '-f', 'main', fixture.target);

@@ -244,7 +244,7 @@ test('design receipt derives Captain responsibility without a status cursor', ()
   }
 });
 
-test('moved target is recoverable through a plan revision, not BLOCKED', () => {
+test('fast-forward target movement keeps the approved work eligible', () => {
   const fixture = baselineFixture();
   try {
     git(fixture.repo, 'switch', '-q', 'main');
@@ -253,25 +253,87 @@ test('moved target is recoverable through a plan revision, not BLOCKED', () => {
     const release = projectBoard(fixture.repo).releases[0];
     assert.equal(release.valid, true);
     assert.equal(release.status, 'in_progress');
-    assert.equal(release.diagnostics[0].code, 'TARGET_MOVED');
+    assert.equal(release.diagnostics.some(({ code }) => code === 'TARGET_DIVERGED'), false);
     assert.deepEqual(release.next_operations, [{
-      operation: 'baton-plan',
-      scope: 'release',
+      operation: 'baton-implement',
+      scope: 'work',
       release: 'v1.0.0',
-      track: null,
-      work: null,
+      track: 'T1',
+      work: 'S1',
     }]);
     assert.deepEqual(graphNode(release, 'plan'), {
       id: 'plan',
       kind: 'plan',
-      state: 'revision_required',
-      next_operation: release.next_operations[0],
+      state: 'approved',
+      next_operation: null,
+    });
+    assert.equal(graphNode(release, 'slice:S1').state, 'ready');
+    assert.equal(graphNode(release, 'slice:S1').next_operation, release.next_operations[0]);
+    assert.equal(graphNode(release, 'assembly').next_operation, null);
+    assert.equal(graphNode(release, 'merge').next_operation, null);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('divergent target history pauses without inventing a plan revision', () => {
+  const fixture = baselineFixture();
+  try {
+    const engine = createBatonActions({ repo: fixture.repo });
+    const designInput = {
+      release: 'v1.0.0',
+      slice: 'S1',
+      role: 'implementer',
+      result: 'designed',
+      summary: 'Prepare one bounded design.',
+    };
+    const designed = engine.appendReceipt(designInput);
+    const divergent = git(
+      fixture.repo,
+      'commit-tree',
+      `${fixture.target}^{tree}`,
+      '-m',
+      'replacement target root',
+    );
+    git(fixture.repo, 'branch', '-f', 'main', divergent);
+
+    const release = projectBoard(fixture.repo).releases[0];
+    assert.equal(release.valid, true);
+    assert.equal(release.status, 'blocked');
+    assert.equal(release.diagnostics[0].code, 'TARGET_DIVERGED');
+    assert.deepEqual(release.next_operations, []);
+    assert.deepEqual(graphNode(release, 'plan'), {
+      id: 'plan',
+      kind: 'plan',
+      state: 'blocked',
+      next_operation: null,
     });
     assert.equal(graphNode(release, 'slice:S1').state, 'waiting');
     assert.equal(graphNode(release, 'slice:S1').next_operation, null);
-    assert.equal(graphNode(release, 'assembly').next_operation, null);
-    assert.equal(graphNode(release, 'merge').next_operation, null);
-    assert.equal(graphNode(release, 'plan').next_operation, release.next_operations[0]);
+
+    const releaseRef = 'refs/heads/release-wt/v1.0.0';
+    const trackRef = 'refs/heads/track/v1.0.0/T1';
+    const releaseHead = git(fixture.repo, 'rev-parse', releaseRef);
+    const trackHead = git(fixture.repo, 'rev-parse', trackRef);
+    const retry = engine.appendReceipt(designInput);
+    assert.equal(retry.changed, false);
+    assert.equal(retry.receipt_commit, designed.receipt_commit);
+    for (const action of [
+      () => engine.appendReceipt({
+        release: 'v1.0.0',
+        slice: 'S1',
+        role: 'captain',
+        result: 'proceed',
+        summary: 'Do not advance this design.',
+      }),
+      () => engine.prepareTrackBase({ release: 'v1.0.0', slice: 'S1' }),
+      () => engine.prepareAssembly({ release: 'v1.0.0', summary: 'Do not assemble.' }),
+      () => engine.mergePassedCandidate({ release: 'v1.0.0', summary: 'Do not merge.' }),
+    ]) {
+      assert.throws(action, (error) => error?.code === 'TARGET_DIVERGED');
+    }
+    assert.equal(git(fixture.repo, 'rev-parse', releaseRef), releaseHead);
+    assert.equal(git(fixture.repo, 'rev-parse', trackRef), trackHead);
   } finally {
     fixture.cleanup();
   }
@@ -360,14 +422,21 @@ test('one-track direct PASS skips assembly and hands the exact Merge operation f
     commitAll(fixture.repo, 'move target after direct PASS');
     const stale = projectBoard(fixture.repo, {
     }).releases[0];
-    assert.equal(graphNode(stale, 'plan').state, 'revision_required');
-    assert.equal(graphNode(stale, 'assembly').state, 'not_required');
+    assert.equal(graphNode(stale, 'plan').state, 'approved');
+    assert.deepEqual(graphNode(stale, 'assembly'), {
+      id: 'assembly',
+      kind: 'assembly',
+      state: 'ready',
+      next_operation: stale.next_operations[0],
+    });
     assert.deepEqual(graphNode(stale, 'merge'), {
       id: 'merge',
       kind: 'merge',
       state: 'waiting',
       next_operation: null,
     });
+    assert.equal(stale.next_operations[0].operation, 'baton-merge');
+    assert.equal(stale.next_operations[0].scope, 'assembly');
   } finally {
     fixture.cleanup();
   }

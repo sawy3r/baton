@@ -1,5 +1,16 @@
 # Baton roadmap
 
+## RC13 — let the target move without restarting the work
+
+`v1.0.0-rc.13` keeps active tracks on their approved working floor while the
+same target branch moves forward. Final assembly adds the latest target to the
+exact passed work and receives a fresh check. If the target advances again,
+only assembly is rebuilt and rechecked.
+
+Rewritten or non-descendant target history pauses as `TARGET_DIVERGED` for
+operational reconciliation. It does not automatically create a plan revision.
+No role, receipt, schema, gate, or lifecycle stage is added.
+
 ## RC12 — say what Baton does in ordinary language
 
 `v1.0.0-rc.12` keeps the same protocol and safety boundaries while rewriting

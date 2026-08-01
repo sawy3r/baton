@@ -4,10 +4,10 @@ description: "Combine passed work and merge exactly what the Verifier approved."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.12
+release: v1.0.0-rc.13
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:4056008e46a987a9c08cc69f297acfe08c1844eb1edcadf146096ea9bd23ada3
+operation-sha256: sha256:f4856ed3c8475fffb316c7296bd38ad6ab5937c757edfe361f20979a45ceaf26
 -->
 
 Use the invoking request as input. Resolve relative files from this directory. This standalone skill needs no shared Baton folder.
@@ -41,8 +41,9 @@ a predicted file list.
 
 1. For a track, prove every required slice has an applicable `PASS`, hold the
    exact candidate still, and combine it in the approved order.
-2. After all tracks are present, identify the exact assembled candidate and
-   stop for fresh `baton-verify` assembly.
+2. After all tracks pass, assemble the latest target with those exact products
+   and stop for fresh `baton-verify` assembly. A later target advance rebuilds
+   and rechecks only this assembly; it does not reset unchanged slices.
 3. For release Merge, recheck the assembly `PASS`, candidate, authority, and
    expected target immediately before integration.
 4. Perform the exact Git change and read the resulting target.
@@ -58,8 +59,8 @@ partial success as `MERGED`.
 
 ## Stop conditions
 
-Stop before changing Git on missing `PASS`, a changed candidate, unsafe target
-movement, conflict, unexpected history or tree, unclear authority, or an
+Stop before changing Git on missing `PASS`, a changed candidate, divergent
+target history, conflict, unexpected history or tree, unclear authority, or an
 unreconciled effect. A stale snapshot needs a rescan, not a Baton verdict.
 
 ## Next handoff

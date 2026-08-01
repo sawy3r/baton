@@ -77,10 +77,10 @@ Baton ships five standalone Agent Skills:
 - `baton-verify`
 - `baton-merge`
 
-Ask the agent already running in your tool to install the exact RC12 payload:
+Ask the agent already running in your tool to install the exact RC13 payload:
 
 ```text
-Install Baton v1.0.0-rc.12 from
+Install Baton v1.0.0-rc.13 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user

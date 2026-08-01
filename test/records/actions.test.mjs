@@ -273,7 +273,7 @@ test('recordPlanRevision creates one approved plan and exact retry is inert', ()
   }
 });
 
-test('plan revisions keep release identity, bind the prior blob, and may repin moved target', () => {
+test('same-plan retry keeps its approved target while an explicit revision may repin', () => {
   const fixture = temporaryRepository();
   try {
     write(fixture.repo, 'README.md', 'product\n');
@@ -286,13 +286,14 @@ test('plan revisions keep release identity, bind the prior blob, and may repin m
 
     write(fixture.repo, 'README.md', 'product moved independently\n');
     const movedTarget = commitAll(fixture.repo, 'move target');
-    assert.throws(
-      () => engine.recordPlanRevision({
-        planBytes: planBytes(),
-        summary: 'Initial plan approved.',
-      }),
-      (error) => error?.code === 'TARGET_MOVED',
-    );
+    const retry = engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'Initial plan approved.',
+    });
+    assert.equal(retry.changed, false);
+    assert.equal(retry.target, first.target);
+    assert.equal(retry.receipt.target, first.receipt.target);
+    assert.equal(retry.receipt_commit, first.receipt_commit);
 
     const nextBytes = planBytes(metadata(2, first.plan));
     const revised = engine.recordPlanRevision({
@@ -723,6 +724,60 @@ test('an approved removal writes one compact retirement under the same release',
   }
 });
 
+test('final assembly preserves the exact Planner retirement authority', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const temporarySlice = {
+      id: 'S2',
+      outcome: 'Deliver a temporary outcome.',
+      scope: { include: ['src/temporary.txt'], exclude: [] },
+      acceptance: [{ id: 'A2', text: 'The temporary outcome is observable.' }],
+      checks: ['node --test'],
+      constraints: [],
+      depends_on: [],
+      consumes: [],
+    };
+    const initial = metadata(1, null, {
+      tracks: [{
+        ...metadata().tracks[0],
+        slices: [...metadata().tracks[0].slices, temporarySlice],
+      }],
+    });
+    const first = engine.recordPlanRevision({
+      planBytes: planBytes(initial),
+      summary: 'Approve one retained and one temporary slice.',
+    });
+    const revised = engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, first.plan)),
+      summary: 'Retire the temporary slice.',
+    });
+    assert.equal(revised.retirements.length, 1);
+    const passed = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'retained product\n',
+    });
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'upstream.txt', 'advanced\n');
+    commitAll(fixture.repo, 'advance target after retirement');
+
+    const assembled = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Assemble from the retirement-complete release authority.',
+    });
+    assert.equal(assembled.receipt.binds, revised.head);
+    assert.equal(isDescendant(fixture.repo, revised.head, assembled.candidate), true);
+    assert.equal(isDescendant(fixture.repo, passed.passed.receipt_commit, assembled.candidate), true);
+    assert.equal(readBatonState(fixture.repo, 'actions-v2').assembly.next_role, 'verifier');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('one slice advances through concise receipts and merges the exact fresh PASS', () => {
   const fixture = temporaryRepository();
   try {
@@ -795,7 +850,7 @@ test('one slice advances through concise receipts and merges the exact fresh PAS
     assert.equal(afterMerge.assembly.outcome, 'merged');
     assert.equal(afterMerge.plan.target_stale, false);
     assert.equal(
-      afterMerge.diagnostics.some(({ code }) => code === 'TARGET_MOVED'),
+      afterMerge.diagnostics.some(({ code }) => code === 'TARGET_DIVERGED'),
       false,
     );
     const retry = engine.mergePassedCandidate({
@@ -1861,8 +1916,171 @@ test('two passed tracks produce one exact assembly, one fresh verdict, and one m
     });
     assert.equal(afterMerge.plan.target_stale, false);
     assert.equal(
-      afterMerge.diagnostics.some(({ code }) => code === 'TARGET_MOVED'),
+      afterMerge.diagnostics.some(({ code }) => code === 'TARGET_DIVERGED'),
       false,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('target advances stay out of track work and rebuild only the final assembly', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    const approvedTarget = commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const producer = metadata().tracks[0];
+    const consumer = {
+      id: 'T2',
+      depends_on: ['T1'],
+      slices: [{
+        id: 'S2',
+        outcome: 'Consume the verified first change.',
+        scope: { include: ['src/second.txt'], exclude: [] },
+        acceptance: [{ id: 'A2', text: 'The consumed change is observable.' }],
+        checks: ['node --test'],
+        constraints: [],
+        depends_on: ['S1'],
+        consumes: ['S1'],
+      }],
+    };
+    engine.recordPlanRevision({
+      planBytes: planBytes(metadata(1, null, { tracks: [producer, consumer] })),
+      summary: 'Dependent tracks approved.',
+    });
+    const first = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'first\n',
+    });
+
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'upstream.txt', 'advanced once\n');
+    const firstAdvance = commitAll(fixture.repo, 'advance target once');
+    const prepared = engine.prepareTrackBase({ release: 'actions-v2', slice: 'S2' });
+    assert.equal(isDescendant(fixture.repo, approvedTarget, prepared.base), true);
+    assert.equal(isDescendant(fixture.repo, first.passed.receipt_commit, prepared.base), true);
+    assert.equal(isDescendant(fixture.repo, firstAdvance, prepared.base), false);
+    let state = readBatonState(fixture.repo, 'actions-v2');
+    assert.equal(state.plan.target_stale, false);
+    assert.equal(state.slices.find(({ location }) => location.slice.id === 'S2').next_role, 'implementer');
+
+    const second = deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T2',
+      file: 'src/second.txt',
+      value: 'second\n',
+    });
+    const assembled = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Combine the latest target and exact passed tracks.',
+    });
+    assert.equal(assembled.receipt.target, firstAdvance);
+    assert.equal(isDescendant(fixture.repo, firstAdvance, assembled.candidate), true);
+    assert.equal(isDescendant(fixture.repo, first.passed.receipt_commit, assembled.candidate), true);
+    assert.equal(isDescendant(fixture.repo, second.passed.receipt_commit, assembled.candidate), true);
+    assert.equal(
+      git(fixture.repo, 'rev-list', '--first-parent', assembled.candidate)
+        .split('\n').includes(assembled.receipt.binds),
+      true,
+    );
+    engine.appendReceipt({
+      release: 'actions-v2',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'Fresh verification passed the first assembly.',
+      candidate: assembled.candidate,
+      checkResults: 'assembly PASS\n',
+    });
+
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'upstream-two.txt', 'advanced twice\n');
+    const secondAdvance = commitAll(fixture.repo, 'advance target after assembly PASS');
+    state = readBatonState(fixture.repo, 'actions-v2');
+    assert.equal(state.assembly.outcome, 'stale');
+    assert.equal(state.assembly.pass, null);
+    assert.equal(state.assembly.next_role, 'merge');
+
+    const rebuilt = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Rebuild only the final assembly against the latest target.',
+    });
+    assert.notEqual(rebuilt.candidate, assembled.candidate);
+    assert.equal(rebuilt.receipt.target, secondAdvance);
+    assert.equal(isDescendant(fixture.repo, secondAdvance, rebuilt.candidate), true);
+    const freshPass = engine.appendReceipt({
+      release: 'actions-v2',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'Fresh verification passed the rebuilt assembly.',
+      candidate: rebuilt.candidate,
+      checkResults: 'rebuilt assembly PASS\n',
+    });
+    const merged = engine.mergePassedCandidate({
+      release: 'actions-v2',
+      summary: 'Merge the rebuilt exact assembly.',
+    });
+    assert.equal(merged.receipt.binds, freshPass.receipt_commit);
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/main'), rebuilt.candidate);
+    assert.equal(readBatonState(fixture.repo, 'actions-v2').assembly.outcome, 'merged');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('one passed slice assembles an advanced target and binds that exact base', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    const approvedTarget = commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    engine.recordPlanRevision({
+      planBytes: planBytes(),
+      summary: 'One-slice plan approved.',
+    });
+    const passed = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'delivered\n',
+    });
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'upstream.txt', 'new target work\n');
+    const advancedTarget = commitAll(fixture.repo, 'advance target');
+
+    const assembled = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Assemble the latest target and passed slice.',
+    });
+    assert.equal(assembled.direct, false);
+    assert.equal(assembled.receipt.base, advancedTarget);
+    assert.equal(assembled.receipt.target, advancedTarget);
+    assert.equal(isDescendant(fixture.repo, advancedTarget, assembled.candidate), true);
+    assert.equal(isDescendant(fixture.repo, passed.passed.receipt_commit, assembled.candidate), true);
+    assert.equal(readBatonState(fixture.repo, 'actions-v2').assembly.next_role, 'verifier');
+
+    const forgedReceipt = {
+      ...assembled.receipt,
+      base: approvedTarget,
+      summary: 'Falsely claim the old approved base for the advanced target.',
+    };
+    const forged = appendMetadataReceipt(
+      fixture.repo,
+      assembled.candidate,
+      'forge assembly base',
+      forgedReceipt,
+    );
+    unsafeAtomicUpdateRefs(fixture.repo, [{
+      kind: 'update',
+      ref: referenceNames.releaseRef('actions-v2'),
+      newHead: forged,
+      expectedHead: assembled.receipt_commit,
+    }]);
+    assert.throws(
+      () => readBatonState(fixture.repo, 'actions-v2'),
+      (error) => error?.code === 'STALE_BINDING' && /invalid evidence/.test(error.message),
     );
   } finally {
     fixture.cleanup();
