@@ -1,6 +1,7 @@
 import { types as utilTypes } from 'node:util';
 
 import {
+  GitRecordError,
   assertCandidateRecordRootUnchanged,
   captureHeadRefs,
   commitParents,
@@ -11,8 +12,10 @@ import {
   resolveRecordPathAdmission,
   unsafeAtomicUpdateRefs,
   unsafePrepareApprovedTargetBase,
+  unsafePrepareApprovedTargetReplacement,
   unsafePrepareExactComposition,
   unsafePrepareProductComposition,
+  unsafePrepareProductReplay,
   unsafePrepareMetadataCommit,
   unsafePrepareRecordTransition,
 } from './git.mjs';
@@ -333,14 +336,17 @@ function currentConsumedInputs(state, slice) {
   }));
 }
 
-function prepareConsumedTrackBase(repo, consumerRef, seed, inputs) {
+function prepareConsumedTrackBase(repo, consumerRef, seed, inputs, { replay = false } = {}) {
   let candidate = seed;
   for (const input of inputs) {
     if (
-      input.pass_receipt === candidate
-      || isAncestor(repo, input.pass_receipt, candidate)
+      !replay
+      && (
+        input.pass_receipt === candidate
+        || isAncestor(repo, input.pass_receipt, candidate)
+      )
     ) continue;
-    const prepared = unsafePrepareProductComposition(repo, {
+    const prepared = (replay ? unsafePrepareProductReplay : unsafePrepareProductComposition)(repo, {
       targetRef: consumerRef,
       expectedHead: candidate,
       candidate: input.pass_receipt,
@@ -351,15 +357,47 @@ function prepareConsumedTrackBase(repo, consumerRef, seed, inputs) {
   return candidate;
 }
 
+function allowsApprovedTargetReplacement(state, slice) {
+  const planned = slice.location.slice;
+  const trackSlices = slice.location.track.slices;
+  const position = trackSlices.indexOf(planned);
+  const predecessors = trackSlices.slice(0, position).map(({ id }) => id);
+  const successors = new Set(trackSlices.slice(position + 1).map(({ id }) => id));
+  const hasPriorPlanAuthority = slice.history.entries.some(
+    ({ receipt }) => receipt.plan !== state.plan.oid,
+  );
+  const allPredecessorsConsumed = predecessors.every((id) => planned.consumes.includes(id));
+  const noRetainedSuccessor = state.slices.every((item) => (
+    !successors.has(item.location.slice.id) || item.pass === null
+  ));
+  return hasPriorPlanAuthority && allPredecessorsConsumed && noRetainedSuccessor;
+}
+
 function preparedTrackBase(repo, state, slice) {
   const track = currentTrack(state, slice.location.track.id);
   const inputs = currentConsumedInputs(state, slice);
   const seed = track.authority_head;
-  const targetBase = unsafePrepareApprovedTargetBase(repo, {
-    targetRef: track.ref,
-    expectedHead: seed,
-    approvedTarget: state.plan.approval.receipt.target,
-  });
+  let targetBase;
+  let replayInputs = false;
+  try {
+    targetBase = unsafePrepareApprovedTargetBase(repo, {
+      targetRef: track.ref,
+      expectedHead: seed,
+      approvedTarget: state.plan.approval.receipt.target,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof GitRecordError)
+      || error.code !== 'COMPOSITION_CONFLICT'
+      || !allowsApprovedTargetReplacement(state, slice)
+    ) throw error;
+    targetBase = unsafePrepareApprovedTargetReplacement(repo, {
+      targetRef: track.ref,
+      expectedHead: seed,
+      approvedTarget: state.plan.approval.receipt.target,
+    }).result;
+    replayInputs = true;
+  }
   return Object.freeze({
     track,
     inputs,
@@ -369,6 +407,7 @@ function preparedTrackBase(repo, state, slice) {
       track.ref,
       targetBase,
       inputs,
+      { replay: replayInputs },
     ),
   });
 }

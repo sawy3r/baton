@@ -2377,6 +2377,32 @@ export function unsafePrepareProductComposition(repo, {
     }
   }
 
+  const replayed = unsafePrepareProductReplay(repo, {
+    targetRef,
+    expectedHead,
+    candidate,
+    productBase,
+  });
+  return Object.freeze({ ...replayed, mode: 'two-parent' });
+}
+
+/**
+ * Replay one exact passed product delta even when its authority is already an
+ * ancestor of a replacement base whose product tree intentionally dropped it.
+ */
+export function unsafePrepareProductReplay(repo, {
+  targetRef,
+  expectedHead,
+  candidate,
+  productBase,
+}) {
+  if (typeof productBase !== 'function') {
+    throw new GitRecordError(
+      'PRODUCT_BASE_RESOLVER_REQUIRED',
+      'product replay requires an engine-owned lazy product-base resolver',
+    );
+  }
+
   validateCompositionTargetRef(repo, targetRef);
   const expected = resolveRef(repo, expectedHead);
   const passed = resolveRef(repo, candidate);
@@ -2402,7 +2428,7 @@ export function unsafePrepareProductComposition(repo, {
   const { result } = prepared;
   productTreeIdentity(repo, result);
   return Object.freeze({
-    mode: 'two-parent',
+    mode: 'product-replay',
     expected,
     candidate: passed,
     productBase: base,
@@ -2450,6 +2476,80 @@ export function unsafePrepareApprovedTargetBase(repo, {
     expectedHead: expected,
     candidate: target,
   }).result;
+}
+
+/**
+ * Replace an invalidated track product with one engine-selected product base.
+ *
+ * The first parent keeps the immutable track authority and its record root.
+ * The second parent proves the exact replacement product source. Callers must
+ * derive that source from approved Baton state; no public action accepts it.
+ */
+export function unsafePrepareApprovedTargetReplacement(repo, {
+  targetRef,
+  expectedHead,
+  approvedTarget,
+}) {
+  validateCompositionTargetRef(repo, targetRef);
+  const expected = resolveRef(repo, expectedHead);
+  const target = resolveRef(repo, approvedTarget);
+  const expectedIdentity = productTreeIdentity(repo, expected);
+  const targetIdentity = productTreeIdentity(repo, target);
+  const recordRoot = RECORD_ROOT_V1;
+  const prepared = withEngineGitContext(repo, (context) => {
+    runEngineGit(
+      context,
+      ['read-tree', target],
+      { label: 'seed approved-target replacement tree' },
+    );
+    const tree = restoreFirstParentRecordRoot(
+      context,
+      expected,
+      recordRoot,
+      'approved-target replacement',
+    );
+    const result = deterministicCompositionCommit(
+      context,
+      repo,
+      targetRef,
+      expected,
+      target,
+      tree,
+    );
+    if (!sameRecordRootEntry(context, expected, result, recordRoot)) {
+      throw new GitRecordError(
+        'INVALID_COMPOSITION',
+        'approved-target replacement changed the first-parent record root',
+      );
+    }
+    return Object.freeze({ result, tree });
+  });
+  const parents = commitParents(repo, prepared.result);
+  if (
+    parents.length !== 2
+    || parents[0] !== expected
+    || parents[1] !== target
+  ) {
+    throw new GitRecordError(
+      'INVALID_COMPOSITION',
+      'approved-target replacement has invalid authority or record ancestry',
+    );
+  }
+  const resultIdentity = productTreeIdentity(repo, prepared.result);
+  if (resultIdentity.productTree !== targetIdentity.productTree) {
+    throw new GitRecordError(
+      'INVALID_COMPOSITION',
+      'approved-target replacement does not equal the approved target product',
+    );
+  }
+  return Object.freeze({
+    mode: 'approved-target-replacement',
+    expected,
+    target,
+    result: prepared.result,
+    previousProductTree: expectedIdentity.productTree,
+    productTree: resultIdentity.productTree,
+  });
 }
 
 export function unsafeApplyExactComposition(repo, options) {

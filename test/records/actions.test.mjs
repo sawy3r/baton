@@ -2030,6 +2030,231 @@ test('target advances stay out of track work and rebuild only the final assembly
   }
 });
 
+test('changed middle slice restarts from a conflicting target and remains replayable', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'src/shared.txt', 'original target\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const firstPlan = metadata(1, null, {
+      tracks: [{
+        id: 'T1',
+        depends_on: [],
+        slices: [
+          metadata().tracks[0].slices[0],
+          {
+            id: 'S2',
+            outcome: 'Deliver the case domain on the current target.',
+            scope: { include: ['src/shared.txt'], exclude: [] },
+            acceptance: [{ id: 'A2', text: 'The case domain is observable.' }],
+            checks: ['node --test'],
+            constraints: [],
+            depends_on: ['S1'],
+            consumes: ['S1'],
+          },
+          {
+            id: 'S3',
+            outcome: 'Deliver one successor over the case domain.',
+            scope: { include: ['src/successor.txt'], exclude: [] },
+            acceptance: [{ id: 'A3', text: 'The successor observes the case domain.' }],
+            checks: ['node --test'],
+            constraints: [],
+            depends_on: ['S2'],
+            consumes: ['S2'],
+          },
+        ],
+      }],
+    });
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(firstPlan),
+      summary: 'Serial plan approved.',
+    });
+    const foundation = deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'retained foundation\n',
+    });
+    const oldTail = deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T1',
+      file: 'src/shared.txt',
+      value: 'old case domain\n',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S3',
+      track: 'T1',
+      file: 'src/successor.txt',
+      value: 'old successor\n',
+    });
+
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'src/shared.txt', 'current target behaviour\n');
+    const advancedTarget = commitAll(fixture.repo, 'advance target with conflicting behaviour');
+    const revisedTracks = structuredClone(firstPlan.tracks);
+    revisedTracks[0].slices[1].acceptance[0].text = (
+      'The case domain preserves current target behaviour.'
+    );
+    engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, approved.plan, { tracks: revisedTracks })),
+      summary: 'Tail contract revised against the current target.',
+    });
+
+    const prepared = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S2',
+    });
+    assert.equal(prepared.changed, true);
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, prepared.base, 'src/shared.txt'),
+      Buffer.from('current target behaviour\n'),
+    );
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, prepared.base, 'src/product.txt'),
+      Buffer.from('retained foundation\n'),
+    );
+    assert.equal(isDescendant(fixture.repo, advancedTarget, prepared.base), true);
+    assert.equal(isDescendant(fixture.repo, foundation.passed.receipt_commit, prepared.base), true);
+    assert.equal(isDescendant(fixture.repo, oldTail.passed.receipt_commit, prepared.base), true);
+
+    engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'designed',
+      summary: 'Resolve the case domain against the current target behaviour.',
+      detail: 'Preserve the target and reapply the approved case-domain outcome.',
+    });
+    engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'captain',
+      result: 'proceed',
+      summary: 'The revised design covers the exact changed contract.',
+      detail: 'PROCEED',
+    });
+    const implementationBase = engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S2',
+    });
+    assert.equal(implementationBase.changed, false);
+    assert.equal(
+      productTreeIdentity(fixture.repo, implementationBase.base).productTree,
+      productTreeIdentity(fixture.repo, prepared.base).productTree,
+    );
+
+    git(fixture.repo, 'switch', '-q', 'track/actions-v2/T1');
+    write(fixture.repo, 'src/shared.txt', 'current target plus case domain\n');
+    const candidate = commitAll(fixture.repo, 'fix: reconcile revised tail');
+    const implemented = engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'implementer',
+      result: 'candidate',
+      summary: 'The revised tail preserves both products.',
+      candidate,
+      base: implementationBase.base,
+      checkResults: 'revised tail implementer PASS\n',
+    });
+    engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S2',
+      role: 'verifier',
+      result: 'pass',
+      summary: 'The revised tail passes independent verification.',
+      candidate,
+      checkResults: 'revised tail verifier PASS\n',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S3',
+      track: 'T1',
+      file: 'src/successor.txt',
+      value: 'successor over revised case domain\n',
+    });
+    const state = readBatonState(fixture.repo, 'actions-v2');
+    const tail = state.slices.find(({ location }) => location.slice.id === 'S2');
+    const successor = state.slices.find(({ location }) => location.slice.id === 'S3');
+    assert.equal(tail.pass.receipt.binds, implemented.receipt_commit);
+    assert.equal(tail.retained, false);
+    assert.ok(successor.pass);
+    const assembled = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Prepare the recovered serial release.',
+    });
+    const retried = engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Prepare the recovered serial release.',
+    });
+    assert.equal(retried.changed, false);
+    assert.equal(retried.candidate, assembled.candidate);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('target replacement refuses to discard an undeclared predecessor product', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'src/shared.txt', 'original target\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const firstPlan = metadata(1, null, {
+      tracks: [{
+        id: 'T1',
+        depends_on: [],
+        slices: [
+          metadata().tracks[0].slices[0],
+          {
+            id: 'S2',
+            outcome: 'Deliver an independent tail change.',
+            scope: { include: ['src/shared.txt'], exclude: [] },
+            acceptance: [{ id: 'A2', text: 'The tail change is observable.' }],
+            checks: ['node --test'],
+            constraints: [],
+            depends_on: [],
+            consumes: [],
+          },
+        ],
+      }],
+    });
+    const approved = engine.recordPlanRevision({
+      planBytes: planBytes(firstPlan),
+      summary: 'Independent serial plan approved.',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S1',
+      track: 'T1',
+      file: 'src/product.txt',
+      value: 'undeclared predecessor\n',
+    });
+    deliverSlice(engine, fixture.repo, {
+      slice: 'S2',
+      track: 'T1',
+      file: 'src/shared.txt',
+      value: 'old tail\n',
+    });
+    const oldAuthority = resolveRef(fixture.repo, 'refs/heads/track/actions-v2/T1');
+
+    git(fixture.repo, 'switch', '-q', 'main');
+    write(fixture.repo, 'src/shared.txt', 'conflicting target\n');
+    commitAll(fixture.repo, 'advance target with conflict');
+    const revisedTracks = structuredClone(firstPlan.tracks);
+    revisedTracks[0].slices[1].acceptance[0].text = 'The revised tail is observable.';
+    engine.recordPlanRevision({
+      planBytes: planBytes(metadata(2, approved.plan, { tracks: revisedTracks })),
+      summary: 'Independent tail contract revised.',
+    });
+
+    assert.throws(
+      () => engine.prepareTrackBase({ release: 'actions-v2', slice: 'S2' }),
+      (error) => error?.code === 'COMPOSITION_CONFLICT',
+    );
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/track/actions-v2/T1'), oldAuthority);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('one passed slice assembles an advanced target and binds that exact base', () => {
   const fixture = temporaryRepository();
   try {

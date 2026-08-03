@@ -4,8 +4,10 @@ import {
   readFilesAtOID, readFirstParentHistory,
   verifyReleaseIntegration,
   unsafePrepareApprovedTargetBase,
+  unsafePrepareApprovedTargetReplacement,
   unsafePrepareExactComposition,
   unsafePrepareProductComposition,
+  unsafePrepareProductReplay,
 } from './git.mjs';
 import { ReceiptError, parsePlanBytes, parseReceiptHistoryEntry } from './receipts.mjs';
 
@@ -1015,16 +1017,24 @@ function pinsForConsumedInputs(inputs) {
   return Object.fromEntries(inputs.map((input) => [input.slice, input.product_tree]));
 }
 
-function prepareConsumedBase(repo, ref, seed, inputs) {
+function prepareConsumedBase(repo, ref, seed, inputs, { replay = false } = {}) {
   let candidate = seed;
   for (const input of inputs) {
     if (
-      input.pass_receipt === candidate
-      || isAncestor(repo, input.pass_receipt, candidate)
+      !replay
+      && (
+        input.pass_receipt === candidate
+        || isAncestor(repo, input.pass_receipt, candidate)
+      )
     ) continue;
-    const prepare = input.product_base
-      ? unsafePrepareProductComposition
-      : unsafePrepareExactComposition;
+    const prepare = replay
+      ? unsafePrepareProductReplay
+      : input.product_base
+        ? unsafePrepareProductComposition
+        : unsafePrepareExactComposition;
+    if (replay && !input.product_base) {
+      fail('AMBIGUOUS_AUTHORITY', 'approved-target replacement input has no product base');
+    }
     candidate = prepare(repo, {
       targetRef: ref,
       expectedHead: candidate,
@@ -1061,16 +1071,58 @@ function preparePlanBoundBase(
   authority,
   inputs,
   approvals,
+  { allowApprovedTargetReplacement = false } = {},
 ) {
   const approval = approvals.get(plan.oid);
   if (!approval) fail('APPROVAL_MISSING', `plan ${plan.oid} has no approval`);
   const ref = `refs/heads/track/${release}/${location.track.id}`;
-  const targetBase = unsafePrepareApprovedTargetBase(repo, {
-    targetRef: ref,
-    expectedHead: authority,
-    approvedTarget: approval.receipt.target,
+  let targetBase;
+  let replayInputs = false;
+  try {
+    targetBase = unsafePrepareApprovedTargetBase(repo, {
+      targetRef: ref,
+      expectedHead: authority,
+      approvedTarget: approval.receipt.target,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof GitRecordError)
+      || error.code !== 'COMPOSITION_CONFLICT'
+      || !allowApprovedTargetReplacement
+    ) throw error;
+    targetBase = unsafePrepareApprovedTargetReplacement(repo, {
+      targetRef: ref,
+      expectedHead: authority,
+      approvedTarget: approval.receipt.target,
+    }).result;
+    replayInputs = true;
+  }
+  return prepareConsumedBase(repo, ref, targetBase, inputs, { replay: replayInputs });
+}
+
+function allowsHistoricalApprovedTargetReplacement(
+  repo,
+  location,
+  plan,
+  histories,
+  planByOID,
+  authority,
+) {
+  const planned = location.slice;
+  const trackSlices = location.track.slices;
+  const position = trackSlices.indexOf(planned);
+  const predecessors = trackSlices.slice(0, position).map(({ id }) => id);
+  const successors = trackSlices.slice(position + 1).map(({ id }) => id);
+  const history = histories.get(planned.id);
+  const hasPriorPlanAuthority = history?.entries.some(
+    ({ receipt }) => receipt.plan !== plan.oid,
+  ) ?? false;
+  const allPredecessorsConsumed = predecessors.every((id) => planned.consumes.includes(id));
+  const noRetainedSuccessor = successors.every((id) => {
+    const pass = applicablePriorPass(histories.get(id)?.entries ?? [], plan, id, planByOID);
+    return pass === null || !isAncestor(repo, pass.oid, authority);
   });
-  return prepareConsumedBase(repo, ref, targetBase, inputs);
+  return hasPriorPlanAuthority && allPredecessorsConsumed && noRetainedSuccessor;
 }
 
 function linearOneParentAncestry(repo, base, candidate) {
@@ -1118,6 +1170,14 @@ function exactPreparedDesignInputs(
   const seed = designIndex === 0
     ? planInstallResult(plan.oid, approval, releaseReceipts)
     : owned[designIndex - 1].oid;
+  const allowApprovedTargetReplacement = allowsHistoricalApprovedTargetReplacement(
+    repo,
+    location,
+    plan,
+    histories,
+    planByOID,
+    seed,
+  );
   const targetBase = preparePlanBoundBase(
     repo,
     release,
@@ -1126,6 +1186,7 @@ function exactPreparedDesignInputs(
     seed,
     [],
     approvals,
+    { allowApprovedTargetReplacement },
   );
   if (location.slice.consumes.length === 0) {
     if (targetBase !== design.parent) {
@@ -1166,6 +1227,7 @@ function exactPreparedDesignInputs(
     seed,
     inputs,
     approvals,
+    { allowApprovedTargetReplacement },
   );
   if (expected !== design.parent) {
     fail('STALE_BINDING', `design ${design.oid} has an inexact reviewed base`);
