@@ -14,13 +14,13 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
-  unsafeApplyExactComposition,
+  unsafeApplyExactComposition as applyExactComposition,
   assertCandidateRecordRootUnchanged,
   assertStructuralRecordOnlyTransition,
   captureHeadRefs,
   changedPathsBetween,
-  unsafeCommitRecordTransition,
-  unsafePrepareRecordTransition,
+  unsafeCommitRecordTransition as commitRecordTransition,
+  unsafePrepareRecordTransition as prepareRecordTransition,
   configureEngineGitExecutable,
   gitExecutablePath,
   productTreeIdentity,
@@ -36,6 +36,23 @@ import {
   temporaryRepository,
   write,
 } from './helpers.mjs';
+
+const TEST_GIT_IDENTITY = Object.freeze({
+  name: 'Baton Test Engine',
+  email: 'baton-test@localhost',
+});
+
+function unsafeApplyExactComposition(repo, options) {
+  return applyExactComposition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafeCommitRecordTransition(repo, options) {
+  return commitRecordTransition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareRecordTransition(repo, options) {
+  return prepareRecordTransition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
 
 function throwsCode(operation, code) {
   assert.throws(operation, (error) => error?.code === code);

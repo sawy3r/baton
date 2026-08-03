@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 const ROOT = resolve(import.meta.dirname, '../..');
-const PROMPT_START = 'Install Baton v1.0.0-rc.13 from\n';
+const PROMPT_START = 'Install Baton v1.0.0-rc.14 from\n';
 const LIVE_DOCS = [
   'README.md',
   'INSTALL.md',
@@ -13,7 +13,7 @@ const LIVE_DOCS = [
   'CONTRIBUTING.md',
   'conformance/README.md',
   'conformance/manifest.json',
-  'docs/releases/v1.0.0-rc.13.md',
+  'docs/releases/v1.0.0-rc.14.md',
 ];
 
 function selfInstallPrompt(document, path) {

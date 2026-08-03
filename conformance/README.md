@@ -42,7 +42,8 @@ slice attempts, reviewed consumed-product pins, exact producer-authority
 preparation, selective dependency invalidation, exact candidate and product
 tree binding, metadata-only receipt history, deterministic composition,
 procedural reconciliation, compare-and-set, exact standalone skill generation,
-the agent-led installation contract, and terminal-safe Git-derived board
+the agent-led installation contract, explicit provider-neutral Git identity,
+identity-neutral historical projection, and terminal-safe Git-derived board
 output.
 
 The manifest deliberately contains no status fixture, proof bundle, transition

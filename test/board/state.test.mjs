@@ -3,13 +3,13 @@ import test from 'node:test';
 
 import {
   BatonStateError,
-  readBatonState,
+  readBatonState as readState,
 } from '../../reference/records/state.mjs';
 import {
   isAncestor,
   productTreeIdentity,
 } from '../../reference/records/git.mjs';
-import { createBatonActions } from '../../reference/records/actions.mjs';
+import { createBatonActions as createActions } from '../../reference/records/actions.mjs';
 import { digestBytes } from '../../reference/records/receipts.mjs';
 import {
   commitAll,
@@ -24,7 +24,16 @@ import {
   passSlice,
   revisePlan,
   slice,
+  TEST_GIT_IDENTITY,
 } from './helpers.mjs';
+
+function readBatonState(repo, release, options = {}) {
+  return readState(repo, release, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function createBatonActions(options) {
+  return createActions({ ...options, identity: TEST_GIT_IDENTITY });
+}
 
 test('approved plan derives missing procedural track state without BLOCKED', () => {
   const fixture = baselineFixture();

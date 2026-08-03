@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import test from 'node:test';
 
 import {
-  createBatonActions,
+  createBatonActions as createActions,
   referenceNames,
 } from '../../reference/records/actions.mjs';
 import {
@@ -11,8 +11,8 @@ import {
   readFileAtOID,
   resolveRef,
   unsafeAtomicUpdateRefs,
-  unsafePrepareApprovedTargetBase,
-  unsafePrepareMetadataCommit,
+  unsafePrepareApprovedTargetBase as prepareApprovedTargetBase,
+  unsafePrepareMetadataCommit as prepareMetadataCommit,
 } from '../../reference/records/git.mjs';
 import {
   digestBytes,
@@ -21,7 +21,7 @@ import {
   renderReceiptCommit,
 } from '../../reference/records/receipts.mjs';
 import {
-  readBatonState,
+  readBatonState as readState,
   unsafeProductBaseEvidence,
 } from '../../reference/records/state.mjs';
 import {
@@ -30,6 +30,27 @@ import {
   temporaryRepository,
   write,
 } from './helpers.mjs';
+
+const TEST_GIT_IDENTITY = Object.freeze({
+  name: 'Baton Test Engine',
+  email: 'baton-test@localhost',
+});
+
+function createBatonActions(options) {
+  return createActions({ ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareApprovedTargetBase(repo, options) {
+  return prepareApprovedTargetBase(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareMetadataCommit(repo, options) {
+  return prepareMetadataCommit(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function readBatonState(repo, release, options = {}) {
+  return readState(repo, release, { ...options, identity: TEST_GIT_IDENTITY });
+}
 
 function metadata(revision = 1, previousPlan = null, overrides = {}) {
   return {
@@ -126,6 +147,53 @@ function appendCaptain(engine, result = 'proceed') {
     detail: result === 'proceed' ? 'PROCEED' : 'REVISE',
   });
 }
+
+test('actions require explicit identity while projected authority stays identity-neutral', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'src/app.txt', 'base\n');
+    commitAll(fixture.repo, 'base');
+    assert.throws(
+      () => createActions({ repo: fixture.repo }),
+      (error) => error?.code === 'INVALID_ACTION_INPUT',
+    );
+
+    const plan = planBytes();
+    const firstEngine = createActions({
+      repo: fixture.repo,
+      identity: { name: 'First Engine', email: 'first@localhost' },
+    });
+    const first = firstEngine.recordPlanRevision({
+      planBytes: plan,
+      summary: 'Approve the same provider-neutral plan.',
+    });
+    const firstState = readState(fixture.repo, 'actions-v2');
+    git(fixture.repo, 'update-ref', '-d', 'refs/heads/release-wt/actions-v2');
+
+    const secondEngine = createActions({
+      repo: fixture.repo,
+      identity: { name: 'Second Engine', email: 'second@localhost' },
+    });
+    const second = secondEngine.recordPlanRevision({
+      planBytes: plan,
+      summary: 'Approve the same provider-neutral plan.',
+    });
+    const secondState = readState(fixture.repo, 'actions-v2');
+
+    assert.notEqual(first.head, second.head);
+    assert.equal(first.plan_object, second.plan_object);
+    assert.deepEqual(firstState.plan.metadata, secondState.plan.metadata);
+    assert.equal(firstState.plan.approval.receipt.role, secondState.plan.approval.receipt.role);
+    assert.equal(firstState.plan.approval.receipt.result, secondState.plan.approval.receipt.result);
+    assert.equal(firstState.plan.approval.receipt.target, secondState.plan.approval.receipt.target);
+    assert.deepEqual(
+      firstState.slices.map(({ next_role, attempt, status }) => ({ next_role, attempt, status })),
+      secondState.slices.map(({ next_role, attempt, status }) => ({ next_role, attempt, status })),
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 function candidateAwaitingVerdict() {
   const fixture = temporaryRepository();

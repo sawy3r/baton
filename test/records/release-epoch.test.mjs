@@ -2,21 +2,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  createBatonActions,
+  createBatonActions as createActions,
   referenceNames,
 } from '../../reference/records/actions.mjs';
 import {
   readFilesAtOID,
   resolveRef,
-  unsafePrepareMetadataCommit,
-  unsafePrepareRecordTransition,
+  unsafePrepareMetadataCommit as prepareMetadataCommit,
+  unsafePrepareRecordTransition as prepareRecordTransition,
 } from '../../reference/records/git.mjs';
 import {
   digestBytes,
   renderReceiptCommit,
 } from '../../reference/records/receipts.mjs';
 import {
-  readBatonState,
+  readBatonState as readState,
   readReleaseReceiptHistory,
 } from '../../reference/records/state.mjs';
 import {
@@ -28,6 +28,26 @@ import {
 } from './helpers.mjs';
 
 const CONTRACT = `sha256:${'1'.repeat(64)}`;
+const TEST_GIT_IDENTITY = Object.freeze({
+  name: 'Baton Test Engine',
+  email: 'baton-test@localhost',
+});
+
+function createBatonActions(options) {
+  return createActions({ ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareMetadataCommit(repo, options) {
+  return prepareMetadataCommit(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareRecordTransition(repo, options) {
+  return prepareRecordTransition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function readBatonState(repo, release, options = {}) {
+  return readState(repo, release, { ...options, identity: TEST_GIT_IDENTITY });
+}
 
 function metadata(release, revision = 1, previousPlan = null, sliceIDs = ['S1']) {
   return {

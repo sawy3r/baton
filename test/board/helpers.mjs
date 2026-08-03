@@ -16,6 +16,11 @@ import {
   write,
 } from '../records/helpers.mjs';
 
+export const TEST_GIT_IDENTITY = Object.freeze({
+  name: 'Baton Test Engine',
+  email: 'baton-test@localhost',
+});
+
 export function slice(id, include, overrides = {}) {
   return {
     id,
@@ -131,10 +136,12 @@ export function passSlice(fixture, sliceID, {
   productValue = null,
 } = {}) {
   const { track, item } = plannedSlice(fixture, sliceID);
-  const engine = createBatonActions({ repo: fixture.repo });
+  const engine = createBatonActions({ repo: fixture.repo, identity: TEST_GIT_IDENTITY });
   let reviewed = null;
   if (!legacyConsumed) {
-    const state = readBatonState(fixture.repo, fixture.metadata.release);
+    const state = readBatonState(fixture.repo, fixture.metadata.release, {
+      identity: TEST_GIT_IDENTITY,
+    });
     const authority = state.tracks.find(({ id }) => id === track.id).authority_head;
     const prepared = engine.prepareTrackBase({
       release: fixture.metadata.release,

@@ -1,5 +1,17 @@
 # Baton roadmap
 
+## RC14 — let the engine own its Git attribution
+
+`v1.0.0-rc.14` removes Baton's built-in record, receipt, and merge identities.
+Every writing engine supplies one bounded Git name and address explicitly;
+Baton never reads that attribution as a role, approval, or authority fact.
+
+Same-identity retries remain object-deterministic. Different valid identities
+may change commit object IDs without changing the projected plan, receipt,
+candidate, product, or authority meaning. Read-only boards recover historical
+identity from the commits they validate, so current configuration does not
+rewrite history.
+
 ## RC13 — let the target move without restarting the work
 
 `v1.0.0-rc.13` keeps active tracks on their approved working floor while the

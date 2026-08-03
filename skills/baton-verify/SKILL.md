@@ -4,7 +4,7 @@ description: "Independently check finished work in Verifier threads with read-on
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.13
+release: v1.0.0-rc.14
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:8ca4dff1ab2c607cd23ea2828daf11dc88a7dbeb3194229f2ff5c3c83f510014

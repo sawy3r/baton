@@ -98,6 +98,14 @@ PORTABLE_CASES = (
         REFERENCE_SUITES[2:],
     ),
     (
+        "provider-neutral-explicit-git-identity",
+        (
+            REFERENCE_SUITES[2],
+            REFERENCE_SUITES[1],
+            REFERENCE_SUITES[3],
+        ),
+    ),
+    (
         "operations-standalone-skills-and-agent-led-install-contract",
         (
             "test/operations/operations.test.mjs",

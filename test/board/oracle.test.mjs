@@ -6,12 +6,12 @@ import test from 'node:test';
 
 import {
   boardBytes,
-  createBoardOracle,
+  createBoardOracle as createOracle,
   GRAPH_VERSION,
   projectBoard,
 } from '../../reference/board/oracle.mjs';
-import { createBatonActions } from '../../reference/records/actions.mjs';
-import { readBatonState } from '../../reference/records/state.mjs';
+import { createBatonActions as createActions } from '../../reference/records/actions.mjs';
+import { readBatonState as readState } from '../../reference/records/state.mjs';
 import {
   commitAll,
   git,
@@ -25,7 +25,20 @@ import {
   passSlice,
   revisePlan,
   slice,
+  TEST_GIT_IDENTITY,
 } from './helpers.mjs';
+
+function createBatonActions(options) {
+  return createActions({ ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function readBatonState(repo, release, options = {}) {
+  return readState(repo, release, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function createBoardOracle(options = {}) {
+  return createOracle({ identity: TEST_GIT_IDENTITY, ...options });
+}
 
 function graphNode(release, id) {
   return release.graph.nodes.find((node) => node.id === id);

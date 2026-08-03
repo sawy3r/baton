@@ -11,13 +11,14 @@ import {
   readFirstParentHistory,
   resolveRecordPathAdmission,
   resolveRef,
-  unsafeApplyExactComposition,
-  unsafePrepareApprovedTargetBase,
-  unsafePrepareExactComposition,
-  unsafePrepareProductComposition,
-  unsafeCommitRecordTransition,
-  verifyReleaseIntegration,
-  verifyTrackComposition,
+  unsafeApplyExactComposition as applyExactComposition,
+  unsafePrepareApprovedTargetBase as prepareApprovedTargetBase,
+  unsafePrepareExactComposition as prepareExactComposition,
+  unsafePrepareProductComposition as prepareProductComposition,
+  unsafePrepareRecordTransition as prepareRecordTransition,
+  unsafeCommitRecordTransition as commitRecordTransition,
+  verifyReleaseIntegration as verifyIntegration,
+  verifyTrackComposition as verifyComposition,
 } from '../../reference/records/git.mjs';
 import {
   commitAll,
@@ -27,6 +28,38 @@ import {
 } from './helpers.mjs';
 
 const PLAN_PATH = '.baton/releases/rc4/plan.md';
+const TEST_GIT_IDENTITY = Object.freeze({
+  name: 'Baton Test Engine',
+  email: 'baton-test@localhost',
+});
+
+function unsafeApplyExactComposition(repo, options) {
+  return applyExactComposition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareApprovedTargetBase(repo, options) {
+  return prepareApprovedTargetBase(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareExactComposition(repo, options) {
+  return prepareExactComposition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafePrepareProductComposition(repo, options) {
+  return prepareProductComposition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function unsafeCommitRecordTransition(repo, options) {
+  return commitRecordTransition(repo, { ...options, identity: TEST_GIT_IDENTITY });
+}
+
+function verifyReleaseIntegration(repo, expected, candidate, observed) {
+  return verifyIntegration(repo, expected, candidate, observed, TEST_GIT_IDENTITY);
+}
+
+function verifyTrackComposition(repo, expected, candidate, observed) {
+  return verifyComposition(repo, expected, candidate, observed, TEST_GIT_IDENTITY);
+}
 
 function throwsCode(operation, code) {
   assert.throws(operation, (error) => error?.code === code);
@@ -80,6 +113,52 @@ test('candidate ancestry is required even when product trees are equal', () => {
       () => assertCandidate(fixture.repo, descendant, divergent),
       'INVALID_CANDIDATE_ANCESTRY',
     );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('every commit-producing preparation path requires identity before writing', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'src/app.txt', 'base\n');
+    write(fixture.repo, PLAN_PATH, 'plan-v1\n');
+    const base = commitAll(fixture.repo, 'base');
+    git(fixture.repo, 'switch', '-q', '-c', 'expected');
+    write(fixture.repo, 'src/expected.txt', 'expected\n');
+    const expected = commitAll(fixture.repo, 'expected');
+    git(fixture.repo, 'switch', '-q', '-c', 'candidate', base);
+    write(fixture.repo, 'src/candidate.txt', 'candidate\n');
+    const candidate = commitAll(fixture.repo, 'candidate');
+    git(fixture.repo, 'branch', 'target', expected);
+
+    for (const operation of [
+      () => prepareExactComposition(fixture.repo, {
+        targetRef: 'refs/heads/target',
+        expectedHead: expected,
+        candidate,
+      }),
+      () => prepareProductComposition(fixture.repo, {
+        targetRef: 'refs/heads/target',
+        expectedHead: expected,
+        candidate,
+        productBase: () => base,
+      }),
+      () => prepareApprovedTargetBase(fixture.repo, {
+        targetRef: 'refs/heads/target',
+        expectedHead: expected,
+        approvedTarget: candidate,
+      }),
+      () => prepareRecordTransition(fixture.repo, {
+        expectedHead: expected,
+        message: 'record transition',
+        recordPathAdmission: resolveRecordPathAdmission(fixture.repo),
+        changes: { '.baton/releases/rc4/plan.md': Buffer.from('next\n') },
+      }),
+    ]) {
+      throwsCode(operation, 'INVALID_GIT_IDENTITY');
+    }
+    assert.equal(resolveRef(fixture.repo, 'refs/heads/target'), expected);
   } finally {
     fixture.cleanup();
   }
