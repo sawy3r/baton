@@ -14,18 +14,18 @@
       "slices": [
         {
           "id": "S1",
-          "outcome": "One observable delivered outcome.",
+          "outcome": "A user can export the visible report as CSV.",
           "scope": {
-            "include": ["src/owned-surface"],
+            "include": ["report export"],
             "exclude": []
           },
           "acceptance": [
             {
               "id": "A1",
-              "text": "The approved observable outcome is demonstrated."
+              "text": "The downloaded CSV contains every row and total shown in the report."
             }
           ],
-          "checks": ["project-check-command"],
+          "checks": ["check-report-csv-parity"],
           "constraints": ["Merge only the exact candidate that passes verification."],
           "depends_on": [],
           "consumes": []
@@ -38,7 +38,7 @@
 
 # Goal
 
-State the approved release outcome and why it matters.
+State the release result and why it matters.
 
 # Authority
 
@@ -51,12 +51,12 @@ bytes at this same repository path.
 
 # Scope
 
-Summarise the committed behavioral and product surfaces plus hard exclusions.
-Do not try to predict every ancillary test, oracle, support, or evidence path.
+Summarise committed behavior, product surfaces, and hard exclusions. Do not
+predict every support or evidence path.
 
 # Acceptance
 
-Explain how each acceptance identifier is observable.
+Name the product check that could fail for each acceptance identifier.
 
 # Ordered tracks and slices
 

@@ -4,10 +4,10 @@ description: "Plan small, checkable work for someone else to approve."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.14
+release: v1.0.0-rc.15
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:443f8bbce2914f2586de8ae7796b346554097421742071e8494d459673b82760
+operation-sha256: sha256:8c350203edb1d9a8a5ce20a30604c99c7e335ae5c1ef443477423c51b05e1005
 -->
 
 Use the invoking request as input. Resolve relative files from this directory. This standalone skill needs no shared Baton folder.
@@ -20,51 +20,54 @@ version: baton.operation/v2
 
 ## Purpose
 
-Turn a goal into small, checkable pieces of work for someone else to approve.
-Planning never approves itself.
+Turn a goal into a short, clear contract for someone else to approve. Planning
+never approves itself.
 
 ## Inputs
 
-- The goal, repository, target, and person or system allowed to approve it.
-- Stable tracks and slices: promised behavior, product scope, acceptance,
-  minimum checks, constraints, real dependencies, consumed inputs, and
+- The goal, repository, target, and approver.
+- Current Git, code, tests, docs, history, and the applicable plan.
+- Slice results, scope, acceptance, checks, limits, dependencies, inputs, and
   exclusions.
-- The current repository and prior approved plan when revising.
 
 ## Authority
 
-Keep the same release while its goal, target, and approval authority stay the
-same. Keep unchanged slices. Change only slices whose contracts changed and
-identify dependent slices whose consumed inputs changed. Approval must cover
-the exact proposed plan bytes.
+Keep the release while its goal, target, and approver stay the same. Keep
+unchanged slices; change changed contracts and identify consumers of changed
+inputs. Approval must cover the exact proposed plan bytes.
 
-The plan is a commitment, not an inventory. Predicted paths, support work,
-additional checks, evidence notes, scheduling, retries, worktrees, and
-bookkeeping do not require revision when the promise is unchanged.
+The plan is a commitment, not an inventory. Support paths, additional checks,
+evidence, scheduling, retries, worktrees, and bookkeeping need no revision when
+the promise stays the same.
 
 ## Actions
 
-1. Read current Git and the applicable plan.
-2. Propose the smallest complete plan or forward-only revision using
-   `templates/plan.md`.
-3. Put only promised behavior, product surfaces, minimum proof, constraints,
-   authority, and real product relationships into slice contracts.
-4. Preserve stable slice identities; add or explicitly retire slices when the
-   promised outcomes change.
+1. Inspect current Git, plan, code, tests, docs, and history. Find repository
+   facts yourself.
+2. Find choices that could change the promised result. Ask only about missing
+   human choices, never facts the repository can answer. Offer no approval-ready
+   plan while an important choice is open.
+3. When meaning is clear, give a short plain-language summary of the result,
+   scope, acceptance, evidence, inputs, and limits for correction or confirmation.
+4. After confirmation or correction, write the smallest complete plan or
+   forward-only revision with `templates/plan.md`. Give each slice one result
+   that can be reviewed alone.
+   Each acceptance claim must be able to fail in a real product check, and its
+   evidence must observe the boundary it names. Preserve stable slice identities.
 5. Present the exact plan bytes for external approval and stop.
 
 ## Required output
 
-Lead with what the plan will deliver, what changed, and what the approver should
-do next. Put the exact plan, release, revision, retained/changed/added/retired
-slices, and invalidated dependency closure under technical details. Do not
-write an approval or receipt.
+Lead with the result, changes, and next approval step. Put the exact plan,
+release, revision, slice changes, and invalidated consumers under technical
+details. Do not write an approval or receipt.
 
 ## Stop conditions
 
-Stop when the goal, target, authority, scope, dependencies, consumed inputs,
-acceptance, or a material contract change is unclear. Do not guess approval,
-widen the work, or revise merely to record operational discovery.
+Stop when a material choice about the goal, target, authority, scope,
+dependencies, consumed inputs, acceptance, or contract is unclear. Name the
+choice needed. Do not guess approval, widen the work, or revise merely to record
+operational discovery.
 
 ## Next handoff
 

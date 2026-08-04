@@ -24,15 +24,15 @@ contract and authority stay unchanged.
 ## Actions
 
 1. Confirm the plan, slice, design attempt, and exact binding agree.
-2. Check acceptance, scope, dependencies, consumed product, important
-   decisions, risks, and proposed evidence.
+2. Try to disprove the approach. Check each acceptance claim, scope boundary,
+   dependency, consumed product, important decision, risk, and proposed evidence.
+   Look for ways the design could miss the approved goal.
 3. Return exactly one decision:
-   - `PROCEED` when implementation may begin, including with named bounded
-     corrections inside the approved contract;
-   - `REVISE` when a material design change needs another attempt on the same
-     slice; or
-   - `ESCALATE` when behavior, contract, authority, or an external decision
-     requires revised approval.
+   - `PROCEED` when implementation may begin, with any named bounded correction
+     inside the approved contract;
+   - `REVISE` when a design gap needs another attempt on the same slice; or
+   - `ESCALATE` when the plan cannot answer a material question. Name the exact
+     human decision needed.
 
 ## Required output
 

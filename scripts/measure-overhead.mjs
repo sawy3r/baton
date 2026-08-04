@@ -426,6 +426,12 @@ export async function measureOverhead({
       invocationMaximum <= 450,
     ),
     budget(
+      'generated skill words in the normal four-handoff loop',
+      current.normal_work_happy_path.fixed_words,
+      1506,
+      current.normal_work_happy_path.fixed_words <= 1506,
+    ),
+    budget(
       'happy-path fixed word ratio to v0.16.0',
       ratio,
       0.2,

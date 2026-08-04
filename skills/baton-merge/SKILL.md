@@ -4,7 +4,7 @@ description: "Combine passed work and merge exactly what the Verifier approved."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.14
+release: v1.0.0-rc.15
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:f4856ed3c8475fffb316c7296bd38ad6ab5937c757edfe361f20979a45ceaf26

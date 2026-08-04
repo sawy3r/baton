@@ -35,7 +35,22 @@ test('lightweight Baton overhead is reproducible and remains below every budget'
   assert.equal(report.current.generated_payload.files, 6);
   assert.equal(report.current.generated_payload.provenance_complete, true);
   assert.equal(report.current.normal_work_happy_path.minimum_invocations, 4);
-  assert.ok(report.current.normal_work_happy_path.fixed_words < 1512);
+  assert.deepEqual(
+    report.current.normal_work_happy_path.invocations.map(({ operation }) => operation),
+    ['baton-implement', 'baton-design-review', 'baton-implement', 'baton-verify'],
+  );
+  assert.ok(report.current.normal_work_happy_path.fixed_words <= 1506);
+  assert.deepEqual(
+    report.budgets.find(({ name }) => (
+      name === 'generated skill words in the normal four-handoff loop'
+    )),
+    {
+      name: 'generated skill words in the normal four-handoff loop',
+      actual: report.current.normal_work_happy_path.fixed_words,
+      limit: 1506,
+      pass: true,
+    },
+  );
   assert.ok(report.comparison.fixed_word_ratio < 0.026539);
   assert.equal(report.budgets.every(({ pass }) => pass), true);
 });
