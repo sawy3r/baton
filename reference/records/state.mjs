@@ -5,6 +5,7 @@ import {
   verifyReleaseIntegration,
   unsafePrepareApprovedTargetBase,
   unsafePrepareApprovedTargetReplacement,
+  unsafePrepareCoveredProductAssembly,
   unsafePrepareExactComposition,
   unsafePrepareProductComposition,
   unsafePrepareProductReplay,
@@ -1767,25 +1768,40 @@ function validateAssembly(
         receipt.plan === currentPlanOID
         && sameInputs(receipt.inputs, currentPins)
       ) {
-        let expectedCandidate = unsafePrepareApprovedTargetBase(repo, {
-          targetRef: plan.parsed.metadata.target_ref,
-          expectedHead: receipt.binds,
-          approvedTarget: receipt.target,
-        });
-        for (const component of tracks.map((track) => ({
+        const components = tracks.map((track) => ({
           authority: track.slices.at(-1).pass.oid,
           product_base: () => trackProductBaseFor(track.id),
-        }))) {
-          if (
-            component.authority === expectedCandidate
-            || isAncestor(repo, component.authority, expectedCandidate)
-          ) continue;
-          expectedCandidate = unsafePrepareProductComposition(repo, {
+          product_tree: track.slices.at(-1).pass.receipt.product_tree,
+        }));
+        let expectedCandidate;
+        try {
+          expectedCandidate = unsafePrepareApprovedTargetBase(repo, {
             targetRef: plan.parsed.metadata.target_ref,
-            expectedHead: expectedCandidate,
-            candidate: component.authority,
-            productBase: component.product_base,
-          }).result;
+            expectedHead: receipt.binds,
+            approvedTarget: receipt.target,
+          });
+          for (const component of components) {
+            if (
+              component.authority === expectedCandidate
+              || isAncestor(repo, component.authority, expectedCandidate)
+            ) continue;
+            expectedCandidate = unsafePrepareProductComposition(repo, {
+              targetRef: plan.parsed.metadata.target_ref,
+              expectedHead: expectedCandidate,
+              candidate: component.authority,
+              productBase: component.product_base,
+            }).result;
+          }
+        } catch (error) {
+          if (!(error instanceof GitRecordError) || error.code !== 'COMPOSITION_CONFLICT') {
+            throw error;
+          }
+          expectedCandidate = unsafePrepareCoveredProductAssembly(repo, {
+            targetRef: plan.parsed.metadata.target_ref,
+            expectedHead: receipt.binds,
+            approvedTarget: receipt.target,
+            components,
+          });
         }
         if (receipt.candidate !== expectedCandidate) {
           fail(

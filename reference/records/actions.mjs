@@ -13,6 +13,7 @@ import {
   unsafeAtomicUpdateRefs,
   unsafePrepareApprovedTargetBase,
   unsafePrepareApprovedTargetReplacement,
+  unsafePrepareCoveredProductAssembly,
   unsafePrepareExactComposition,
   unsafePrepareProductComposition,
   unsafePrepareProductReplay,
@@ -490,24 +491,36 @@ function requireTargetLineage(repo, state) {
 }
 
 function prepareAssemblyCandidate(repo, targetRef, binds, target, tracks) {
-  let candidate = unsafePrepareApprovedTargetBase(repo, {
+  try {
+    let candidate = unsafePrepareApprovedTargetBase(repo, {
+      targetRef,
+      expectedHead: binds,
+      approvedTarget: target,
+    });
+    for (const component of tracks) {
+      if (
+        component.authority === candidate
+        || isAncestor(repo, component.authority, candidate)
+      ) continue;
+      candidate = unsafePrepareProductComposition(repo, {
+        targetRef,
+        expectedHead: candidate,
+        candidate: component.authority,
+        productBase: component.product_base,
+      }).result;
+    }
+    return candidate;
+  } catch (error) {
+    if (!(error instanceof GitRecordError) || error.code !== 'COMPOSITION_CONFLICT') {
+      throw error;
+    }
+  }
+  return unsafePrepareCoveredProductAssembly(repo, {
     targetRef,
     expectedHead: binds,
     approvedTarget: target,
+    components: tracks,
   });
-  for (const component of tracks) {
-    if (
-      component.authority === candidate
-      || isAncestor(repo, component.authority, candidate)
-    ) continue;
-    candidate = unsafePrepareProductComposition(repo, {
-      targetRef,
-      expectedHead: candidate,
-      candidate: component.authority,
-      productBase: component.product_base,
-    }).result;
-  }
-  return candidate;
 }
 
 function linearOneParentAncestry(repo, base, candidate) {

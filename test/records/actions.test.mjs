@@ -2750,7 +2750,10 @@ function transitiveReplayPlan() {
   });
 }
 
-function transitiveReplayFixture({ invalidateTransitive = false } = {}) {
+function transitiveReplayFixture({
+  invalidateTransitive = false,
+  staleAssemblyAuthority = false,
+} = {}) {
   const fixture = temporaryRepository();
   write(fixture.repo, 'src/conflict.txt', 'approved target\n');
   commitAll(fixture.repo, 'base');
@@ -2772,6 +2775,13 @@ function transitiveReplayFixture({ invalidateTransitive = false } = {}) {
   deliver('S05', 'T4', 'src/t4.txt', 'S05 foundation\n');
   deliver('S06', 'T4', 'src/t4.txt', 'S05 foundation\nS06 delta\n');
   deliver('S07', 'T5', 'src/conflict.txt', 'old S07 product\n');
+
+  if (staleAssemblyAuthority) {
+    engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Record the obsolete assembly product before replanning.',
+    });
+  }
 
   git(fixture.repo, 'switch', '-q', 'main');
   write(fixture.repo, 'src/conflict.txt', 'current target product\n');
@@ -2861,6 +2871,50 @@ test('target replacement refuses a missing transitive current PASS without movin
       ),
     );
     assert.equal(resolveRef(context.fixture.repo, ref), before);
+  } finally {
+    context.fixture.cleanup();
+  }
+});
+
+test('assembly reuses one target-based authority that contains every current track product', () => {
+  const context = transitiveReplayFixture({ staleAssemblyAuthority: true });
+  try {
+    const delivered = deliverSlice(context.engine, context.fixture.repo, {
+      slice: 'S07',
+      track: 'T5',
+      file: 'src/conflict.txt',
+      value: 'current target product\nnew S07 product\n',
+    });
+    const assembled = context.engine.prepareAssembly({
+      release: 'actions-v2',
+      summary: 'Assemble the revised target-based transitive product.',
+    });
+    assert.equal(assembled.changed, true);
+    assert.equal(isDescendant(context.fixture.repo, context.target, assembled.candidate), true);
+    assert.equal(
+      isDescendant(
+        context.fixture.repo,
+        delivered.passed.receipt_commit,
+        assembled.candidate,
+      ),
+      true,
+    );
+    assert.equal(
+      readFileAtOID(context.fixture.repo, assembled.candidate, 'src/conflict.txt').toString(),
+      'current target product\nnew S07 product\n',
+    );
+    assert.equal(
+      readFileAtOID(context.fixture.repo, assembled.candidate, 'src/t3.txt').toString(),
+      'S03 foundation\nS04 delta\n',
+    );
+    assert.equal(
+      readFileAtOID(context.fixture.repo, assembled.candidate, 'src/t4.txt').toString(),
+      'S05 foundation\nS06 delta\n',
+    );
+    assert.equal(
+      readBatonState(context.fixture.repo, 'actions-v2').assembly.candidate.receipt.candidate,
+      assembled.candidate,
+    );
   } finally {
     context.fixture.cleanup();
   }

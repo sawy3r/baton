@@ -2552,6 +2552,51 @@ export function unsafePrepareApprovedTargetReplacement(repo, {
   });
 }
 
+/**
+ * Recover one assembly from an exact target-based authority that already
+ * contains every current track authority.
+ *
+ * Receipt ancestry must prove that one component contains all current track
+ * products and the current target. Replaying from that target and checking the
+ * exact product tree prevents a conflicting merge from inventing a product.
+ */
+export function unsafePrepareCoveredProductAssembly(repo, {
+  targetRef,
+  expectedHead,
+  approvedTarget,
+  components,
+}) {
+  const target = resolveRef(repo, approvedTarget);
+  const covering = components.find((component) => (
+    isAncestor(repo, target, component.authority)
+    && components.every((input) => isAncestor(repo, input.authority, component.authority))
+  ));
+  if (!covering) {
+    throw new GitRecordError(
+      'COMPOSITION_CONFLICT',
+      'no exact target-based authority contains every current track product',
+    );
+  }
+  const base = unsafePrepareApprovedTargetReplacement(repo, {
+    targetRef,
+    expectedHead,
+    approvedTarget: target,
+  }).result;
+  const result = unsafePrepareProductReplay(repo, {
+    targetRef,
+    expectedHead: base,
+    candidate: covering.authority,
+    productBase: () => target,
+  }).result;
+  if (productTreeIdentity(repo, result).productTree !== covering.product_tree) {
+    throw new GitRecordError(
+      'COMPOSITION_CONFLICT',
+      'target-based covering authority produced an inexact assembly product tree',
+    );
+  }
+  return result;
+}
+
 export function unsafeApplyExactComposition(repo, options) {
   const prepared = unsafePrepareExactComposition(repo, options);
   const {
