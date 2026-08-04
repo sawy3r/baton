@@ -2,7 +2,7 @@
   "schema_version": "baton.skills-payload/v1",
   "release": "v1.0.0-rc.15",
   "package_version": "1.0.0-rc.15",
-  "payload_digest": "sha256:297af215bd805766c8843fde68b2ea33605cfde4e81fc3d551479c4bfa941900",
+  "payload_digest": "sha256:909aec84e37e418da129e8131f7cc93ccfad9dfc0d2fe394e9e1739e25e53676",
   "generator_version": "baton.skill-generator/v1",
   "operation_version": "baton.operation/v2",
   "skills": [
@@ -10,7 +10,7 @@
       "name": "baton-plan",
       "path": "baton-plan",
       "operation_source": "operations/baton-plan.md",
-      "operation_digest": "sha256:8c350203edb1d9a8a5ce20a30604c99c7e335ae5c1ef443477423c51b05e1005",
+      "operation_digest": "sha256:0623219dd8ccb0e0ee89962e5c4626444f372bf219e8bd9309f9e97b0b02112f",
       "files": [
         "baton-plan/SKILL.md",
         "baton-plan/templates/plan.md"
@@ -77,10 +77,10 @@
     },
     {
       "path": "baton-plan/SKILL.md",
-      "digest": "sha256:db09f5a3d460260baf0c37c87200ed0eef2053404fd5dda736a57ec634569001",
+      "digest": "sha256:f5f76639972bc6fc32cec24d84c800da60cac45300a642f0709e2d669d25b79c",
       "release": "v1.0.0-rc.15",
       "source": "operations/baton-plan.md",
-      "source_digest": "sha256:8c350203edb1d9a8a5ce20a30604c99c7e335ae5c1ef443477423c51b05e1005"
+      "source_digest": "sha256:0623219dd8ccb0e0ee89962e5c4626444f372bf219e8bd9309f9e97b0b02112f"
     },
     {
       "path": "baton-plan/templates/plan.md",
