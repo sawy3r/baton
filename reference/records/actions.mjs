@@ -336,6 +336,68 @@ function currentConsumedInputs(state, slice) {
   }));
 }
 
+function currentPassInput(repo, state, sliceID, evidence) {
+  const slice = currentSlice(state, sliceID);
+  if (!slice.pass || !slice.candidate) {
+    fail(
+      'DEPENDENCIES_NOT_READY',
+      `${sliceID} has no current PASS authority for approved-target replay`,
+    );
+  }
+  const track = currentTrack(state, slice.location.track.id);
+  if (!track.head || !isAncestor(repo, slice.pass.oid, track.head)) {
+    fail('AMBIGUOUS_AUTHORITY', `${sliceID} PASS is absent from its producer authority`);
+  }
+  return Object.freeze({
+    slice: sliceID,
+    pass_receipt: slice.pass.oid,
+    candidate_receipt: slice.candidate.oid,
+    candidate: slice.candidate.receipt.candidate,
+    product_tree: slice.pass.receipt.product_tree,
+    product_base: () => evidence.pass(sliceID, slice.pass.oid),
+  });
+}
+
+function replayClosureInputs(repo, state, declaredInputs) {
+  const order = new Map(state.slices.map((slice, index) => [
+    slice.location.slice.id,
+    index,
+  ]));
+  const declared = new Set(declaredInputs.map(({ slice }) => slice));
+  const required = new Set();
+  const pending = new Set();
+
+  function visit(sliceID) {
+    if (required.has(sliceID)) return;
+    if (pending.has(sliceID)) {
+      fail('DEPENDENCY_CYCLE', `product replay dependency cycle reaches ${sliceID}`);
+    }
+    pending.add(sliceID);
+    const slice = currentSlice(state, sliceID);
+    const trackSlices = slice.location.track.slices;
+    const position = trackSlices.indexOf(slice.location.slice);
+    const dependencies = [...new Set([
+      ...trackSlices.slice(0, position).map(({ id }) => id),
+      ...slice.location.slice.consumes,
+    ])].sort((left, right) => order.get(left) - order.get(right));
+    for (const dependency of dependencies) visit(dependency);
+    pending.delete(sliceID);
+    required.add(sliceID);
+  }
+
+  for (const sliceID of [...declared].sort(
+    (left, right) => order.get(left) - order.get(right),
+  )) visit(sliceID);
+
+  const evidence = unsafeProductBaseEvidence(state);
+  return [...required].map((sliceID) => currentPassInput(
+    repo,
+    state,
+    sliceID,
+    evidence,
+  ));
+}
+
 function prepareConsumedTrackBase(repo, consumerRef, seed, inputs, { replay = false } = {}) {
   let candidate = seed;
   for (const input of inputs) {
@@ -398,6 +460,9 @@ function preparedTrackBase(repo, state, slice) {
     }).result;
     replayInputs = true;
   }
+  const compositionInputs = replayInputs
+    ? replayClosureInputs(repo, state, inputs)
+    : inputs;
   return Object.freeze({
     track,
     inputs,
@@ -406,7 +471,7 @@ function preparedTrackBase(repo, state, slice) {
       repo,
       track.ref,
       targetBase,
-      inputs,
+      compositionInputs,
       { replay: replayInputs },
     ),
   });

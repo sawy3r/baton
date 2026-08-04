@@ -1063,6 +1063,39 @@ function withPassProductBases(inputs, productBaseForPass, histories) {
   });
 }
 
+function replayClosureIDs(plan, location) {
+  const allLocations = locations(plan.parsed);
+  const ordered = [...allLocations.keys()];
+  const order = new Map(ordered.map((id, index) => [id, index]));
+  const required = new Set();
+  const pending = new Set();
+
+  function visit(sliceID) {
+    if (required.has(sliceID)) return;
+    if (pending.has(sliceID)) {
+      fail('DEPENDENCY_CYCLE', `product replay dependency cycle reaches ${sliceID}`);
+    }
+    pending.add(sliceID);
+    const dependencyLocation = allLocations.get(sliceID);
+    if (!dependencyLocation) {
+      fail('AMBIGUOUS_AUTHORITY', `product replay dependency ${sliceID} is absent`);
+    }
+    const position = dependencyLocation.track.slices.indexOf(dependencyLocation.slice);
+    const dependencies = [...new Set([
+      ...dependencyLocation.track.slices.slice(0, position).map(({ id }) => id),
+      ...dependencyLocation.slice.consumes,
+    ])].sort((left, right) => order.get(left) - order.get(right));
+    for (const dependency of dependencies) visit(dependency);
+    pending.delete(sliceID);
+    required.add(sliceID);
+  }
+
+  for (const sliceID of [...location.slice.consumes].sort(
+    (left, right) => order.get(left) - order.get(right),
+  )) visit(sliceID);
+  return [...required];
+}
+
 function preparePlanBoundBase(
   repo,
   release,
@@ -1071,7 +1104,10 @@ function preparePlanBoundBase(
   authority,
   inputs,
   approvals,
-  { allowApprovedTargetReplacement = false } = {},
+  {
+    allowApprovedTargetReplacement = false,
+    replacementInputs = () => inputs,
+  } = {},
 ) {
   const approval = approvals.get(plan.oid);
   if (!approval) fail('APPROVAL_MISSING', `plan ${plan.oid} has no approval`);
@@ -1097,7 +1133,13 @@ function preparePlanBoundBase(
     }).result;
     replayInputs = true;
   }
-  return prepareConsumedBase(repo, ref, targetBase, inputs, { replay: replayInputs });
+  return prepareConsumedBase(
+    repo,
+    ref,
+    targetBase,
+    replayInputs ? replacementInputs() : inputs,
+    { replay: replayInputs },
+  );
 }
 
 function allowsHistoricalApprovedTargetReplacement(
@@ -1219,7 +1261,42 @@ function exactPreparedDesignInputs(
     !inputs
     || !sameInputs(design.receipt.inputs, pinsForConsumedInputs(inputs))
   ) fail('STALE_BINDING', `design ${design.oid} has stale reviewed-input pins`);
-  const expected = preparePlanBoundBase(
+  const replacementInputs = () => {
+    const selected = consumedInputsAtBase(
+      repo,
+      plan,
+      design.parent,
+      replayClosureIDs(plan, location),
+      histories,
+      planByOID,
+      productCache,
+    );
+    if (selected === null) {
+      fail('STALE_BINDING', `design ${design.oid} has incomplete replay dependencies`);
+    }
+    return withPassProductBases(selected, productBaseForPass, histories);
+  };
+  let legacyExpected = null;
+  try {
+    legacyExpected = preparePlanBoundBase(
+      repo,
+      release,
+      plan,
+      location,
+      seed,
+      inputs,
+      approvals,
+      { allowApprovedTargetReplacement },
+    );
+  } catch (error) {
+    if (
+      !(error instanceof GitRecordError)
+      || error.code !== 'COMPOSITION_CONFLICT'
+      || !allowApprovedTargetReplacement
+    ) throw error;
+  }
+  if (legacyExpected === design.parent) return remember(inputs);
+  const expandedExpected = preparePlanBoundBase(
     repo,
     release,
     plan,
@@ -1227,9 +1304,9 @@ function exactPreparedDesignInputs(
     seed,
     inputs,
     approvals,
-    { allowApprovedTargetReplacement },
+    { allowApprovedTargetReplacement, replacementInputs },
   );
-  if (expected !== design.parent) {
+  if (expandedExpected !== design.parent) {
     fail('STALE_BINDING', `design ${design.oid} has an inexact reviewed base`);
   }
   return remember(inputs);

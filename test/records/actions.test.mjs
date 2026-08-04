@@ -2710,6 +2710,162 @@ function consumedPlan() {
   });
 }
 
+function transitiveReplayPlan() {
+  const slice = (id, file, consumes = []) => ({
+    id,
+    outcome: `Deliver ${id}.`,
+    scope: { include: [file], exclude: [] },
+    acceptance: [{ id: `${id}-A1`, text: `${id} is observable.` }],
+    checks: ['node --test'],
+    constraints: [],
+    depends_on: [...consumes],
+    consumes: [...consumes],
+  });
+  return metadata(1, null, {
+    tracks: [
+      { id: 'T1', depends_on: [], slices: [slice('S01', 'src/s01.txt')] },
+      { id: 'T2', depends_on: [], slices: [slice('S02', 'src/s02.txt', ['S01'])] },
+      {
+        id: 'T3',
+        depends_on: [],
+        slices: [
+          slice('S03', 'src/t3.txt', ['S02']),
+          slice('S04', 'src/t3.txt', ['S02']),
+        ],
+      },
+      {
+        id: 'T4',
+        depends_on: [],
+        slices: [
+          slice('S05', 'src/t4.txt', ['S04']),
+          slice('S06', 'src/t4.txt', ['S04']),
+        ],
+      },
+      {
+        id: 'T5',
+        depends_on: [],
+        slices: [slice('S07', 'src/conflict.txt', ['S02', 'S04', 'S06'])],
+      },
+    ],
+  });
+}
+
+function transitiveReplayFixture({ invalidateTransitive = false } = {}) {
+  const fixture = temporaryRepository();
+  write(fixture.repo, 'src/conflict.txt', 'approved target\n');
+  commitAll(fixture.repo, 'base');
+  const engine = actions(fixture.repo);
+  const initial = transitiveReplayPlan();
+  const approved = engine.recordPlanRevision({
+    planBytes: planBytes(initial),
+    summary: 'Approve a transitive consumed-product topology.',
+  });
+  const delivered = new Map();
+  const deliver = (slice, track, file, value) => {
+    const result = deliverSlice(engine, fixture.repo, { slice, track, file, value });
+    delivered.set(slice, result);
+  };
+  deliver('S01', 'T1', 'src/s01.txt', 'S01 product\n');
+  deliver('S02', 'T2', 'src/s02.txt', 'S02 product\n');
+  deliver('S03', 'T3', 'src/t3.txt', 'S03 foundation\n');
+  deliver('S04', 'T3', 'src/t3.txt', 'S03 foundation\nS04 delta\n');
+  deliver('S05', 'T4', 'src/t4.txt', 'S05 foundation\n');
+  deliver('S06', 'T4', 'src/t4.txt', 'S05 foundation\nS06 delta\n');
+  deliver('S07', 'T5', 'src/conflict.txt', 'old S07 product\n');
+
+  git(fixture.repo, 'switch', '-q', 'main');
+  write(fixture.repo, 'src/conflict.txt', 'current target product\n');
+  const target = commitAll(fixture.repo, 'advance target with conflicting S07 behavior');
+  const tracks = structuredClone(initial.tracks);
+  tracks[4].slices[0].acceptance[0].text = 'S07 preserves the current target product.';
+  if (invalidateTransitive) {
+    tracks[2].slices[0].acceptance[0].text = 'S03 requires a fresh product.';
+  }
+  engine.recordPlanRevision({
+    planBytes: planBytes(metadata(2, approved.plan, { tracks })),
+    summary: 'Revise S07 against the conflicting current target.',
+  });
+  return { fixture, engine, delivered, target };
+}
+
+test('target replacement replays the deterministic transitive product closure', () => {
+  const context = transitiveReplayFixture();
+  try {
+    const prepared = context.engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S07',
+    });
+    assert.equal(prepared.changed, true);
+    assert.deepEqual(
+      prepared.authorities.map(({ slice }) => slice),
+      ['S02', 'S04', 'S06'],
+    );
+    assert.deepEqual(Object.keys(prepared.pins), ['S02', 'S04', 'S06']);
+    assert.equal(isDescendant(context.fixture.repo, context.target, prepared.base), true);
+    for (const slice of ['S01', 'S02', 'S03', 'S04', 'S05', 'S06']) {
+      assert.equal(
+        isDescendant(
+          context.fixture.repo,
+          context.delivered.get(slice).passed.receipt_commit,
+          prepared.base,
+        ),
+        true,
+      );
+    }
+    assert.equal(
+      readFileAtOID(context.fixture.repo, prepared.base, 'src/t3.txt').toString(),
+      'S03 foundation\nS04 delta\n',
+    );
+    assert.equal(
+      readFileAtOID(context.fixture.repo, prepared.base, 'src/t4.txt').toString(),
+      'S05 foundation\nS06 delta\n',
+    );
+    const retry = context.engine.prepareTrackBase({
+      release: 'actions-v2',
+      slice: 'S07',
+    });
+    assert.equal(retry.changed, false);
+    assert.equal(retry.base, prepared.base);
+    context.engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S07',
+      role: 'implementer',
+      result: 'designed',
+      summary: 'The replacement design retains the transitive product closure.',
+      detail: 'Implement S07 from the exact prepared replacement base.',
+    });
+    const proceeded = context.engine.appendReceipt({
+      release: 'actions-v2',
+      slice: 'S07',
+      role: 'captain',
+      result: 'proceed',
+      summary: 'The replacement design binds the declared inputs exactly.',
+      detail: 'PROCEED',
+    });
+    assert.equal(proceeded.changed, true);
+  } finally {
+    context.fixture.cleanup();
+  }
+});
+
+test('target replacement refuses a missing transitive current PASS without moving its ref', () => {
+  const context = transitiveReplayFixture({ invalidateTransitive: true });
+  try {
+    const ref = 'refs/heads/track/actions-v2/T5';
+    const before = resolveRef(context.fixture.repo, ref);
+    assert.throws(
+      () => context.engine.prepareTrackBase({ release: 'actions-v2', slice: 'S07' }),
+      (error) => (
+        error?.code === 'DEPENDENCIES_NOT_READY'
+        && error.message.includes('S03')
+      ),
+    );
+    assert.equal(resolveRef(context.fixture.repo, ref), before);
+  } finally {
+    context.fixture.cleanup();
+  }
+});
+
 test('consumed-track preparation replays a retained PASS from its whole-slice product base', () => {
   const fixture = temporaryRepository();
   try {
