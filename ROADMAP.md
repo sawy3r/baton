@@ -1,5 +1,11 @@
 # Baton roadmap
 
+## RC15.3 — make parallel touchpoints explicit
+
+`v1.0.0-rc.15.3` adds an optional v3 `touchpoints` matrix. When present, every
+slice scope path is assigned to a track and shared paths require explicit
+ordering. This turns the concurrency boundary into a checked plan declaration.
+
 ## RC15.2 — restore slice boundaries and human-readable evidence
 
 `v1.0.0-rc.15.2` restores per-slice plan files, adds advisory evidence

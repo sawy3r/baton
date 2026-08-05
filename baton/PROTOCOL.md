@@ -78,6 +78,12 @@ integrates only the exact passed candidate against the expected target.
 The external authorizer remains outside these responsibilities and owns plan
 approval, consequential product judgement, and standing authority.
 
+New v3 skeletons MAY include a `touchpoints` matrix. Each repository path in a
+slice's `scope.include` must have one matrix entry naming its owning track.
+Independent tracks may not share an entry; a shared path must be ordered by an
+explicit track dependency. The matrix is a checked concurrency declaration,
+not a candidate path allowlist.
+
 ## 2. Plan revisions and attempts
 
 One release has one goal, target, authority, and evolving plan path. Each plan

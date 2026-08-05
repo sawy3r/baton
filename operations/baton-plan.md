@@ -31,10 +31,11 @@ the promise stays the same.
    while one is open.
 3. When clear, summarize result, scope, acceptance, inputs, and limits; ask for
    correction or confirmation, then stop without plan bytes.
-4. Later, write the smallest plan or forward-only revision with
+4. Later, write a plan or forward-only revision with
    `templates/plan.md` and one `templates/slice.md` per slice. Keep paths,
-   digests, outcomes, and identities exact. Give every slice an independently
-   reviewable result with falsifiable acceptance.
+   digests, outcomes, and identities. Give each slice falsifiable
+   acceptance. Declare every `scope.include` path in `touchpoints`, assigned to
+   the track; shared paths require dependency.
    Optionally publish a human-readable bundle under configured
    `release_docs_root` (default `docs/baton/releases`) at
    `<release>/slices/<id>/`. Set it in the project `.baton/config.json` or the
