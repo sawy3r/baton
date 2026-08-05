@@ -571,8 +571,13 @@ export function createBatonActions(options) {
     } else {
       previousState = stateFor(release);
       const previous = currentPlan(repo, release, priorHead);
-      if (previous.parsed.bundleDigest?.toString() === parsed.bundleDigest?.toString()
-        || (!previous.parsed.bundleDigest && previous.parsed.bytes.equals(parsed.bytes))) {
+      const sameBundle = previous.parsed.bundleDigest
+        && parsed.bundleDigest
+        && previous.parsed.bundleDigest.equals(parsed.bundleDigest);
+      const sameLegacyPlan = !previous.parsed.bundleDigest
+        && !parsed.bundleDigest
+        && previous.parsed.bytes.equals(parsed.bytes);
+      if (sameBundle || sameLegacyPlan) {
         const approval = findApproval(repo, release, priorHead, previous.object);
         if (!isAncestor(repo, approval.receipt.target, target)) {
           fail(
