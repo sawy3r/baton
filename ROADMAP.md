@@ -1,5 +1,22 @@
 # Baton roadmap
 
+## RC15 — make the plan clear before code starts
+
+`v1.0.0-rc.15` helps the Planner find repository facts before asking the human,
+ask only about choices that change the promised result, and wait to present a
+plan until those choices are settled. A short plain-language summary gives the
+human a chance to correct the meaning first.
+
+Each slice now names one result that can be reviewed alone. Its acceptance
+claims must be able to fail in a real product check, and the proposed evidence
+must observe the boundary it names. Implementer designs map every acceptance ID
+to an approach and evidence. The Captain looks for design gaps and names the
+human decision needed when the approved plan cannot answer a material question.
+
+RC15 adds no role, schema, gate, questionnaire, discovery file, response
+snapshot, runtime dependency, or wording or layout validator. Fresh semantic
+trials are release evidence, not product machinery.
+
 ## RC14 — let the engine own its Git attribution
 
 `v1.0.0-rc.14` removes Baton's built-in record, receipt, and merge identities.

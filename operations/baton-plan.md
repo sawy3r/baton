@@ -5,51 +5,54 @@ version: baton.operation/v2
 
 ## Purpose
 
-Turn a goal into small, checkable pieces of work for someone else to approve.
-Planning never approves itself.
+Turn a goal into a clear contract for someone else to approve. Planning never
+approves itself.
 
 ## Inputs
 
-- The goal, repository, target, and person or system allowed to approve it.
-- Stable tracks and slices: promised behavior, product scope, acceptance,
-  minimum checks, constraints, real dependencies, consumed inputs, and
-  exclusions.
-- The current repository and prior approved plan when revising.
+- Goal, repository, target, approver, and applicable plan.
+- Current Git, code, tests, docs, history, scope, acceptance, dependencies,
+  inputs, limits, and exclusions.
 
 ## Authority
 
-Keep the same release while its goal, target, and approval authority stay the
-same. Keep unchanged slices. Change only slices whose contracts changed and
-identify dependent slices whose consumed inputs changed. Approval must cover
+Keep the release while its goal, target, and approver stay the same. Preserve
+unchanged slices and identify consumers of changed inputs. Approval must cover
 the exact proposed plan bytes.
 
-The plan is a commitment, not an inventory. Predicted paths, support work,
-additional checks, evidence notes, scheduling, retries, worktrees, and
-bookkeeping do not require revision when the promise is unchanged.
+The plan is a commitment. Support paths, additional checks,
+evidence, scheduling, retries, worktrees, and bookkeeping need no revision when
+the promise stays the same.
 
 ## Actions
 
-1. Read current Git and the applicable plan.
-2. Propose the smallest complete plan or forward-only revision using
-   `templates/plan.md`.
-3. Put only promised behavior, product surfaces, minimum proof, constraints,
-   authority, and real product relationships into slice contracts.
-4. Preserve stable slice identities; add or explicitly retire slices when the
-   promised outcomes change.
+1. Inspect Git, the plan, code, tests, docs, and history. Find repository facts.
+2. Ask only about missing human choices that could change the result, never
+   repository facts. Offer no approval-ready plan while an important choice is
+   open.
+3. When meaning is clear, give a short plain-language summary of the result,
+   scope, acceptance, evidence, inputs, and limits. Ask the human to correct or
+   confirm it, then stop without plan bytes.
+4. In a later turn, after the response, write the smallest complete plan or
+   forward-only revision with `templates/plan.md`. Give each slice one result
+   that can be reviewed alone. Acceptance must be able to fail in a real product
+   check, and evidence must observe its named boundary. Preserve slice identities.
 5. Present the exact plan bytes for external approval and stop.
 
 ## Required output
 
-Lead with what the plan will deliver, what changed, and what the approver should
-do next. Put the exact plan, release, revision, retained/changed/added/retired
-slices, and invalidated dependency closure under technical details. Do not
-write an approval or receipt.
+Before confirmation, return only the summary, a request to correct or confirm
+it, and any open choice; no plan bytes. After the response, lead with the result,
+changes, and next approval step. Put the exact plan, release, revision, slice
+changes, and invalidated consumers under technical details. Never approve or
+write a receipt.
 
 ## Stop conditions
 
-Stop when the goal, target, authority, scope, dependencies, consumed inputs,
-acceptance, or a material contract change is unclear. Do not guess approval,
-widen the work, or revise merely to record operational discovery.
+Stop when a material choice about the goal, target, authority, scope,
+dependencies, consumed inputs, acceptance, or contract is unclear. Name the
+choice needed. Do not guess approval, widen the work, or revise merely to record
+operational discovery.
 
 ## Next handoff
 

@@ -75,38 +75,47 @@ test('canonical operation prose is tool-neutral and excludes retired machinery',
   }
 });
 
-test('operations return trust decisions and evidence for machine-written receipts', async () => {
+test('operations retain protocol decisions and core trust boundaries', async () => {
   const byName = Object.fromEntries(await Promise.all(OPERATION_NAMES.map(async (name) => [
     name,
     await readFile(join(ROOT, 'operations', `${name}.md`), 'utf8'),
   ])));
-  assert.match(byName['baton-plan'], /forward-only revision/);
-  assert.match(byName['baton-plan'], /stable slice identities/);
-  assert.match(byName['baton-implement'], /design\s+TL;DR/);
-  assert.match(byName['baton-implement'], /implementation\s+attempt/);
+  assert.match(byName['baton-plan'], /Approval must cover\s+the exact proposed plan bytes/);
+  assert.match(byName['baton-plan'], /external approval/);
+  assert.match(byName['baton-implement'], /requires `PROCEED`/);
+  assert.match(byName['baton-implement'], /reserved `\.baton\/releases`; do not modify it/);
+  assert.match(byName['baton-design-review'], /Captain must differ from its producer/);
+  assert.match(
+    byName['baton-design-review'],
+    /cannot change scope, approve the plan, implement, or issue a delivery verdict/,
+  );
   for (const result of ['PROCEED', 'REVISE', 'ESCALATE']) {
     assert.match(byName['baton-design-review'], new RegExp(`\`${result}\``));
   }
   for (const result of ['PASS', 'FAIL', 'BLOCKED']) {
     assert.match(byName['baton-verify'], new RegExp(`\`${result}\``));
   }
+  assert.match(byName['baton-verify'], /Start threads fresh and separate from delivery roles/);
+  assert.match(byName['baton-verify'], /Keep every invocation read-only/);
+  assert.match(byName['baton-verify'], /exact candidate/);
   assert.match(byName['baton-verify'], /operational failure/);
-  assert.match(byName['baton-merge'], /exact retry/);
+  assert.match(byName['baton-merge'], /exact passed candidate/);
+  assert.match(byName['baton-merge'], /fresh assembly `PASS`/);
   for (const text of Object.values(byName)) assert.match(text, /receipt/i);
 });
 
-test('operations repair operational discovery without weakening material stops', async () => {
+test('operations keep support discovery separate from material contract changes', async () => {
   const byName = Object.fromEntries(await Promise.all(OPERATION_NAMES.map(async (name) => [
     name,
     await readFile(join(ROOT, 'operations', `${name}.md`), 'utf8'),
   ])));
-  assert.match(byName['baton-plan'], /commitment, not an inventory/i);
-  assert.match(byName['baton-plan'], /additional checks/);
-  assert.match(byName['baton-implement'], /Ancillary support\s+paths/);
-  assert.match(byName['baton-implement'], /same stable slice/);
+  assert.match(byName['baton-plan'], /Support paths, additional checks/);
+  assert.match(byName['baton-plan'], /need no revision when\s+the promise stays the same/);
+  assert.match(byName['baton-implement'], /Support paths and\s+checks are evidence/);
+  assert.match(byName['baton-implement'], /prior `FAIL` on the same\s+slice/);
   assert.match(byName['baton-implement'], /hard exclusion/);
   assert.match(byName['baton-design-review'], /bounded correction/);
-  assert.match(byName['baton-design-review'], /material design change/);
+  assert.match(byName['baton-design-review'], /a design gap needs another attempt/);
   assert.match(byName['baton-verify'], /not scope failures\s+by themselves/);
   assert.match(byName['baton-verify'], /same stable slice/);
   assert.match(byName['baton-verify'], /consumed product/);

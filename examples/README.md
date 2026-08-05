@@ -40,6 +40,17 @@ that connects that result to the exact plan and work.
 Sworn normally writes these receipts after checking the agent's response and
 Git. Projects do not hand-author them.
 
+## Before approval
+
+Suppose the goal is "let people export the report." The Planner first reads the
+report code, tests, docs, and current plan. It learns from the repository that
+CSV export already exists for visible rows. The repository does not say whether
+hidden rows belong in the export, so the Planner asks the owner only about that
+product choice. It does not offer a plan while the choice is open. After the
+answer, it gives a short summary and waits for correction or confirmation. It
+then writes a plan whose export check can fail if the CSV and visible report
+differ.
+
 ## The normal path
 
 [`approval.txt`](walkthrough/approval.txt) shows the person approving the exact
