@@ -10,7 +10,7 @@ not need a separate installer for every AI tool.
 ## Copy this request
 
 ```text
-Install Baton v1.0.0-rc.15 from
+Install Baton v1.0.0-rc.15.1 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user
@@ -50,8 +50,29 @@ baton-verify/SKILL.md
 baton-merge/SKILL.md
 ```
 
-No board, schema, repository helper, or Sworn file is installed with these
-skills.
+The payload also includes the read-only board kit under `baton-board/`:
+
+```text
+baton-board/reference/board/oracle.mjs
+baton-board/reference/board/terminal.mjs
+baton-board/reference/board/web.mjs
+baton-board/reference/board/presentation.mjs
+baton-board/reference/records/git.mjs
+baton-board/reference/records/receipts.mjs
+baton-board/reference/records/state.mjs
+```
+
+After installation, run the board from the discovered skills directory:
+
+```sh
+node baton-board/reference/board/oracle.mjs /path/to/project \
+  | node baton-board/reference/board/terminal.mjs
+node baton-board/reference/board/web.mjs /path/to/project
+```
+
+The board is read-only. The oracle projects committed Baton records and Git
+history; the terminal and Web UI consume that projection. No Sworn file is
+installed.
 
 ## Updating or removing Baton
 
@@ -91,7 +112,8 @@ destination immediately before any effect.
 The rule is simple: if anything changed, stop and show a new preview.
 
 The complete expected path set is byte-identical only when there are no
-missing, extra, symlink, or special entries inside the five skill directories.
+missing, extra, symlink, or special entries inside the five skill directories
+or the board kit.
 An incomplete exact payload is never adopted as installed or removed
 automatically. Modified, mixed, ambiguous, or unowned state stops.
 
@@ -100,9 +122,9 @@ new preview. The final recheck cannot prevent another local process from
 changing the destination afterward, so success is based on the observed result,
 not assumed state.
 
-Do not install RC15 over files owned by RC2 through RC14. Use the exact
+Do not install RC15.1 over files owned by RC2 through RC15. Use the exact
 immutable release's own safe uninstall, including its preview and approval
-flow. Only after that exact uninstall completes may the agent preview RC15.
+flow. Only after that exact uninstall completes may the agent preview RC15.1.
 
 `skills/.baton-payload.json` lists every source and generated fingerprint and
 the complete payload digest. Regeneration is deterministic: the same sources

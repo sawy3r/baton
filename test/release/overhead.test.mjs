@@ -32,7 +32,7 @@ test('lightweight Baton overhead is reproducible and remains below every budget'
   );
   assert.equal(report.current.operations.length, 5);
   assert.equal(report.current.skills.length, 5);
-  assert.equal(report.current.generated_payload.files, 6);
+  assert.equal(report.current.generated_payload.files, 13);
   assert.equal(report.current.generated_payload.provenance_complete, true);
   assert.equal(report.current.normal_work_happy_path.minimum_invocations, 4);
   assert.deepEqual(

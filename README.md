@@ -77,10 +77,10 @@ Baton ships five standalone Agent Skills:
 - `baton-verify`
 - `baton-merge`
 
-Ask the agent already running in your tool to install the exact RC15 payload:
+Ask the agent already running in your tool to install the exact RC15.1 payload:
 
 ```text
-Install Baton v1.0.0-rc.15 from
+Install Baton v1.0.0-rc.15.1 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user
@@ -97,13 +97,13 @@ see all five skills. See [INSTALL.md](INSTALL.md) for the full safety checks.
 
 ## Technical reference
 
-- [`skills/`](skills/) — generated five-skill standalone payload
+- [`skills/`](skills/) — generated five-skill standalone payload plus the read-only board kit
 - [`operations/`](operations/) — canonical operation sources
 - [`baton/CORE.md`](baton/CORE.md) — five trust principles
 - [`baton/PROTOCOL.md`](baton/PROTOCOL.md) — responsibilities, facts, and receipts
 - [`baton/ASSURANCE.md`](baton/ASSURANCE.md) — standard and heightened assurance
 - [`baton/CONFORMANCE.md`](baton/CONFORMANCE.md) — observable obligations
-- [`reference/`](reference/) — portable receipt, Git, and read-only board kit
+- [`reference/`](reference/) — portable receipt, Git, and board source used to build the installed board kit
 - [`conformance/`](conformance/) — portable and autonomous profiles
 
 Plans keep the same release and slice names as work changes. A new design is

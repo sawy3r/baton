@@ -23,6 +23,7 @@ import {
   OPERATIONS,
   OPERATION_VERSION,
   PAYLOAD_MANIFEST_VERSION,
+  SUPPORT_PACKAGES,
 } from '../../scripts/lib/payload.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -61,7 +62,7 @@ test('two independent generations are byte-identical and match the checked-in pa
   await checkGenerated({ bundleRoot: ROOT, outputRoot: join(ROOT, 'skills') });
 });
 
-test('the payload is five standalone skills with exact canonical text and provenance', async () => {
+test('the payload contains five skills and the board support package with exact provenance', async () => {
   const { files, manifest } = await renderGenerated({ bundleRoot: ROOT });
   const version = (await readFile(join(ROOT, 'VERSION'), 'utf8')).trim();
   assert.equal(manifest.schema_version, PAYLOAD_MANIFEST_VERSION);
@@ -73,14 +74,20 @@ test('the payload is five standalone skills with exact canonical text and proven
     OPERATIONS.map(({ name }) => name),
   );
   assert.equal(manifest.skills.length, 5);
-  assert.equal(manifest.files.length, 6);
+  assert.deepEqual(manifest.support, SUPPORT_PACKAGES.map(({ name, path, entrypoints, files: sources }) => ({
+    name,
+    path,
+    entrypoints,
+    files: sources.map((source) => `${path}/${source}`).sort(),
+  })));
+  assert.equal(manifest.files.length, 13);
   assert.equal(manifest.payload_digest, digestEntries(manifest.files));
   assert.deepEqual(
     (await readdir(join(ROOT, 'skills'), { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map(({ name }) => name)
       .sort(),
-    OPERATIONS.map(({ name }) => name).sort(),
+      [...OPERATIONS.map(({ name }) => name), ...SUPPORT_PACKAGES.map(({ path }) => path)].sort(),
   );
 
   for (const operation of OPERATIONS) {
@@ -107,6 +114,18 @@ test('the payload is five standalone skills with exact canonical text and proven
     );
     for (const reference of text.matchAll(/`((?:templates|resources)\/[^`]+)`/g)) {
       assert.ok(files.has(`${operation.name}/${reference[1]}`), reference[1]);
+    }
+  }
+
+  for (const packageDefinition of SUPPORT_PACKAGES) {
+    for (const source of packageDefinition.files) {
+      const path = `${packageDefinition.path}/${source}`;
+      const bytes = await readFile(join(ROOT, source));
+      const record = manifest.files.find((entry) => entry.path === path);
+      assert.ok(record, path);
+      assert.deepEqual(files.get(path), bytes, path);
+      assert.equal(record.source, source, path);
+      assert.equal(record.source_digest, sha256(bytes), path);
     }
   }
 

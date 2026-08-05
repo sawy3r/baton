@@ -13,7 +13,7 @@ import {
   parsePlanBytes,
   parseReceiptCommitMessage,
 } from '../../reference/records/receipts.mjs';
-import { OPERATIONS } from '../../scripts/lib/payload.mjs';
+import { OPERATIONS, SUPPORT_PACKAGES } from '../../scripts/lib/payload.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const WALKTHROUGH = path.join(ROOT, 'examples/walkthrough');
@@ -165,7 +165,7 @@ test('the walkthrough replaces status and proof records with canonical receipt c
   }
 });
 
-test('the generated payload is exactly five operations with one bundled resource', () => {
+test('the generated payload contains five operations and the board support package', () => {
   assert.deepEqual(
     OPERATIONS.map(({ name }) => name),
     [
@@ -183,6 +183,12 @@ test('the generated payload is exactly five operations with one bundled resource
   for (const operation of OPERATIONS.slice(1)) {
     assert.deepEqual(operation.resources, [], operation.name);
   }
+  assert.deepEqual(SUPPORT_PACKAGES.map(({ name }) => name), ['baton-board']);
+  assert.deepEqual(SUPPORT_PACKAGES[0].entrypoints, {
+    oracle: 'baton-board/reference/board/oracle.mjs',
+    terminal: 'baton-board/reference/board/terminal.mjs',
+    web: 'baton-board/reference/board/web.mjs',
+  });
 });
 
 test('the portable Python dependency is explicit and singular', async () => {

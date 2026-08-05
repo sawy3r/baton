@@ -1,7 +1,7 @@
 export const PACKAGE_VERSION_FILE = 'VERSION';
 export const OPERATION_VERSION = 'baton.operation/v2';
 export const GENERATOR_VERSION = 'baton.skill-generator/v1';
-export const PAYLOAD_MANIFEST_VERSION = 'baton.skills-payload/v1';
+export const PAYLOAD_MANIFEST_VERSION = 'baton.skills-payload/v2';
 
 export const OPERATIONS = Object.freeze([
   Object.freeze({
@@ -43,6 +43,27 @@ export const OPERATIONS = Object.freeze([
     description:
       'Combine passed work and merge exactly what the Verifier approved.',
     resources: Object.freeze([]),
+  }),
+]);
+
+export const SUPPORT_PACKAGES = Object.freeze([
+  Object.freeze({
+    name: 'baton-board',
+    path: 'baton-board',
+    entrypoints: Object.freeze({
+      oracle: 'baton-board/reference/board/oracle.mjs',
+      terminal: 'baton-board/reference/board/terminal.mjs',
+      web: 'baton-board/reference/board/web.mjs',
+    }),
+    files: Object.freeze([
+      'reference/board/oracle.mjs',
+      'reference/board/presentation.mjs',
+      'reference/board/terminal.mjs',
+      'reference/board/web.mjs',
+      'reference/records/git.mjs',
+      'reference/records/receipts.mjs',
+      'reference/records/state.mjs',
+    ]),
   }),
 ]);
 
