@@ -682,9 +682,9 @@ function validatePlanSkeleton(value) {
     value,
     [
       'schema_version', 'release', 'revision', 'previous_plan', 'repository',
-      'target_ref', 'approval_ref', 'tracks', 'touchpoints',
+      'target_ref', 'approval_ref', 'tracks',
     ],
-    [],
+    ['touchpoints'],
     'plan',
   );
   if (value.schema_version !== PLAN_BUNDLE_VERSION) {

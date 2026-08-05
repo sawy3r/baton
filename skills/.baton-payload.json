@@ -2,7 +2,7 @@
   "schema_version": "baton.skills-payload/v2",
   "release": "v1.0.0-rc.15.3",
   "package_version": "1.0.0-rc.15.3",
-  "payload_digest": "sha256:a373aa9ba7cc0df6528bafa4a1290a37f7c7149a07ee22e5004c1f5a4ccd246a",
+  "payload_digest": "sha256:04e91ea593c036acfa581c23b8c198df1799a98f19c63ab7ed219fce4c73aab8",
   "generator_version": "baton.skill-generator/v1",
   "operation_version": "baton.operation/v2",
   "skills": [
@@ -113,10 +113,10 @@
     },
     {
       "path": "baton-board/reference/records/receipts.mjs",
-      "digest": "sha256:ad4c1c611e7e5f5f9d876661a974cb0c10bdad818d45d653f5a6aaa08449f9f1",
+      "digest": "sha256:6c0fd54af0b62e8546bb05a6c9da315f11ca53c157022186068ddb3ac2078037",
       "release": "v1.0.0-rc.15.3",
       "source": "reference/records/receipts.mjs",
-      "source_digest": "sha256:ad4c1c611e7e5f5f9d876661a974cb0c10bdad818d45d653f5a6aaa08449f9f1"
+      "source_digest": "sha256:6c0fd54af0b62e8546bb05a6c9da315f11ca53c157022186068ddb3ac2078037"
     },
     {
       "path": "baton-board/reference/records/state.mjs",
