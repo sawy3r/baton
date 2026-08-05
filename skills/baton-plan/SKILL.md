@@ -4,7 +4,7 @@ description: "Plan small, checkable work for someone else to approve."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.15
+release: v1.0.0-rc.15.1
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:0623219dd8ccb0e0ee89962e5c4626444f372bf219e8bd9309f9e97b0b02112f

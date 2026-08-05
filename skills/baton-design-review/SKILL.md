@@ -4,7 +4,7 @@ description: "Check an approach before implementation starts."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.15
+release: v1.0.0-rc.15.1
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:02af8b68e6c5b01cb8ef962000457df3d22d4e9d3a68442d1700243ea9e4acf7
