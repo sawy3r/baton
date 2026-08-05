@@ -10,7 +10,7 @@ not need a separate installer for every AI tool.
 ## Copy this request
 
 ```text
-Install Baton v1.0.0-rc.15.1 from
+Install Baton v1.0.0-rc.15.2 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user
@@ -44,6 +44,7 @@ The complete payload is:
 ```text
 baton-plan/SKILL.md
 baton-plan/templates/plan.md
+baton-plan/templates/slice.md
 baton-implement/SKILL.md
 baton-design-review/SKILL.md
 baton-verify/SKILL.md
@@ -122,9 +123,9 @@ new preview. The final recheck cannot prevent another local process from
 changing the destination afterward, so success is based on the observed result,
 not assumed state.
 
-Do not install RC15.1 over files owned by RC2 through RC15. Use the exact
+Do not install RC15.2 over files owned by RC2 through RC15.1. Use the exact
 immutable release's own safe uninstall, including its preview and approval
-flow. Only after that exact uninstall completes may the agent preview RC15.1.
+flow. Only after that exact uninstall completes may the agent preview RC15.2.
 
 `skills/.baton-payload.json` lists every source and generated fingerprint and
 the complete payload digest. Regeneration is deterministic: the same sources

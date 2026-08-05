@@ -4,10 +4,10 @@ description: "Plan small, checkable work for someone else to approve."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.15.1
+release: v1.0.0-rc.15.2
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:0623219dd8ccb0e0ee89962e5c4626444f372bf219e8bd9309f9e97b0b02112f
+operation-sha256: sha256:94602fe24858c68f9456ffa72790aa6bb427c2371146afaec8635de2328e72df
 -->
 
 Use the invoking request as input. Resolve relative files from this directory. This standalone skill needs no shared Baton folder.
@@ -26,14 +26,14 @@ approves itself.
 ## Inputs
 
 - Goal, repository, target, approver, and applicable plan.
-- Current Git, code, tests, docs, history, scope, acceptance, dependencies,
-  inputs, limits, and exclusions.
+- Current repository, scope, acceptance, dependencies, inputs, limits, and
+  exclusions.
 
 ## Authority
 
 Keep the release while its goal, target, and approver stay the same. Preserve
 unchanged slices and identify consumers of changed inputs. Approval must cover
-the exact proposed plan bytes.
+the exact release skeleton and every declared slice file.
 
 The plan is a commitment. Support paths, additional checks,
 evidence, scheduling, retries, worktrees, and bookkeeping need no revision when
@@ -42,25 +42,27 @@ the promise stays the same.
 ## Actions
 
 1. Inspect Git, the plan, code, tests, docs, and history. Find repository facts.
-2. Ask only about missing human choices that could change the result, never
-   repository facts. Offer no approval-ready plan while an important choice is
-   open.
-3. When meaning is clear, give a short plain-language summary of the result,
-   scope, acceptance, evidence, inputs, and limits. Ask the human to correct or
-   confirm it, then stop without plan bytes.
-4. In a later turn, after the response, write the smallest complete plan or
-   forward-only revision with `templates/plan.md`. Give each slice one result
-   that can be reviewed alone. Acceptance must be able to fail in a real product
-   check, and evidence must observe its named boundary. Preserve slice identities.
+2. Ask only about human choices that could change the result. Offer no plan
+   while one is open.
+3. When clear, summarize result, scope, acceptance, inputs, and limits; ask for
+   correction or confirmation, then stop without plan bytes.
+4. Later, write the smallest plan or forward-only revision with
+   `templates/plan.md` and one `templates/slice.md` per slice. Keep paths,
+   digests, outcomes, and identities exact. Give every slice an independently
+   reviewable result with falsifiable acceptance.
+   Optionally publish a human-readable bundle under configured
+   `release_docs_root` (default `docs/baton/releases`) at
+   `<release>/slices/<id>/`. Set it in the project `.baton/config.json` or the
+   global `~/.config/baton/config.json`; project configuration overrides global
+   configuration. Use `templates/evidence.json` as an advisory inventory.
 5. Present the exact plan bytes for external approval and stop.
 
 ## Required output
 
 Before confirmation, return only the summary, a request to correct or confirm
 it, and any open choice; no plan bytes. After the response, lead with the result,
-changes, and next approval step. Put the exact plan, release, revision, slice
-changes, and invalidated consumers under technical details. Never approve or
-write a receipt.
+changes, and next approval step. Put the exact plan and slice changes under
+technical details. Never approve or write a receipt.
 
 ## Stop conditions
 

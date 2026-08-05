@@ -14,6 +14,14 @@ export const OPERATIONS = Object.freeze([
         source: 'templates/plan.md',
         path: 'templates/plan.md',
       }),
+      Object.freeze({
+        source: 'templates/slice.md',
+        path: 'templates/slice.md',
+      }),
+      Object.freeze({
+        source: 'templates/evidence.json',
+        path: 'templates/evidence.json',
+      }),
     ]),
   }),
   Object.freeze({

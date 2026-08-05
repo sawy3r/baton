@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 const ROOT = resolve(import.meta.dirname, '../..');
-const PROMPT_START = 'Install Baton v1.0.0-rc.15.1 from\n';
+const PROMPT_START = 'Install Baton v1.0.0-rc.15.2 from\n';
 const LIVE_DOCS = [
   'README.md',
   'INSTALL.md',
@@ -16,6 +16,7 @@ const LIVE_DOCS = [
   'docs/releases/v1.0.0-rc.14.md',
   'docs/releases/v1.0.0-rc.15.md',
   'docs/releases/v1.0.0-rc.15.1.md',
+  'docs/releases/v1.0.0-rc.15.2.md',
 ];
 
 function selfInstallPrompt(document, path) {
@@ -74,7 +75,7 @@ test('the contract binds approval and fails closed on changed or partial state',
   }
 });
 
-test('RC15.1 package metadata, payload note, and retained RC15 history agree', async () => {
+test('RC15.2 package metadata, payload note, and retained RC15 history agree', async () => {
   const version = (await readFile(resolve(ROOT, 'VERSION'), 'utf8')).trim();
   const manifest = JSON.parse(
     await readFile(resolve(ROOT, 'conformance/manifest.json'), 'utf8'),
@@ -83,10 +84,10 @@ test('RC15.1 package metadata, payload note, and retained RC15 history agree', a
     await readFile(resolve(ROOT, 'skills/.baton-payload.json'), 'utf8'),
   );
   const roadmap = await readFile(resolve(ROOT, 'ROADMAP.md'), 'utf8');
-  const release = await readFile(resolve(ROOT, 'docs/releases/v1.0.0-rc.15.1.md'), 'utf8');
+  const release = await readFile(resolve(ROOT, 'docs/releases/v1.0.0-rc.15.2.md'), 'utf8');
   const retained = await readFile(resolve(ROOT, 'docs/releases/v1.0.0-rc.15.md'), 'utf8');
 
-  assert.equal(version, '1.0.0-rc.15.1');
+  assert.equal(version, '1.0.0-rc.15.2');
   assert.equal(manifest.baton_version, version);
   assert.equal(payload.package_version, version);
   assert.match(roadmap, /## RC15 — make the plan clear before code starts/);

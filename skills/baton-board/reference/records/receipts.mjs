@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 
 export const RECEIPT_VERSION = 1;
 export const PLAN_VERSION = 'baton.plan/v2';
+export const PLAN_BUNDLE_VERSION = 'baton.plan/v3';
+export const SLICE_VERSION = 'baton.slice/v1';
 export const RECEIPT_TRAILER = 'Baton-Receipt: ';
 export const DETAIL_BEGIN = 'Baton-Detail-Begin';
 export const DETAIL_END = 'Baton-Detail-End';
@@ -605,6 +607,133 @@ export function parsePlanBytes(value) {
       return Buffer.from(frozenBytes);
     },
   });
+}
+
+function parseFencedDocument(value, fence, label) {
+  const input = bytes(value, label, RECEIPT_LIMITS.planBytes);
+  const open = Buffer.from(`\`\`\`${fence}\n`);
+  const close = Buffer.from('\n```\n');
+  if (!input.subarray(0, open.length).equals(open)) {
+    fail('INVALID_PLAN_FENCE', `${label} must begin at byte zero`);
+  }
+  const closeAt = input.indexOf(close, open.length);
+  if (closeAt === -1 || input.indexOf(close, closeAt + close.length) !== -1) {
+    fail('INVALID_PLAN_FENCE', `${label} must contain one closed ${fence} block`);
+  }
+  const metadata = strictParseJSON(input.subarray(open.length, closeAt), label);
+  const markdown = utf8(input.subarray(closeAt + close.length), `${label} Markdown`, RECEIPT_LIMITS.planBytes);
+  return { input, metadata, markdown };
+}
+
+function validateSlicePath(value, label) {
+  const path = repositoryPath(value, label);
+  if (!path.startsWith('slices/') || path === 'slices/' || path.endsWith('/')) {
+    fail('INVALID_FIELD', `${label} must be a file below slices/`);
+  }
+  return path;
+}
+
+function validatePlanSkeleton(value) {
+  exactKeys(
+    value,
+    [
+      'schema_version', 'release', 'revision', 'previous_plan', 'repository',
+      'target_ref', 'approval_ref', 'tracks',
+    ],
+    [],
+    'plan',
+  );
+  if (value.schema_version !== PLAN_BUNDLE_VERSION) {
+    fail('INVALID_FIELD', `plan.schema_version must be ${PLAN_BUNDLE_VERSION}`);
+  }
+  const tracks = array(value.tracks, 'plan.tracks', { nonempty: true });
+  const declaredPaths = new Set();
+  const normalized = {
+    ...value,
+    schema_version: PLAN_VERSION,
+    tracks: tracks.map((track, trackIndex) => {
+      const label = `plan.tracks[${trackIndex}]`;
+      exactKeys(track, ['id', 'depends_on', 'slices'], [], label);
+      return {
+        id: track.id,
+        depends_on: track.depends_on,
+        slices: array(track.slices, `${label}.slices`, { nonempty: true }).map((slice, sliceIndex) => {
+          const sliceLabel = `${label}.slices[${sliceIndex}]`;
+          exactKeys(slice, ['id', 'outcome', 'path', 'digest'], [], sliceLabel);
+          const slicePath = validateSlicePath(slice.path, `${sliceLabel}.path`);
+          if (declaredPaths.has(slicePath)) fail('DUPLICATE_PATH', `plan repeats slice path ${slicePath}`);
+          declaredPaths.add(slicePath);
+          return {
+            id: slice.id,
+            outcome: slice.outcome,
+            scope: { include: ['slices'], exclude: [] },
+            acceptance: [{ id: 'skeleton', text: slice.outcome }],
+            checks: [],
+            constraints: [],
+            depends_on: [],
+            consumes: [],
+            _slice_path: slicePath,
+            _slice_digest: digest(slice.digest, `${sliceLabel}.digest`),
+          };
+        }),
+      };
+    }),
+  };
+  return normalized;
+}
+
+export function parsePlanBundle(planBytes, sliceFiles = {}) {
+  const skeleton = parseFencedDocument(planBytes, 'baton-plan-v3', 'plan');
+  const metadata = validatePlanSkeleton(skeleton.metadata);
+  const supplied = new Map(Object.entries(sliceFiles).map(([path, value]) => [path, Buffer.from(value)]));
+  const declaredPaths = new Set(metadata.tracks.flatMap((track) => track.slices.map((slice) => slice._slice_path)));
+  for (const path of supplied.keys()) {
+    if (!declaredPaths.has(path)) fail('UNEXPECTED_SLICE', `slice file ${path} is not declared by the skeleton`);
+  }
+  const expandedTracks = metadata.tracks.map((track) => ({
+    ...track,
+    slices: track.slices.map((declared) => {
+      const bytesValue = supplied.get(declared._slice_path);
+      if (!bytesValue) fail('SLICE_NOT_FOUND', `declared slice ${declared.id} is missing at ${declared._slice_path}`);
+      if (digestBytes(bytesValue) !== declared._slice_digest) {
+        fail('SLICE_DIGEST_MISMATCH', `declared slice ${declared.id} does not match ${declared._slice_path}`);
+      }
+      const parsed = parseFencedDocument(bytesValue, 'baton-slice-v1', `slice ${declared.id}`);
+      const value = parsed.metadata;
+      if (value.schema_version !== SLICE_VERSION || value.id !== declared.id) {
+        fail('SLICE_IDENTITY_MISMATCH', `slice ${declared.id} has an invalid identity`);
+      }
+      const { schema_version: ignored, id: ignoredID, ...contractValue } = value;
+      const parsedSlice = validateSlice({ id: ignoredID, ...contractValue }, track.id, `slice ${declared.id}`).slice;
+      if (parsedSlice.outcome !== declared.outcome) {
+        fail('SLICE_OUTCOME_MISMATCH', `slice ${declared.id} outcome differs from the release skeleton`);
+      }
+      return parsedSlice;
+    }),
+  }));
+  const validated = validatePlanMetadata({ ...metadata, tracks: expandedTracks });
+  const bundleEntries = [
+    ['plan.md', skeleton.input],
+    ...[...supplied.keys()].sort().map((path) => [path, supplied.get(path)]),
+  ];
+  const bundleDigest = digestBytes(Buffer.concat(bundleEntries.flatMap(([path, bytesValue]) => [
+    Buffer.from(`${path}\0`), bytesValue,
+  ])));
+  return Object.freeze({
+    metadata: Object.freeze({ ...validated, schema_version: PLAN_BUNDLE_VERSION }),
+    markdown: skeleton.markdown,
+    digest: digestBytes(skeleton.input),
+    bundleDigest,
+    sliceFiles: Object.freeze(Object.fromEntries(supplied)),
+    get bytes() { return Buffer.from(skeleton.input); },
+  });
+}
+
+export function declaredSlicePaths(planBytes) {
+  const skeleton = parseFencedDocument(planBytes, 'baton-plan-v3', 'plan');
+  return validatePlanSkeleton(skeleton.metadata).tracks.flatMap((track) => (
+    track.slices.map((slice) => slice._slice_path)
+  ));
 }
 
 function validateInputs(value, label) {

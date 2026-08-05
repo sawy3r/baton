@@ -7,7 +7,13 @@ import {
   unsafePrepareExactComposition,
   unsafePrepareProductComposition,
 } from './git.mjs';
-import { ReceiptError, parsePlanBytes, parseReceiptHistoryEntry } from './receipts.mjs';
+import {
+  ReceiptError,
+  declaredSlicePaths,
+  parsePlanBundle,
+  parsePlanBytes,
+  parseReceiptHistoryEntry,
+} from './receipts.mjs';
 
 const RECORD_ROOT = '.baton/releases';
 const MAX_PLAN_REVISIONS = 256;
@@ -101,7 +107,7 @@ function planAt(repo, release, commit) {
   const [file] = readFilesAtOID(repo, commit, [planPath(release)]);
   if (!file?.bytes || !file.object) fail('PLAN_NOT_FOUND', `release ${release} has no plan`);
   try {
-    const parsed = parsePlanBytes(file.bytes);
+    const parsed = parseStoredPlan(repo, release, commit, file.bytes);
     if (parsed.metadata.release !== release) {
       fail('RELEASE_PLAN_MISMATCH', `plan release does not match ${release}`);
     }
@@ -110,6 +116,22 @@ function planAt(repo, release, commit) {
     if (error instanceof ReceiptError) fail(error.code, error.message, error);
     throw error;
   }
+}
+
+function parseStoredPlan(repo, release, commit, bytes) {
+  const v3Fence = Buffer.from('```baton-plan-v3\n');
+  if (!bytes.subarray(0, v3Fence.length).equals(v3Fence)) {
+    return parsePlanBytes(bytes);
+  }
+  const paths = declaredSlicePaths(bytes);
+  const entries = readFilesAtOID(repo, commit, paths.map((path) => `${RECORD_ROOT}/${release}/${path}`));
+  const sliceFiles = {};
+  for (const [index, path] of paths.entries()) {
+    const entry = entries[index];
+    if (!entry?.bytes) fail('SLICE_NOT_FOUND', `release ${release} has no ${path}`);
+    sliceFiles[path] = entry.bytes;
+  }
+  return parsePlanBundle(bytes, sliceFiles);
 }
 
 function historyLimitFailure(rows, label) {
@@ -246,7 +268,7 @@ export function readReleaseReceiptHistory(repo, release, head) {
     }
     let parsed;
     try {
-      parsed = parsePlanBytes(file.bytes);
+      parsed = parseStoredPlan(repo, release, entry.oid, file.bytes);
     } catch (error) {
       if (error instanceof ReceiptError) fail(error.code, error.message, error);
       throw error;
@@ -412,7 +434,7 @@ function planChain(repo, release, current, receipts) {
     }
     let parsed;
     try {
-      parsed = parsePlanBytes(file.bytes);
+      parsed = parseStoredPlan(repo, release, approval.oid, file.bytes);
     } catch (error) {
       if (error instanceof ReceiptError) fail(error.code, error.message, error);
       throw error;

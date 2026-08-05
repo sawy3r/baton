@@ -80,7 +80,7 @@ Baton ships five standalone Agent Skills:
 Ask the agent already running in your tool to install the exact RC15.1 payload:
 
 ```text
-Install Baton v1.0.0-rc.15.1 from
+Install Baton v1.0.0-rc.15.2 from
 https://github.com/sawy3r/baton.git.
 
 Check out that exact tag and read INSTALL.md. Determine this tool's real user

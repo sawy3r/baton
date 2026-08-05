@@ -1,6 +1,6 @@
-```baton-plan-v2
+```baton-plan-v3
 {
-  "schema_version": "baton.plan/v2",
+  "schema_version": "baton.plan/v3",
   "release": "release-id",
   "revision": 1,
   "previous_plan": null,
@@ -15,20 +15,8 @@
         {
           "id": "S1",
           "outcome": "A user can export the visible report as CSV.",
-          "scope": {
-            "include": ["report export"],
-            "exclude": []
-          },
-          "acceptance": [
-            {
-              "id": "A1",
-              "text": "The downloaded CSV contains every row and total shown in the report."
-            }
-          ],
-          "checks": ["check-report-csv-parity"],
-          "constraints": ["Merge only the exact candidate that passes verification."],
-          "depends_on": [],
-          "consumes": []
+          "path": "slices/S1.md",
+          "digest": "sha256:<slice-file-digest>"
         }
       ]
     }
@@ -82,3 +70,7 @@ and do not revise an unchanged commitment.
 
 Record non-negotiable semantic, safety, compatibility, and delivery limits,
 not implementation predictions or runtime bookkeeping.
+
+Each declared slice contract belongs in its own `slices/<id>.md` file using the
+bundled slice template. The skeleton's `path`, `digest`, and one-line `outcome`
+must match that file exactly.
