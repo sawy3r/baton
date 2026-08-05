@@ -19,7 +19,9 @@ import {
 } from './git.mjs';
 import {
   canonicalJSON,
+  declaredSlicePaths,
   digestBytes,
+  parsePlanBundle,
   parsePlanBytes,
   parseReceiptCommitMessage,
   renderReceiptCommit,
@@ -161,6 +163,10 @@ function planPath(release) {
   return `${RECORD_ROOT}/${release}/plan.md`;
 }
 
+function slicePath(release, path) {
+  return `${RECORD_ROOT}/${release}/${path}`;
+}
+
 function captureMap(repo, refs) {
   return new Map(captureHeadRefs(repo, refs).map(({ ref, head }) => [ref, head]));
 }
@@ -180,9 +186,22 @@ function currentPlan(repo, release, releaseHead) {
     fail('PLAN_NOT_FOUND', `release ${release} has no current plan`);
   }
   return Object.freeze({
-    parsed: parsePlanBytes(entry.bytes),
+    parsed: parseStoredPlan(repo, release, releaseHead, entry.bytes),
     object: entry.object,
   });
+}
+
+function parseStoredPlan(repo, release, commit, bytes) {
+  const fence = Buffer.from('```baton-plan-v3\n');
+  if (!bytes.subarray(0, fence.length).equals(fence)) return parsePlanBytes(bytes);
+  const paths = declaredSlicePaths(bytes);
+  const entries = readFilesAtOID(repo, commit, paths.map((path) => slicePath(release, path)));
+  const sliceFiles = {};
+  for (const [index, path] of paths.entries()) {
+    if (!entries[index]?.bytes) fail('SLICE_NOT_FOUND', `release ${release} has no ${path}`);
+    sliceFiles[path] = entries[index].bytes;
+  }
+  return parsePlanBundle(bytes, sliceFiles);
 }
 
 function findApproval(repo, release, releaseHead, planObject) {
@@ -520,10 +539,15 @@ export function createBatonActions(options) {
     const input = exactOptions(
       rawOptions,
       ['planBytes', 'summary'],
-      ['detail'],
+      ['detail', 'sliceFiles'],
       'recordPlanRevision',
     );
-    const parsed = parsePlanBytes(Buffer.from(input.planBytes));
+    const sliceFiles = input.sliceFiles ?? {};
+    const planBytes = Buffer.from(input.planBytes);
+    const parsed = planBytes.subarray(0, Buffer.byteLength('```baton-plan-v3\n'))
+      .equals(Buffer.from('```baton-plan-v3\n'))
+      ? parsePlanBundle(planBytes, sliceFiles)
+      : parsePlanBytes(planBytes);
     const summary = text(input.summary, 'summary', MAX_SUMMARY);
     const detail = detailBytes(input.detail);
     const release = parsed.metadata.release;
@@ -547,7 +571,8 @@ export function createBatonActions(options) {
     } else {
       previousState = stateFor(release);
       const previous = currentPlan(repo, release, priorHead);
-      if (previous.parsed.bytes.equals(parsed.bytes)) {
+      if (previous.parsed.bundleDigest?.toString() === parsed.bundleDigest?.toString()
+        || (!previous.parsed.bundleDigest && previous.parsed.bytes.equals(parsed.bytes))) {
         const approval = findApproval(repo, release, priorHead, previous.object);
         if (!isAncestor(repo, approval.receipt.target, target)) {
           fail(
@@ -591,6 +616,9 @@ export function createBatonActions(options) {
       recordPathAdmission,
       changes: {
         [planPath(release)]: parsed.bytes,
+        ...Object.fromEntries(Object.entries(sliceFiles).map(([path, bytes]) => (
+          [slicePath(release, path), Buffer.from(bytes)]
+        ))),
       },
       identity: gitIdentity,
     });
@@ -1387,4 +1415,5 @@ export const referenceNames = Object.freeze({
   releaseRef,
   trackRef,
   planPath,
+  slicePath,
 });

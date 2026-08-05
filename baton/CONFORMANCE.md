@@ -12,8 +12,8 @@ Every implementation MUST:
 
 1. preserve one externally approved plan lineage with stable release and slice
    identities;
-2. bind each plan revision and compact responsibility receipt to exact immutable
-   objects;
+2. bind each plan revision, every declared v3 slice file, and compact
+   responsibility receipt to exact immutable objects;
 3. keep Planner, Implementer, Captain, Verifier, Merge, and external-authorizer
    authority distinct;
 4. require an applicable Captain `PROCEED` before implementation;
@@ -40,6 +40,11 @@ Every implementation MUST:
     and committer identity explicitly, without a provider-specific built-in or
     Git-configuration fallback, while treating that identity as attribution
     rather than Baton authority.
+
+New v3 plans MUST reject missing, extra, or digest-mismatched slice files and
+MUST retain a verified slice only when its exact slice blob and consumed-input
+bindings are unchanged. Legacy v2 plans MAY remain readable for historical
+releases.
 
 `.baton/releases` is structurally reserved for Baton metadata: product code,
 build, test, package, deploy, hooks, and runtime MUST NOT read or depend on it;

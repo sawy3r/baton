@@ -7,6 +7,7 @@ import {
   ReceiptError,
   canonicalJSON,
   digestBytes,
+  parsePlanBundle,
   parsePlanBytes,
   parseReceiptBytes,
   parseReceiptCommitMessage,
@@ -24,6 +25,55 @@ const DIGEST_A = `sha256:${'a'.repeat(64)}`;
 function throwsCode(operation, code) {
   assert.throws(operation, (error) => error instanceof ReceiptError && error.code === code);
 }
+
+test('v3 plan skeleton binds one immutable file per slice', () => {
+  const sliceBytes = Buffer.from(
+    '```baton-slice-v1\n'
+      + JSON.stringify({
+        schema_version: 'baton.slice/v1',
+        id: 'S1',
+        outcome: 'Deliver the product change.',
+        scope: { include: ['src/product'], exclude: [] },
+        acceptance: [{ id: 'A1', text: 'The result is observable.' }],
+        checks: ['node --test'],
+        constraints: [],
+        depends_on: [],
+        consumes: [],
+      })
+      + '\n```\n',
+  );
+  const skeleton = Buffer.from(
+    '```baton-plan-v3\n'
+      + JSON.stringify({
+        schema_version: 'baton.plan/v3',
+        release: 'receipt-test-v3',
+        revision: 1,
+        previous_plan: null,
+        repository: 'example/project',
+        target_ref: 'refs/heads/main',
+        approval_ref: 'approval://receipt-test-v3/1',
+        tracks: [{
+          id: 'T1',
+          depends_on: [],
+          slices: [{
+            id: 'S1',
+            outcome: 'Deliver the product change.',
+            path: 'slices/S1.md',
+            digest: digestBytes(sliceBytes),
+          }],
+        }],
+      })
+      + '\n```\n',
+  );
+  const parsed = parsePlanBundle(skeleton, { 'slices/S1.md': sliceBytes });
+  assert.equal(parsed.metadata.schema_version, 'baton.plan/v3');
+  assert.equal(parsed.metadata.tracks[0].slices[0].id, 'S1');
+  assert.match(parsed.metadata.contracts.S1, /^sha256:/);
+  throwsCode(
+    () => parsePlanBundle(skeleton, { 'slices/S1.md': Buffer.from('changed') }),
+    'SLICE_DIGEST_MISMATCH',
+  );
+});
 
 function planMetadata(overrides = {}) {
   return {

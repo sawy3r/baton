@@ -1,0 +1,18 @@
+{
+  "slice": "S1",
+  "attempt": 1,
+  "summary": "Describe what this bundle demonstrates.",
+  "artifacts": [
+    {
+      "path": "screenshots/example.png",
+      "kind": "screenshot",
+      "description": "What this artifact shows"
+    },
+    {
+      "path": "outputs/example.json",
+      "kind": "data",
+      "description": "The observed product output"
+    }
+  ],
+  "notes": "Optional context for a human reader."
+}

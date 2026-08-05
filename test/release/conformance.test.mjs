@@ -80,7 +80,8 @@ test('the manifest inventories compact receipts and Git-derived state truthfully
 
   const portable = manifest.profiles.portable_kit;
   assert.equal(portable.status, 'EXECUTABLE');
-  assert.equal(portable.record_contract.plan.format, 'baton.plan/v2');
+  assert.equal(portable.record_contract.plan.format, 'baton.plan/v3');
+  assert.deepEqual(portable.record_contract.plan.legacy_formats, ['baton.plan/v2']);
   assert.equal(portable.record_contract.receipt.representation, 'Baton-Receipt Git trailer');
   const schema = portable.record_contract.receipt.schema;
   const schemaBytes = await readFile(path.join(ROOT, schema.path));
@@ -124,12 +125,11 @@ test('the manifest inventories compact receipts and Git-derived state truthfully
   assert.equal(new Set(engine.cases.map(({ id }) => id)).size, engine.cases.length);
 });
 
-test('the plan template and walkthrough use plan v2 with explicit revision ancestry', async () => {
-  const template = parsePlanBytes(await readFile(path.join(ROOT, 'templates/plan.md')));
-  assert.equal(template.metadata.schema_version, 'baton.plan/v2');
-  assert.equal(template.metadata.revision, 1);
-  assert.equal(template.metadata.previous_plan, null);
-  assert.deepEqual(Object.keys(template.metadata.contracts), ['S1']);
+test('the plan template uses a v3 skeleton and the walkthrough retains v2 ancestry', async () => {
+  const templateBytes = await readFile(path.join(ROOT, 'templates/plan.md'));
+  assert.match(templateBytes.toString('utf8'), /^```baton-plan-v3\n/);
+  assert.match(templateBytes.toString('utf8'), /"revision": 1/);
+  assert.match(templateBytes.toString('utf8'), /"previous_plan": null/);
 
   const example = parsePlanBytes(await readFile(path.join(WALKTHROUGH, 'plan.md')));
   assert.equal(example.metadata.revision, 1);
@@ -179,6 +179,12 @@ test('the generated payload contains five operations and the board support packa
   assert.deepEqual(OPERATIONS[0].resources, [{
     source: 'templates/plan.md',
     path: 'templates/plan.md',
+  }, {
+    source: 'templates/slice.md',
+    path: 'templates/slice.md',
+  }, {
+    source: 'templates/evidence.json',
+    path: 'templates/evidence.json',
   }]);
   for (const operation of OPERATIONS.slice(1)) {
     assert.deepEqual(operation.resources, [], operation.name);

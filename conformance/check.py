@@ -280,7 +280,8 @@ def expected_manifest() -> dict[str, Any]:
                 "commands": list(PORTABLE_COMMANDS),
                 "record_contract": {
                     "plan": {
-                        "format": "baton.plan/v2",
+                        "format": "baton.plan/v3",
+                        "legacy_formats": ["baton.plan/v2"],
                         "valid_fixtures": [
                             f"conformance/fixtures/{name}"
                             for name in VALID_PLAN_FIXTURES

@@ -1,6 +1,6 @@
 {
   "schema_version": "baton.conformance-manifest/v2",
-  "baton_version": "1.0.0-rc.15.1",
+  "baton_version": "1.0.0-rc.15.2",
   "profiles": {
     "portable_kit": {
       "status": "EXECUTABLE",
@@ -10,7 +10,10 @@
       ],
       "record_contract": {
         "plan": {
-          "format": "baton.plan/v2",
+          "format": "baton.plan/v3",
+          "legacy_formats": [
+            "baton.plan/v2"
+          ],
           "valid_fixtures": [
             "conformance/fixtures/valid-plan-v2.md",
             "conformance/fixtures/valid-plan-revision-v2.md",

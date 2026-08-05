@@ -1,5 +1,12 @@
 # Baton roadmap
 
+## RC15.2 — restore slice boundaries and human-readable evidence
+
+`v1.0.0-rc.15.2` restores per-slice plan files, adds advisory evidence
+inventories, and lets projects configure their human-readable release-docs
+root globally or per project. The machine-readable `.baton` records remain
+authoritative.
+
 ## RC15.1 — ship the board kit with the skills
 
 `v1.0.0-rc.15.1` preserves RC15's planning behavior and adds the existing

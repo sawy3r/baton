@@ -89,6 +89,48 @@ function planBytes(value = metadata()) {
   );
 }
 
+function v3PlanFiles() {
+  const slice = Buffer.from(
+    '```baton-slice-v1\n'
+      + JSON.stringify({
+        schema_version: 'baton.slice/v1',
+        id: 'S1',
+        outcome: 'Deliver one observable product change.',
+        scope: { include: ['src/product.txt'], exclude: [] },
+        acceptance: [{ id: 'A1', text: 'The product change is observable.' }],
+        checks: ['node --test'],
+        constraints: [],
+        depends_on: [],
+        consumes: [],
+      })
+      + '\n```\n',
+  );
+  const skeleton = Buffer.from(
+    '```baton-plan-v3\n'
+      + JSON.stringify({
+        schema_version: 'baton.plan/v3',
+        release: 'actions-v3',
+        revision: 1,
+        previous_plan: null,
+        repository: 'example/actions-v3',
+        target_ref: 'refs/heads/main',
+        approval_ref: 'approval://actions-v3/1',
+        tracks: [{
+          id: 'T1',
+          depends_on: [],
+          slices: [{
+            id: 'S1',
+            outcome: 'Deliver one observable product change.',
+            path: 'slices/S1.md',
+            digest: digestBytes(slice),
+          }],
+        }],
+      })
+      + '\n```\n',
+  );
+  return { planBytes: skeleton, sliceFiles: { 'slices/S1.md': slice } };
+}
+
 function unrelatedTrack() {
   return {
     id: 'T2',
@@ -335,6 +377,27 @@ test('recordPlanRevision creates one approved plan and exact retry is inert', ()
     assert.equal(
       resolveRef(fixture.repo, referenceNames.releaseRef('actions-v2')),
       recorded.receipt_commit,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('recordPlanRevision installs a v3 skeleton and independent slice file', () => {
+  const fixture = temporaryRepository();
+  try {
+    write(fixture.repo, 'README.md', 'product\n');
+    commitAll(fixture.repo, 'base');
+    const engine = actions(fixture.repo);
+    const input = { ...v3PlanFiles(), summary: 'Approve the split plan.' };
+    const recorded = engine.recordPlanRevision(input);
+    assert.equal(recorded.changed, true);
+    const state = readBatonState(fixture.repo, 'actions-v3');
+    assert.equal(state.plan.metadata.schema_version, 'baton.plan/v3');
+    assert.equal(state.plan.metadata.contracts.S1.startsWith('sha256:'), true);
+    assert.deepEqual(
+      readFileAtOID(fixture.repo, recorded.receipt_commit, referenceNames.slicePath('actions-v3', 'slices/S1.md')),
+      input.sliceFiles['slices/S1.md'],
     );
   } finally {
     fixture.cleanup();

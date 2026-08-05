@@ -80,7 +80,7 @@ test('operations retain protocol decisions and core trust boundaries', async () 
     name,
     await readFile(join(ROOT, 'operations', `${name}.md`), 'utf8'),
   ])));
-  assert.match(byName['baton-plan'], /Approval must cover\s+the exact proposed plan bytes/);
+  assert.match(byName['baton-plan'], /Approval must cover\s+the exact release skeleton/);
   assert.match(byName['baton-plan'], /external approval/);
   assert.match(byName['baton-implement'], /requires `PROCEED`/);
   assert.match(byName['baton-implement'], /reserved `\.baton\/releases`; do not modify it/);
@@ -125,17 +125,22 @@ test('operations keep support discovery separate from material contract changes'
   }
 });
 
-test('the only required template is one concise stable-slice plan', async () => {
-  assert.deepEqual((await readdir(join(ROOT, 'templates'))).sort(), ['plan.md']);
+test('the required templates split the release skeleton from each slice contract', async () => {
+  assert.deepEqual((await readdir(join(ROOT, 'templates'))).sort(), ['evidence.json', 'plan.md', 'slice.md']);
   const bytes = await readFile(join(ROOT, 'templates', 'plan.md'));
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  assert.equal(text.indexOf('```baton-plan-v2\n'), 0);
-  const fenced = text.match(/^```baton-plan-v2\n([\s\S]*?)\n```\n/);
-  assert.ok(fenced, 'plan template starts with one v2 JSON block');
+  assert.equal(text.indexOf('```baton-plan-v3\n'), 0);
+  const fenced = text.match(/^```baton-plan-v3\n([\s\S]*?)\n```\n/);
+  assert.ok(fenced, 'plan template starts with one v3 JSON block');
   const metadata = JSON.parse(fenced[1]);
-  assert.equal(metadata.schema_version, 'baton.plan/v2');
+  assert.equal(metadata.schema_version, 'baton.plan/v3');
   assert.equal(metadata.revision, 1);
   assert.equal(metadata.tracks[0].slices[0].id, 'S1');
-  assert.deepEqual(metadata.tracks[0].slices[0].consumes, []);
+  assert.equal(metadata.tracks[0].slices[0].path, 'slices/S1.md');
+  const slice = await readFile(join(ROOT, 'templates', 'slice.md'), 'utf8');
+  assert.match(slice, /^```baton-slice-v1\n/);
+  const evidence = JSON.parse(await readFile(join(ROOT, 'templates', 'evidence.json'), 'utf8'));
+  assert.equal(evidence.slice, 'S1');
+  assert.ok(Array.isArray(evidence.artifacts));
   assert.ok(words(text) <= 300, 'plan template stays concise');
 });

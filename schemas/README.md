@@ -20,10 +20,21 @@ Baton-Detail-End
 Baton-Receipt: <canonical receipt-v1 JSON>
 ```
 
-The plan is not a second JSON Schema. `plan.md` begins with one closed
-`baton-plan-v2` strict-JSON block and then explanatory Markdown. The reference
-validator binds the exact complete file as a Git blob, derives each slice
-contract, and checks the forward-only `revision` / `previous_plan` chain.
+The plan is not a second JSON Schema. Legacy v2 `plan.md` files begin with one
+closed `baton-plan-v2` strict-JSON block. New v3 plans keep a release skeleton
+in `plan.md` and put each slice contract in one declared `slices/<id>.md` file,
+using a closed `baton-slice-v1` block. The reference validator binds the
+skeleton plus every declared slice blob, derives each slice contract, and checks
+the forward-only `revision` / `previous_plan` chain. A missing, extra, or
+digest-mismatched slice file is invalid.
+
+Human-readable evidence is separate from the governed plan. Projects may keep
+slice bundles under the configured release-docs root (default
+`docs/baton/releases`) at `<release>/slices/<id>/`. Set `release_docs_root` in
+`~/.config/baton/config.json` for a user-wide standard, or override it in the
+project's `.baton/config.json`. An
+`evidence.json` file may inventory the bundle, but it is advisory and is not a
+strict Baton schema.
 
 Schema validity alone cannot prove a Baton result. The reference records and
 Git actions also enforce approval, role separation, plan and contract binding,

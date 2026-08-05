@@ -80,7 +80,7 @@ test('the payload contains five skills and the board support package with exact 
     entrypoints,
     files: sources.map((source) => `${path}/${source}`).sort(),
   })));
-  assert.equal(manifest.files.length, 13);
+  assert.equal(manifest.files.length, 15);
   assert.equal(manifest.payload_digest, digestEntries(manifest.files));
   assert.deepEqual(
     (await readdir(join(ROOT, 'skills'), { withFileTypes: true }))
@@ -131,6 +131,10 @@ test('the payload contains five skills and the board support package with exact 
 
   const templatePath = 'baton-plan/templates/plan.md';
   assert.deepEqual(files.get(templatePath), await readFile(join(ROOT, 'templates/plan.md')));
+  assert.deepEqual(
+    files.get('baton-plan/templates/slice.md'),
+    await readFile(join(ROOT, 'templates/slice.md')),
+  );
   for (const record of manifest.files) {
     assert.equal('mode' in record, false, record.path);
     assert.equal(record.release, `v${version}`, record.path);

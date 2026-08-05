@@ -81,7 +81,9 @@ approval, consequential product judgement, and standing authority.
 ## 2. Plan revisions and attempts
 
 One release has one goal, target, authority, and evolving plan path. Each plan
-revision is immutable in Git and approval binds its exact bytes.
+revision is immutable in Git and approval binds its exact skeleton plus every
+declared slice file. New plans keep the release skeleton in `plan.md` and one
+immutable contract in `slices/<id>.md`; legacy v2 plans remain readable.
 
 Slice identities remain stable:
 
@@ -156,8 +158,15 @@ records. A receipt writer validates and persists the result. Receipts may use
 Git trailers or compact repository records. Baton standardises their meaning;
 the reference kit standardises one deterministic representation.
 
-Longer design or evidence documents are optional. When used, a receipt binds
-their exact immutable identity. They do not become universal handoffs.
+Longer design or evidence documents are optional. Human-readable slice bundles
+MAY live under the configured release-docs root (default
+`docs/baton/releases`) at `<release>/slices/<id>/`. A user may set
+`release_docs_root` globally in `~/.config/baton/config.json`; a project may
+override it in `.baton/config.json`. Bundles can use an advisory
+`evidence.json` inventory for screenshots, recordings, outputs, and other
+artifacts. The inventory is not a strict protocol schema and cannot create
+approval or a PASS. When evidence is used, a receipt binds its exact immutable
+identity. These documents do not become universal handoffs.
 
 Runtime facts such as workers, leases, retries, tokens, cost, and logs are
 engine data, not Baton receipts.

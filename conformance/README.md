@@ -33,6 +33,7 @@ The Python check validates:
 - seven strict-JSON edge cases;
 - the Draft 2020-12 `receipt-v1` schema;
 - revision 1, forward revision, and broken-revision `baton-plan/v2` fixtures;
+- v3 release-skeleton and per-slice contract validation;
 - canonical slice and assembly receipt commits;
 - schema-invalid cursor and runtime-`no_verdict` records; and
 - schema-valid receipts with an invalid role/result pair or stale detail hash.
