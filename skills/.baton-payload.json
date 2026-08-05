@@ -1,8 +1,8 @@
 {
-  "schema_version": "baton.skills-payload/v1",
-  "release": "v1.0.0-rc.15",
-  "package_version": "1.0.0-rc.15",
-  "payload_digest": "sha256:909aec84e37e418da129e8131f7cc93ccfad9dfc0d2fe394e9e1739e25e53676",
+  "schema_version": "baton.skills-payload/v2",
+  "release": "v1.0.0-rc.15.1",
+  "package_version": "1.0.0-rc.15.1",
+  "payload_digest": "sha256:a3edf37ad562d559694f69e2d6fdf1e20bdc5e06dc98a008daba0a37c8282826",
   "generator_version": "baton.skill-generator/v1",
   "operation_version": "baton.operation/v2",
   "skills": [
@@ -53,46 +53,115 @@
       ]
     }
   ],
+  "support": [
+    {
+      "name": "baton-board",
+      "path": "baton-board",
+      "entrypoints": {
+        "oracle": "baton-board/reference/board/oracle.mjs",
+        "terminal": "baton-board/reference/board/terminal.mjs",
+        "web": "baton-board/reference/board/web.mjs"
+      },
+      "files": [
+        "baton-board/reference/board/oracle.mjs",
+        "baton-board/reference/board/presentation.mjs",
+        "baton-board/reference/board/terminal.mjs",
+        "baton-board/reference/board/web.mjs",
+        "baton-board/reference/records/git.mjs",
+        "baton-board/reference/records/receipts.mjs",
+        "baton-board/reference/records/state.mjs"
+      ]
+    }
+  ],
   "files": [
     {
+      "path": "baton-board/reference/board/oracle.mjs",
+      "digest": "sha256:d2ea7eb12af1e9a156ea9e444cd4d33e8e98c26663d4130ca3810398e5f2c04c",
+      "release": "v1.0.0-rc.15.1",
+      "source": "reference/board/oracle.mjs",
+      "source_digest": "sha256:d2ea7eb12af1e9a156ea9e444cd4d33e8e98c26663d4130ca3810398e5f2c04c"
+    },
+    {
+      "path": "baton-board/reference/board/presentation.mjs",
+      "digest": "sha256:db59b3f7aa7fdd1583f1d8b72149ca440f42ba4d13a85af400793b365f003d6b",
+      "release": "v1.0.0-rc.15.1",
+      "source": "reference/board/presentation.mjs",
+      "source_digest": "sha256:db59b3f7aa7fdd1583f1d8b72149ca440f42ba4d13a85af400793b365f003d6b"
+    },
+    {
+      "path": "baton-board/reference/board/terminal.mjs",
+      "digest": "sha256:1b7d91b14cb0a7858f88103ac58ef3ad413a5f625ccf5638047b9aefc5296d87",
+      "release": "v1.0.0-rc.15.1",
+      "source": "reference/board/terminal.mjs",
+      "source_digest": "sha256:1b7d91b14cb0a7858f88103ac58ef3ad413a5f625ccf5638047b9aefc5296d87"
+    },
+    {
+      "path": "baton-board/reference/board/web.mjs",
+      "digest": "sha256:0790dc11a7581bed431da10ff384e4583d617d66e9a4e9c49d1b50542caf520b",
+      "release": "v1.0.0-rc.15.1",
+      "source": "reference/board/web.mjs",
+      "source_digest": "sha256:0790dc11a7581bed431da10ff384e4583d617d66e9a4e9c49d1b50542caf520b"
+    },
+    {
+      "path": "baton-board/reference/records/git.mjs",
+      "digest": "sha256:b95185d1af13e3cbd3c6d0bed7d5c2eff65ead49541f9a1353b8abea682d9911",
+      "release": "v1.0.0-rc.15.1",
+      "source": "reference/records/git.mjs",
+      "source_digest": "sha256:b95185d1af13e3cbd3c6d0bed7d5c2eff65ead49541f9a1353b8abea682d9911"
+    },
+    {
+      "path": "baton-board/reference/records/receipts.mjs",
+      "digest": "sha256:6f2eb4b27459b5a403493e79c990631024ac6c7e7e5c29eed112467571bf510f",
+      "release": "v1.0.0-rc.15.1",
+      "source": "reference/records/receipts.mjs",
+      "source_digest": "sha256:6f2eb4b27459b5a403493e79c990631024ac6c7e7e5c29eed112467571bf510f"
+    },
+    {
+      "path": "baton-board/reference/records/state.mjs",
+      "digest": "sha256:c729f0e1b0fcdfd253912f0fd29967c645c86ebf6599adcc08a1625876ddaec8",
+      "release": "v1.0.0-rc.15.1",
+      "source": "reference/records/state.mjs",
+      "source_digest": "sha256:c729f0e1b0fcdfd253912f0fd29967c645c86ebf6599adcc08a1625876ddaec8"
+    },
+    {
       "path": "baton-design-review/SKILL.md",
-      "digest": "sha256:1b4df5754d7b0fa28c0ff66c345919b5d02d180c87fb9d75c02b5d4c9781d04e",
-      "release": "v1.0.0-rc.15",
+      "digest": "sha256:09a745fb264f1cc89832bc2dce2dd4e785dff9689a728d179bed9d34067c73a3",
+      "release": "v1.0.0-rc.15.1",
       "source": "operations/baton-design-review.md",
       "source_digest": "sha256:02af8b68e6c5b01cb8ef962000457df3d22d4e9d3a68442d1700243ea9e4acf7"
     },
     {
       "path": "baton-implement/SKILL.md",
-      "digest": "sha256:35b0a8bbb51db9e87855aead534f8108f7c0bcb71c4627ce4b08e7fd23b691ca",
-      "release": "v1.0.0-rc.15",
+      "digest": "sha256:4a1e1a0a206a841f23a769c30d97914d73b2d20c6661f7191770db2ccda5ea8d",
+      "release": "v1.0.0-rc.15.1",
       "source": "operations/baton-implement.md",
       "source_digest": "sha256:104fe06e1e9040c1d4b4d5b97c1c090ed037fc5737ce47d13c0152fc653a7c28"
     },
     {
       "path": "baton-merge/SKILL.md",
-      "digest": "sha256:d4104b48b49b4ca6b98d3c52236aef942831aacc02bc0511ebc0d3243ce23400",
-      "release": "v1.0.0-rc.15",
+      "digest": "sha256:6f2c356a6396a2f5d9b2356b1736743c4206309100219eaca4ff5af6f70e66aa",
+      "release": "v1.0.0-rc.15.1",
       "source": "operations/baton-merge.md",
       "source_digest": "sha256:f4856ed3c8475fffb316c7296bd38ad6ab5937c757edfe361f20979a45ceaf26"
     },
     {
       "path": "baton-plan/SKILL.md",
-      "digest": "sha256:f5f76639972bc6fc32cec24d84c800da60cac45300a642f0709e2d669d25b79c",
-      "release": "v1.0.0-rc.15",
+      "digest": "sha256:ead2b5013ee932c8bb57a4d58ef3ffbe646aedf0f6ca43822d446e14a1a40163",
+      "release": "v1.0.0-rc.15.1",
       "source": "operations/baton-plan.md",
       "source_digest": "sha256:0623219dd8ccb0e0ee89962e5c4626444f372bf219e8bd9309f9e97b0b02112f"
     },
     {
       "path": "baton-plan/templates/plan.md",
       "digest": "sha256:07ab0ccbcafccbbb222e138a832c8142b17486304c7aa03ceb73b8c5d8d47764",
-      "release": "v1.0.0-rc.15",
+      "release": "v1.0.0-rc.15.1",
       "source": "templates/plan.md",
       "source_digest": "sha256:07ab0ccbcafccbbb222e138a832c8142b17486304c7aa03ceb73b8c5d8d47764"
     },
     {
       "path": "baton-verify/SKILL.md",
-      "digest": "sha256:dab2f978ae019afdb0bd3c8b130c7d4fa8c659225164d57cc3451e828bf71955",
-      "release": "v1.0.0-rc.15",
+      "digest": "sha256:3431ed0db0219629c87eb3a26b039a966676227df12c53ac2abd8e98b592140b",
+      "release": "v1.0.0-rc.15.1",
       "source": "operations/baton-verify.md",
       "source_digest": "sha256:8ca4dff1ab2c607cd23ea2828daf11dc88a7dbeb3194229f2ff5c3c83f510014"
     }

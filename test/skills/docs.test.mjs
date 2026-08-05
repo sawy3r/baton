@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 const ROOT = resolve(import.meta.dirname, '../..');
-const PROMPT_START = 'Install Baton v1.0.0-rc.15 from\n';
+const PROMPT_START = 'Install Baton v1.0.0-rc.15.1 from\n';
 const LIVE_DOCS = [
   'README.md',
   'INSTALL.md',
@@ -15,6 +15,7 @@ const LIVE_DOCS = [
   'conformance/manifest.json',
   'docs/releases/v1.0.0-rc.14.md',
   'docs/releases/v1.0.0-rc.15.md',
+  'docs/releases/v1.0.0-rc.15.1.md',
 ];
 
 function selfInstallPrompt(document, path) {
@@ -73,7 +74,7 @@ test('the contract binds approval and fails closed on changed or partial state',
   }
 });
 
-test('RC15 package metadata, payload note, and retained RC14 history agree', async () => {
+test('RC15.1 package metadata, payload note, and retained RC15 history agree', async () => {
   const version = (await readFile(resolve(ROOT, 'VERSION'), 'utf8')).trim();
   const manifest = JSON.parse(
     await readFile(resolve(ROOT, 'conformance/manifest.json'), 'utf8'),
@@ -82,14 +83,13 @@ test('RC15 package metadata, payload note, and retained RC14 history agree', asy
     await readFile(resolve(ROOT, 'skills/.baton-payload.json'), 'utf8'),
   );
   const roadmap = await readFile(resolve(ROOT, 'ROADMAP.md'), 'utf8');
-  const release = await readFile(resolve(ROOT, 'docs/releases/v1.0.0-rc.15.md'), 'utf8');
-  const retained = await readFile(resolve(ROOT, 'docs/releases/v1.0.0-rc.14.md'), 'utf8');
+  const release = await readFile(resolve(ROOT, 'docs/releases/v1.0.0-rc.15.1.md'), 'utf8');
+  const retained = await readFile(resolve(ROOT, 'docs/releases/v1.0.0-rc.15.md'), 'utf8');
 
-  assert.equal(version, '1.0.0-rc.15');
+  assert.equal(version, '1.0.0-rc.15.1');
   assert.equal(manifest.baton_version, version);
   assert.equal(payload.package_version, version);
   assert.match(roadmap, /## RC15 — make the plan clear before code starts/);
   assert.match(release, new RegExp(payload.payload_digest));
-  assert.match(retained, /^# Baton v1\.0\.0-rc\.14 — provider-neutral Git identity/m);
-  assert.match(retained, /sha256:6a1528cbaf357eb9ffc9e494d55f1de86cbb43ee220848cc9fb65227b9fd0452/);
+  assert.match(retained, /^# Baton v1\.0\.0-rc\.15 — compact semantic planning/m);
 });

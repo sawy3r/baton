@@ -19,6 +19,7 @@ import {
   OPERATION_VERSION,
   PACKAGE_VERSION_FILE,
   PAYLOAD_MANIFEST_VERSION,
+  SUPPORT_PACKAGES,
 } from './lib/payload.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -105,6 +106,7 @@ export async function renderGenerated({
   const files = new Map();
   const records = [];
   const skills = [];
+  const support = [];
 
   for (const operation of OPERATIONS) {
     const operationBytes = await readFile(join(bundleRoot, operation.source));
@@ -146,6 +148,29 @@ export async function renderGenerated({
     });
   }
 
+  for (const packageDefinition of SUPPORT_PACKAGES) {
+    const packageFiles = [];
+    for (const source of packageDefinition.files) {
+      const path = `${packageDefinition.path}/${source}`;
+      const bytes = await readFile(join(bundleRoot, source));
+      files.set(path, bytes);
+      records.push({
+        path,
+        digest: sha256(bytes),
+        release,
+        source,
+        source_digest: sha256(bytes),
+      });
+      packageFiles.push(path);
+    }
+    support.push({
+      name: packageDefinition.name,
+      path: packageDefinition.path,
+      entrypoints: packageDefinition.entrypoints,
+      files: sorted(packageFiles),
+    });
+  }
+
   records.sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)));
   const payloadDigest = digestEntries(records);
   const manifest = {
@@ -156,6 +181,7 @@ export async function renderGenerated({
     generator_version: GENERATOR_VERSION,
     operation_version: OPERATION_VERSION,
     skills,
+    support,
     files: records,
   };
   files.set(PAYLOAD_MANIFEST_NAME, stableJSON(manifest));

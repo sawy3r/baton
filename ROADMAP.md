@@ -1,5 +1,12 @@
 # Baton roadmap
 
+## RC15.1 — ship the board kit with the skills
+
+`v1.0.0-rc.15.1` preserves RC15's planning behavior and adds the existing
+read-only board oracle, terminal renderer, and local Web UI to the generated
+install payload. The board remains structural and read-only; Sworn's runtime
+ownership and protocol version do not change.
+
 ## RC15 — make the plan clear before code starts
 
 `v1.0.0-rc.15` helps the Planner find repository facts before asking the human,

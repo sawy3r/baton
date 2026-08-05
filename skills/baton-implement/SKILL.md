@@ -4,7 +4,7 @@ description: "Explain an approach or build approved work."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.15
+release: v1.0.0-rc.15.1
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
 operation-sha256: sha256:104fe06e1e9040c1d4b4d5b97c1c090ed037fc5737ce47d13c0152fc653a7c28
