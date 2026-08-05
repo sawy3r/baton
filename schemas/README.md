@@ -28,6 +28,12 @@ skeleton plus every declared slice blob, derives each slice contract, and checks
 the forward-only `revision` / `previous_plan` chain. A missing, extra, or
 digest-mismatched slice file is invalid.
 
+V3 plans may also declare a `touchpoints` matrix. When present, every included
+scope path must be listed exactly once with its owning track; shared paths are
+valid only when their tracks are explicitly ordered. This makes the matrix a
+mechanically checked concurrency boundary without turning product scope into a
+candidate-path allowlist.
+
 Human-readable evidence is separate from the governed plan. Projects may keep
 slice bundles under the configured release-docs root (default
 `docs/baton/releases`) at `<release>/slices/<id>/`. Set `release_docs_root` in

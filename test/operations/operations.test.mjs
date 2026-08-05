@@ -135,6 +135,7 @@ test('the required templates split the release skeleton from each slice contract
   const metadata = JSON.parse(fenced[1]);
   assert.equal(metadata.schema_version, 'baton.plan/v3');
   assert.equal(metadata.revision, 1);
+  assert.deepEqual(metadata.touchpoints, [{ path: 'src/report/export.mjs', tracks: ['T1'] }]);
   assert.equal(metadata.tracks[0].slices[0].id, 'S1');
   assert.equal(metadata.tracks[0].slices[0].path, 'slices/S1.md');
   const slice = await readFile(join(ROOT, 'templates', 'slice.md'), 'utf8');

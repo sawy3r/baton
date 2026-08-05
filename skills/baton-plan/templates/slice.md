@@ -4,7 +4,7 @@
   "id": "S1",
   "outcome": "A user can export the visible report as CSV.",
   "scope": {
-    "include": ["report export"],
+    "include": ["src/report/export.mjs"],
     "exclude": []
   },
   "acceptance": [

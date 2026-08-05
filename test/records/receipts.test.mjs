@@ -52,6 +52,7 @@ test('v3 plan skeleton binds one immutable file per slice', () => {
         repository: 'example/project',
         target_ref: 'refs/heads/main',
         approval_ref: 'approval://receipt-test-v3/1',
+        touchpoints: [{ path: 'src/product', tracks: ['T1'] }],
         tracks: [{
           id: 'T1',
           depends_on: [],
@@ -68,10 +69,20 @@ test('v3 plan skeleton binds one immutable file per slice', () => {
   const parsed = parsePlanBundle(skeleton, { 'slices/S1.md': sliceBytes });
   assert.equal(parsed.metadata.schema_version, 'baton.plan/v3');
   assert.equal(parsed.metadata.tracks[0].slices[0].id, 'S1');
+  assert.deepEqual(parsed.metadata.touchpoints, [{ path: 'src/product', tracks: ['T1'] }]);
   assert.match(parsed.metadata.contracts.S1, /^sha256:/);
   throwsCode(
     () => parsePlanBundle(skeleton, { 'slices/S1.md': Buffer.from('changed') }),
     'SLICE_DIGEST_MISMATCH',
+  );
+  const missing = JSON.parse(skeleton.toString('utf8').match(/\n([\s\S]+)\n```/u)[1]);
+  missing.touchpoints = [];
+  throwsCode(
+    () => parsePlanBundle(
+      Buffer.from(`\`\`\`baton-plan-v3\n${JSON.stringify(missing)}\n\`\`\`\n`),
+      { 'slices/S1.md': sliceBytes },
+    ),
+    'TOUCHPOINT_SCOPE_MISSING',
   );
 });
 

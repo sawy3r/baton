@@ -7,6 +7,9 @@
   "repository": "owner/repository",
   "target_ref": "refs/heads/main",
   "approval_ref": "approval://release-id/1",
+  "touchpoints": [
+    { "path": "src/report/export.mjs", "tracks": ["T1"] }
+  ],
   "tracks": [
     {
       "id": "T1",

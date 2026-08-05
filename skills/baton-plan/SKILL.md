@@ -4,10 +4,10 @@ description: "Plan small, checkable work for someone else to approve."
 ---
 
 <!-- baton-skill
-release: v1.0.0-rc.15.2
+release: v1.0.0-rc.15.3
 generator-version: baton.skill-generator/v1
 operation-version: baton.operation/v2
-operation-sha256: sha256:94602fe24858c68f9456ffa72790aa6bb427c2371146afaec8635de2328e72df
+operation-sha256: sha256:ad6a38f379987bfc7d1ef00c7ab471693063edb21110224af365bd2e1af557bb
 -->
 
 Use the invoking request as input. Resolve relative files from this directory. This standalone skill needs no shared Baton folder.
@@ -46,10 +46,11 @@ the promise stays the same.
    while one is open.
 3. When clear, summarize result, scope, acceptance, inputs, and limits; ask for
    correction or confirmation, then stop without plan bytes.
-4. Later, write the smallest plan or forward-only revision with
+4. Later, write a plan or forward-only revision with
    `templates/plan.md` and one `templates/slice.md` per slice. Keep paths,
-   digests, outcomes, and identities exact. Give every slice an independently
-   reviewable result with falsifiable acceptance.
+   digests, outcomes, and identities. Give each slice falsifiable
+   acceptance. Declare every `scope.include` path in `touchpoints`, assigned to
+   the track; shared paths require dependency.
    Optionally publish a human-readable bundle under configured
    `release_docs_root` (default `docs/baton/releases`) at
    `<release>/slices/<id>/`. Set it in the project `.baton/config.json` or the

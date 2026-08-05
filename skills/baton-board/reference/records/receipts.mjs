@@ -439,7 +439,46 @@ function dependencyClosures(nodes, edges) {
   return closures;
 }
 
-export function validatePlanMetadata(value) {
+function validateTouchpoints(value, tracks, deliveryClosures) {
+  const entries = array(value, 'plan.touchpoints');
+  const trackIDs = new Set(tracks.map((track) => track.id));
+  const seen = new Set();
+  const ownedPaths = new Set(
+    tracks.flatMap((track) => track.slices.flatMap((slice) => slice.scope.include)),
+  );
+  const result = entries.map((entry, index) => {
+    const label = `plan.touchpoints[${index}]`;
+    exactKeys(entry, ['path', 'tracks'], [], label);
+    const path = repositoryPath(entry.path, `${label}.path`);
+    if (seen.has(path)) fail('DUPLICATE_PATH', `plan repeats touchpoint ${path}`);
+    seen.add(path);
+    const owners = uniqueStrings(entry.tracks, `${label}.tracks`);
+    if (owners.length === 0) fail('INVALID_FIELD', `${label}.tracks cannot be empty`);
+    for (const owner of owners) {
+      if (!trackIDs.has(owner)) fail('INVALID_FIELD', `${label} names unknown track ${owner}`);
+      const track = tracks.find((candidate) => candidate.id === owner);
+      if (!track.slices.some((slice) => slice.scope.include.includes(path))) {
+        fail('TOUCHPOINT_SCOPE_MISMATCH', `${label} does not match ${owner}'s declared scope`);
+      }
+    }
+    for (let leftIndex = 0; leftIndex < owners.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < owners.length; rightIndex += 1) {
+        const left = tracks.find((track) => track.id === owners[leftIndex]);
+        const right = tracks.find((track) => track.id === owners[rightIndex]);
+        const leftOrdered = deliveryClosures.get(left.slices[0].id).has(right.slices[0].id);
+        const rightOrdered = deliveryClosures.get(right.slices[0].id).has(left.slices[0].id);
+        if (!leftOrdered && !rightOrdered) fail('PARALLEL_TOUCH_CONFLICT', `independent tracks share ${path}`);
+      }
+    }
+    return { path, tracks: owners };
+  });
+  for (const path of ownedPaths) {
+    if (!seen.has(path)) fail('TOUCHPOINT_SCOPE_MISSING', `scope path ${path} has no touchpoint owner`);
+  }
+  return result;
+}
+
+export function validatePlanMetadata(value, options = {}) {
   exactKeys(
     value,
     [
@@ -451,6 +490,7 @@ export function validatePlanMetadata(value) {
       'target_ref',
       'approval_ref',
       'tracks',
+      ...(options.touchpoints === undefined ? [] : ['touchpoints']),
     ],
     [],
     'plan',
@@ -549,6 +589,9 @@ export function validatePlanMetadata(value) {
   }
   assertAcyclic(sliceIDs, deliveryEdges, 'delivery graph');
   const deliveryClosures = dependencyClosures(sliceIDs, deliveryEdges);
+  const touchpoints = options.touchpoints === undefined || options.touchpoints === null
+    ? null
+    : validateTouchpoints(options.touchpoints, parsedTracks, deliveryClosures);
 
   for (let leftIndex = 0; leftIndex < parsedTracks.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < parsedTracks.length; rightIndex += 1) {
@@ -583,6 +626,7 @@ export function validatePlanMetadata(value) {
     approval_ref: approvalRef,
     tracks: parsedTracks,
     contracts,
+    ...(touchpoints === null ? {} : { touchpoints }),
   });
 }
 
@@ -640,7 +684,7 @@ function validatePlanSkeleton(value) {
       'schema_version', 'release', 'revision', 'previous_plan', 'repository',
       'target_ref', 'approval_ref', 'tracks',
     ],
-    [],
+    ['touchpoints'],
     'plan',
   );
   if (value.schema_version !== PLAN_BUNDLE_VERSION) {
@@ -678,6 +722,7 @@ function validatePlanSkeleton(value) {
         }),
       };
     }),
+    touchpoints: value.touchpoints ?? null,
   };
   return normalized;
 }
@@ -711,7 +756,10 @@ export function parsePlanBundle(planBytes, sliceFiles = {}) {
       return parsedSlice;
     }),
   }));
-  const validated = validatePlanMetadata({ ...metadata, tracks: expandedTracks });
+  const validated = validatePlanMetadata(
+    { ...metadata, tracks: expandedTracks },
+    { touchpoints: metadata.touchpoints },
+  );
   const bundleEntries = [
     ['plan.md', skeleton.input],
     ...[...supplied.keys()].sort().map((path) => [path, supplied.get(path)]),
