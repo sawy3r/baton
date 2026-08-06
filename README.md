@@ -1,5 +1,12 @@
 # Baton
 
+> **Parked as of 2026-08-06.** Baton is no longer developed as a separately
+> published protocol. Its trust rules and Git-bound receipts move into
+> [Sworn](https://sworn.sh); this repository stays as a reference archive.
+> `v1.0.0-rc.13` is the last published release, and the later tags should not be
+> published. See [`docs/captures/2026-08-06-baton-shelved.md`](docs/captures/2026-08-06-baton-shelved.md)
+> for what moved, what was retired, and why.
+
 Baton is a simple way for AI agents to hand software work to one another
 without losing track of what was agreed or what actually passed.
 
