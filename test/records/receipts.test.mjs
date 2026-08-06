@@ -86,6 +86,81 @@ test('v3 plan skeleton binds one immutable file per slice', () => {
   );
 });
 
+test('touchpoint ownership follows the slices that share the path', () => {
+  const sliceFile = (id, include, dependsOn = []) => Buffer.from(
+    '```baton-slice-v1\n'
+      + JSON.stringify({
+        schema_version: 'baton.slice/v1',
+        id,
+        outcome: `Deliver ${id}.`,
+        scope: { include, exclude: [] },
+        acceptance: [{ id: `A-${id}`, text: `The ${id} result is observable.` }],
+        checks: ['node --test'],
+        constraints: [],
+        depends_on: dependsOn,
+        consumes: [],
+      })
+      + '\n```\n',
+  );
+
+  // T1 and T2 both reach src/shared, but only at their second slice. Their
+  // first slices are independent of one another.
+  const files = {
+    'slices/S1.md': sliceFile('S1', ['src/a']),
+    'slices/S2.md': sliceFile('S2', ['src/shared']),
+    'slices/S3.md': sliceFile('S3', ['src/c']),
+    'slices/S4.md': sliceFile('S4', ['src/shared'], ['S2']),
+  };
+  const declare = (id) => ({
+    id,
+    outcome: `Deliver ${id}.`,
+    path: `slices/${id}.md`,
+    digest: digestBytes(files[`slices/${id}.md`]),
+  });
+  const skeleton = (touchpoints) => Buffer.from(
+    '```baton-plan-v3\n'
+      + JSON.stringify({
+        schema_version: 'baton.plan/v3',
+        release: 'touchpoint-test',
+        revision: 1,
+        previous_plan: null,
+        repository: 'example/project',
+        target_ref: 'refs/heads/main',
+        approval_ref: 'approval://touchpoint-test/1',
+        ...(touchpoints === undefined ? {} : { touchpoints }),
+        tracks: [
+          { id: 'T1', depends_on: [], slices: [declare('S1'), declare('S2')] },
+          { id: 'T2', depends_on: [], slices: [declare('S3'), declare('S4')] },
+        ],
+      })
+      + '\n```\n',
+  );
+
+  const shared = [
+    { path: 'src/a', tracks: ['T1'] },
+    { path: 'src/shared', tracks: ['T1', 'T2'] },
+    { path: 'src/c', tracks: ['T2'] },
+  ];
+
+  // S2 and S4 are the slices that share src/shared, and S4 depends on S2.
+  // Declaring the matrix must not change the verdict on an unchanged plan.
+  assert.equal(parsePlanBundle(skeleton(), files).metadata.touchpoints, undefined);
+  assert.deepEqual(parsePlanBundle(skeleton(shared), files).metadata.touchpoints, shared);
+
+  // Remove that ordering and the shared path is a genuine parallel edit.
+  const concurrent = { ...files, 'slices/S4.md': sliceFile('S4', ['src/shared']) };
+  const concurrentSkeleton = Buffer.from(
+    skeleton(shared).toString('utf8').replace(
+      digestBytes(files['slices/S4.md']),
+      digestBytes(concurrent['slices/S4.md']),
+    ),
+  );
+  throwsCode(
+    () => parsePlanBundle(concurrentSkeleton, concurrent),
+    'PARALLEL_TOUCH_CONFLICT',
+  );
+});
+
 function planMetadata(overrides = {}) {
   return {
     schema_version: 'baton.plan/v2',
