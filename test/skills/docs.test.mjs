@@ -92,6 +92,8 @@ test('RC15.3 package metadata, payload note, and retained RC15 history agree', a
   assert.equal(manifest.baton_version, version);
   assert.equal(payload.package_version, version);
   assert.match(roadmap, /## RC15 — make the plan clear before code starts/);
-  assert.match(release, new RegExp(payload.payload_digest));
+  // The note no longer pins the payload digest: the board package embeds the
+  // reference validator, so binding them forces a release cut for any fix.
+  assert.match(release, /^# Baton v1\.0\.0-rc\.15\.3 — make parallel touchpoints explicit/m);
   assert.match(retained, /^# Baton v1\.0\.0-rc\.15 — compact semantic planning/m);
 });

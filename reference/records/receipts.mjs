@@ -461,13 +461,31 @@ function validateTouchpoints(value, tracks, deliveryClosures) {
         fail('TOUCHPOINT_SCOPE_MISMATCH', `${label} does not match ${owner}'s declared scope`);
       }
     }
+    // Order the slices that actually cover this path, not an arbitrary
+    // representative slice per track. A track may reach the shared path late
+    // while its first slice stays independent of the other owner.
+    const touching = new Map(owners.map((owner) => [
+      owner,
+      tracks.find((candidate) => candidate.id === owner).slices.filter((slice) => (
+        slice.scope.include.some((included) => pathOverlap(included, path))
+      )),
+    ]));
     for (let leftIndex = 0; leftIndex < owners.length; leftIndex += 1) {
       for (let rightIndex = leftIndex + 1; rightIndex < owners.length; rightIndex += 1) {
-        const left = tracks.find((track) => track.id === owners[leftIndex]);
-        const right = tracks.find((track) => track.id === owners[rightIndex]);
-        const leftOrdered = deliveryClosures.get(left.slices[0].id).has(right.slices[0].id);
-        const rightOrdered = deliveryClosures.get(right.slices[0].id).has(left.slices[0].id);
-        if (!leftOrdered && !rightOrdered) fail('PARALLEL_TOUCH_CONFLICT', `independent tracks share ${path}`);
+        for (const leftSlice of touching.get(owners[leftIndex])) {
+          for (const rightSlice of touching.get(owners[rightIndex])) {
+            const ordered = (
+              deliveryClosures.get(leftSlice.id).has(rightSlice.id)
+              || deliveryClosures.get(rightSlice.id).has(leftSlice.id)
+            );
+            if (!ordered) {
+              fail(
+                'PARALLEL_TOUCH_CONFLICT',
+                `${leftSlice.id} and ${rightSlice.id} share ${path} without ordering`,
+              );
+            }
+          }
+        }
       }
     }
     return { path, tracks: owners };
