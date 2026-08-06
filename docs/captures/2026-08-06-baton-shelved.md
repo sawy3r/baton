@@ -94,14 +94,3 @@ there independently before anyone remembered it had been solved once already.
 
 Archive it on GitHub rather than deleting it. Archiving costs nothing and
 protects against a decision made on a tired evening.
-
-## Standing priority
-
-**getfired.au is the deliverable.** Baton was scaffolding for verifying it, and
-the scaffolding consumed the building. No Baton or Sworn work resumes ahead of
-it.
-
-The pivot is to finish Sworn so it works the way its author wants it to work. If
-others find that useful, good — but that is upside, not the goal, and building
-for one real user whose problem is completely understood is the strongest
-position available.
